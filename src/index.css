@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/** ********************************************
+**             THEMES DARK AND LIGHT
+** ****************************************** **/
+
+
+:root {
+  --bg-color: white;
+  --text-color: black;
+}
+
+.theme-dark {
+  --bg-color: #1a202c;
+  --text-color: white;
+}
+
+
+
+/** ************************************** **
+ **          GRID PRODUCTS STYLES
+ ** ************************************** **/
+
