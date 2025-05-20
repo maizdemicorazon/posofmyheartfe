@@ -8,9 +8,11 @@ function ProductOptionsModal({
     onClose,
     product,
     extras,
+    sauces,
     initialQuantity = 1,
     initialOptions = null,
     initialExtras = [],
+    initialSauces = [],
     initialComment = '',
     onSave,
     isEditing = false
@@ -20,10 +22,12 @@ function ProductOptionsModal({
     const [quantity, setQuantity] = useState(1);
     const [selectedOption, setSelectedOption] = useState(null);
     const [selectedExtras, setSelectedExtras] = useState([]);
+    const [selectedSauces, setSelectedSauces] = useState([]);
     const [comment, setComment] = useState('');
     const [error, setError] = useState('');
     const [allOptions, setAllOptions] = useState([]);
     const [allExtras, setAllExtras] = useState([]);
+    const [allSauces, setAllSauces] = useState([]);
     const { addToCart } = useCart();
 
     useEffect(() => {
@@ -35,12 +39,9 @@ function ProductOptionsModal({
 
         if (isOpen) {
 
-            console.log('Product:', product);
-            console.log('Product options:', product.options);
-            console.log('extras:', extras);
-            
             setQuantity(initialQuantity);
             setSelectedExtras(initialExtras);
+            setSelectedSauces(initialSauces);
             setComment(initialComment);
             setError('');
 
@@ -60,10 +61,26 @@ function ProductOptionsModal({
                 catalogExtras = [];
             }
 
-            const selectedIds = initialExtras.map(e => e.id);
+            const selectedIds = initialExtras.map(e => e.idExtra);
             const combinedExtras = [
                 ...initialExtras,
-                ...catalogExtras.filter(e => !selectedIds.includes(e.id))
+                ...catalogExtras.filter(e => !selectedIds.includes(e.idExtra))
+            ];
+
+            let catalogSauces = [];
+            try {
+                const saucesStr = sessionStorage.getItem('sauces');
+                if (saucesStr) {
+                    catalogSauces = JSON.parse(saucesStr);
+                }
+            } catch (e) {
+                catalogSauces = [];
+            }
+
+            const selectedSauceIds = initialSauces.map(e => e.idSauce);
+            const combinedSauces = [
+                ...initialSauces,
+                ...catalogSauces.filter(e => !selectedSauceIds.includes(e.idSauce))
             ];
 
             let catalogProducts = [];
@@ -76,7 +93,7 @@ function ProductOptionsModal({
                 catalogProducts = [];
             }
 
-            const originalProduct = catalogProducts.find(p => p.id === product.id);
+            const originalProduct = catalogProducts.find(p => p.idProduct === product.idProduct);
             const options = originalProduct?.options || product.options || [];
             if (options.length === 1) {
                 setSelectedOption(options[0]);
@@ -87,6 +104,7 @@ function ProductOptionsModal({
 
             setAllOptions(options);
             setAllExtras(combinedExtras);
+            setAllSauces(combinedSauces);
             
             document.addEventListener('mousedown', handleClickOutside);
         } else {
@@ -96,7 +114,7 @@ function ProductOptionsModal({
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isOpen, product?.id]);
+    }, [isOpen, product?.idProduct]);
 
     const handleOptionClick = (option) => {
         setSelectedOption(option);
@@ -111,6 +129,14 @@ function ProductOptionsModal({
         );
     };
 
+    const handleSauceClick = (sauce) => {
+        setSelectedSauces((prev) =>
+        prev.includes(sauce)
+            ? prev.filter((s) => s !== sauce)
+            : [...prev, sauce]
+        );
+    }
+
     const handleSave = () => {
         if (product.options && product.options.length > 1 && !selectedOption) {
             setError('Seleccione una opción.');
@@ -122,8 +148,11 @@ function ProductOptionsModal({
             options: [selectedOption],
             quantity: quantity,
             extras: selectedExtras,
+            sauces: selectedSauces,
             comment,
         };
+
+        console.log(productData);
 
         if (isEditing && onSave) {
             onSave(productData);
@@ -148,67 +177,142 @@ function ProductOptionsModal({
                     <button onClick={onClose} className="text-xl font-bold"><XMarkIcon className="w-6 h-6" /></button>
                 </div>
 
-                <div className="text-center text-gray-400 dark:text-gray-500">
-                    <div className="manager-options flex flex-wrap gap-2 justify-center">
-                        {allOptions.map((option, idx) => (
-                            <button
-                                key={idx}
-                                className={`px-4 py-2 rounded ${
-                                    selectedOption?.size === option.size
-                                        ? 'bg-blue-700'
-                                        : 'bg-blue-500'
-                                } text-white hover:bg-blue-600`}
-                                onClick={() => handleOptionClick(option)}
-                            >
-                                {option.size} - ${option.price}
-                            </button>
-                        ))}
+                <div className="container-options w-full h-[80vh] text-center text-gray-400 dark:text-gray-500">
+                    <div className="manager-sizes w-full h-[25vh] mb-5 flex overflow-x-auto whitespace-nowrap w-full">
+                        {allOptions.length === 0 ? (
+                            <div className="col-span-3 text-center text-gray-500">
+                                No hay tamaños para mostrar.
+                            </div>
+                        ) : (
+                            allOptions.map((option, idx) => (
+                                <div
+                                    key={idx}
+                                    className={`w-[12vh] min-w-[12vh] h-[15vh] m-2 aspect-square bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col text-white hover:bg-blue-600 ${
+                                        selectedOption?.size === option.size
+                                            ? 'border-2 border-blue-700'
+                                            : 'border-1 border-transparent'
+                                    }`}
+                                    onClick={() => handleOptionClick(option)}
+                                >
+                                    <img
+                                        src="https://picsum.photos/200/300?random=1"
+                                        alt={option.size}
+                                        className={`w-full h-2/3 object-cover ${
+                                            selectedOption?.size === option.size ? 'grayscale' : ''
+                                        }`}
+                                    />
+                                    <div className="h-1/3 flex flex-col items-center justify-center px-2 text-center text-sm font-semibold text-black dark:text-white">
+                                        <p className="text-black dark:text-white">{option.size}</p>
+                                        <p className="text-black dark:text-white">+{option.price}</p>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
 
                     {error && (
-                        <div className="text-red-600 font-semibold mt-2">{error}</div>
+                        <div className="w-full text-red-600 font-semibold mb-2">{error}</div>
                     )}
 
-                    <div className="manager-quantity flex flex-wrap gap-2 justify-center mt-5">
+                    <div className="manager-quantity w-full h-[5vh] mb-0 flex flex-wrap gap-2 justify-center">
                         <button
-                            className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600"
+                            className="px-4 py-2 rounded border border-red-500 hover:border-red-600"
                             onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
                         >
                             <MinusIcon className="w-5 h-5" />
                         </button>
                         <span className="text-lg font-semibold">Cantidad: {quantity}</span>
                         <button
-                            className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600"
+                            className="px-4 py-2 rounded border border-red-500 hover:border-red-800"
                             onClick={() => setQuantity((prev) => prev + 1)}
                         >
                             <PlusIcon className="w-5 h-5" />
                         </button>
                     </div>
-                    <p className="mt-5 text-xl ...">Extras</p>
-                    <div className='manager-extras border-2 border-red-500 w-full h-[25vh] overflow-y-scroll'>
-                        {allExtras.map((extra) => (
-                            <button
-                                key={extra.id}
-                                className={`w-full h-[5vh] mb-2 rounded ${
-                                selectedExtras.some(e => e.id === extra.id)
-                                    ? 'bg-blue-700'
-                                    : 'bg-blue-500'
-                                } text-white hover:bg-blue-600`}
-                                onClick={() => handleExtraClick(extra)}
-                            >
-                                {extra.name} (+${extra.price})
-                            </button>
-                        ))}
+                    <div className='manager-extras-sauces w-full h-[50vh] max-h-[50vh] overflow-y-auto space-y-2 mb-5 flex flex-row gap-2'>
+                        <div className='content-extras flex flex-col flex-nowrap items-start w-1/2'>
+                            <p className="mt-5 text-xl ...">Extras</p>
+                            <div className='manager-extras w-full h-[25vh] overflow-y-scroll overflow-x-hidden pr-2'>
+                                {allExtras.length === 0 ? (
+                                    <div className="col-span-3 text-center text-gray-500">
+                                        No hay extras para mostrar.
+                                    </div>
+                                ) : (
+                                    allExtras.map((extra) => (
+                                        <div
+                                            key={extra.idExtra}
+                                            className={`flex items-center px-4 py-3 rounded cursor-pointer transition-all duration-200
+                                                ${selectedExtras.some(e => e.idExtra === extra.idExtra)
+                                                ? 'border border-green-500 mb-1'
+                                                : 'border border-gray-500 hover:border-gray-800 mb-1'}
+                                            `}
+                                            onClick={() => handleExtraClick(extra)}
+                                        >
+                                            <img
+                                                src={extra.image || 'https://picsum.photos/seed/picsum/200/300'}
+                                                alt={extra.name}
+                                                className="w-12 h-12 rounded-full object-cover mr-4"
+                                            />
+
+                                            {/* Nombre y Precio en vertical */}
+                                            <div className="flex flex-col flex-1 text-left text-xs text-sm/4">
+                                                <p className="font-medium text-gray-900">{extra.name}</p>
+                                                <p className="text-sm font-semibold text-right text-gray-500">+ ${extra.price}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                        <div className='content-sauces flex flex-col flex-nowrap items-end w-1/2'>
+                            <p className="mt-5 text-xl pr-2">Salsas</p>
+                            <div className='manager-sauces w-full h-[25vh] overflow-y-scroll overflow-x-hidden pr-2'>
+                                {allSauces.length === 0 ? (
+                                    <div className="col-span-3 text-center text-gray-500">
+                                        No hay salsas para mostrar.
+                                    </div>
+                                ) : (
+                                    allSauces.map((sauce) => (
+                                        <div
+                                            key={sauce.idSauce}
+                                            className={`flex items-center justify-between px-4 py-3 rounded cursor-pointer transition-all duration-200
+                                                ${selectedSauces.some(e => e.idSauce === sauce.idSauce)
+                                                ? 'border border-blue-500 mb-1'
+                                                : 'border border-gray-500 hover:border-gray-800 mb-1'}
+                                            `}
+                                            onClick={() => handleSauceClick(sauce)}
+                                        >
+                                            {/* Nombre y Precio verticalmente */}
+                                            <div className="flex flex-col flex-1 text-left text-xs text-sm/4">
+                                                <p className="font-medium text-gray-900 text-right">{sauce.name}</p>
+                                                <p className="text-sm font-semibold text-gray-500">${sauce.price} +</p>
+                                            </div>
+
+                                            {/* Imagen al lado derecho */}
+                                            <img
+                                                src={sauce.image || 'https://picsum.photos/seed/picsum/200/300'}
+                                                alt={sauce.name}
+                                                className="w-12 aspect-square rounded-full object-cover ml-4"
+                                            />
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     </div>
-                    <p className="mt-5 text-xl ...">Comentarios</p>
-                    <textarea
-                        className="w-full h-[8vh] mb-5 border-2 border-gray-300 rounded p-2 mt-2"
-                        placeholder="Escribe tus comentarios aquí..."
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                    />
+                    
+                    <div className='manager-comments w-full h-[15vh] mb-5 flex flex-col gap-2'>
+                        <p className="w-full h-[4vh] mt-0 text-xl p-0">Comentarios</p>
+                        <textarea
+                            className="w-full h-[8vh] mt-2 border-2 border-gray-300 rounded p-0"
+                            placeholder="Escribe tus comentarios aquí..."
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                        />
+                    </div>
+                    
                     <button
-                        className="w-full h-[7vh] bg-green-500 text-white rounded hover:bg-green-600"
+                        className="w-full h-[10vh] bg-green-500 text-white rounded hover:bg-green-600"
                         onClick={handleSave}
                     >
                         {isEditing ? 'Guardar cambios' : 'Agregar al carrito'}

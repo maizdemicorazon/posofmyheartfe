@@ -8,16 +8,50 @@
 :root {
   --bg-color: white;
   --text-color: black;
+  --text-title-order-color: white;
+  --text-total-order-color: white;
+  --bg-color-title-card-order: #1a202c;
 }
-
 .theme-dark {
   --bg-color: #1a202c;
   --text-color: white;
+  --text-title-order-color: #1a202c;
+  --text-total-order-color: #1a202c;
+  --bg-color-title-card-order: #f3f3f3;
 }
 
+ /** ************************************* **
+  **        Modal Options Products
+  ** ************************************* **/
+.container-options {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  max-height: 80vh;
+  overflow-y: auto;
+}
 
+/** ************************************* **
+  **              ORDERS
+  ** ************************************* **/
 
-/** ************************************** **
- **          GRID PRODUCTS STYLES
- ** ************************************** **/
-
+  .btn-filter-orders {
+    color: var(--text-color);
+  }
+  .font-medium {
+    color: var(--text-color);
+  }
+  .text-option-details{
+    color: var(--text-color);
+  }
+  .title-card-order {
+    background-color: var(--bg-color-title-card-order);
+  }
+  .text-title-order {
+    color: var(--text-title-order-color);
+  }
+  .text-total-order {
+    color: var(--text-total-order-color);
+  }

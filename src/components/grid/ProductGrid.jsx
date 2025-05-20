@@ -5,6 +5,7 @@ function ProductGrid({ selectedCategory }) {
     const [products, setProducts] = useState([]);
     const [showOptions, setShowOptions] = useState(false);
     const [extras, setExtras] = useState([]);
+    const [sauces, setSauces] = useState([]);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
 
@@ -25,6 +26,8 @@ function ProductGrid({ selectedCategory }) {
                     setProducts(response.products);
                     sessionStorage.setItem('extras', JSON.stringify(response.extras));
                     setExtras(response.extras);
+                    sessionStorage.setItem('sauces', JSON.stringify(response.sauces));
+                    setSauces(response.sauces);
                     setErrorMsg('');
                 } else {
                     throw new Error('No se recibieron productos');
@@ -33,13 +36,16 @@ function ProductGrid({ selectedCategory }) {
                 console.log('Error al obtener los productos:', error);
                 const storedProducts = sessionStorage.getItem('products');
                 const storedExtras = sessionStorage.getItem('extras');
+                const storedSauces = sessionStorage.getItem('sauces');
                 if (storedProducts) {
                     setProducts(JSON.parse(storedProducts));
                     setExtras(storedExtras ? JSON.parse(storedExtras) : []);
+                    setSauces(storedSauces ? JSON.parse(storedSauces) : []);
                     setErrorMsg('No se pudo actualizar, mostrando productos guardados.');
                 } else {
                     setProducts([]);
                     setExtras([]);
+                    setSauces([]);
                     setErrorMsg('No hay productos disponibles.');
                 }
             }
@@ -72,7 +78,7 @@ function ProductGrid({ selectedCategory }) {
                 ) : (
                     filtered.map((product) => (
                         <div
-                            key={product.id}
+                            key={product.idProduct}
                             className="aspect-square bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col"
                             onClick={() => handleProductClick(product)}
                         >
@@ -93,6 +99,7 @@ function ProductGrid({ selectedCategory }) {
                 onClose={() => setShowOptions(false)}
                 product={selectedProduct}
                 extras={extras}
+                sauces={sauces}
             />
         </div>
     );

@@ -24,9 +24,11 @@ function AppContent() {
             onClose={cancelEditProduct}
             product={editingProduct}
             extras={editingProduct.extras || []}
+            sauces={editingProduct.sauces || []}
             initialQuantity={editingProduct.quantity}
             initialOptions={editingProduct.options}
             initialExtras={editingProduct.extras}
+            initialSauces={editingProduct.sauces}
             initialComment={editingProduct.comment}
             onSave={saveEditProduct}
             isEditing={true}

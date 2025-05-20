@@ -46,6 +46,10 @@ export function CartProvider({ children }) {
       items: cart,
     };
     const updatedOrders = [order, ...orders];
+
+    console.log('Orden guardada:', order);
+    console.log('Órdenes guardadas:', updatedOrders);
+    
     setOrders(updatedOrders);
     sessionStorage.setItem('orders', JSON.stringify(updatedOrders));
     setCart([]); // Vacía el carrito después de guardar

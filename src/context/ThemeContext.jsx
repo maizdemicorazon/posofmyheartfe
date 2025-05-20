@@ -6,11 +6,19 @@ export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState('light');
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    let themeSelected = theme === 'light' ? 'dark' : 'light';
+    sessionStorage.setItem('theme', themeSelected);
+    setTheme(themeSelected);
   };
 
   useEffect(() => {
-    document.body.classList.toggle('dark', theme === 'dark');
+    const storedTheme = sessionStorage.getItem('theme');
+    if (storedTheme) {
+      setTheme(storedTheme);
+      document.body.classList.toggle('dark', storedTheme === 'dark');
+    } else {
+      document.body.classList.toggle('dark', theme === 'dark');
+    }
   }, [theme]);
 
   return (
