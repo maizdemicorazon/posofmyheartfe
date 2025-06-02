@@ -1,7 +1,7 @@
 import { useCart } from '../../context/CartContext';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
-function Cart() {
+function Cart({ onCloseCart }) {
     const { cart, removeFromCart, startEditProduct, saveOrder } = useCart();
 
     const getProductTotal = (product) => {
@@ -10,14 +10,13 @@ function Cart() {
             : 0;
 
         const extrasPrice = Array.isArray(product.extras)
-            ? product.extras.reduce((sum, extra) => sum + Number(extra?.price || 0), 0)
+            ? product.extras.reduce(
+                (sum, extra) => sum + Number(extra?.price || 0) * Number(extra?.quantity || 1),
+                0
+            )
             : 0;
 
-        const saucesPrice = Array.isArray(product.sauces)
-            ? product.sauces.reduce((sum, sauce) => sum + Number(sauce?.price || 0), 0)
-            : 0;
-
-        return (optionsPrice + extrasPrice + saucesPrice) * Number(product.quantity || 0);
+        return (optionsPrice + extrasPrice) * Number(product.quantity || 0);
     };
 
     const total = cart.reduce((sum, product) => sum + getProductTotal(product), 0);
@@ -46,10 +45,20 @@ function Cart() {
 
                                 <div className="text-sm font-medium">
                                     Tamaño:{' '}
-                                    {Array.isArray(product.options) && product.options.length > 0
+                                    {Array.isArray(product.options) && product.options.length > 0 && product.options[0] != null
                                         ? product.options
                                             .filter(e => e && typeof e.size !== 'undefined' && typeof e.price !== 'undefined')
                                             .map(e => `${e.size} +$${e.price}`)
+                                            .join(', ')
+                                        : 'Ninguno'}
+                                </div>
+
+                                <div className="text-sm font-medium mb-1">
+                                    Sabor: {' '}
+                                    {Array.isArray(product.flavors) && product.flavors.length > 0 && product.flavors[0] != null
+                                        ? product.flavors
+                                            .filter(e => e && typeof e.name !== 'undefined')
+                                            .map(e => `${e.name}`)
                                             .join(', ')
                                         : 'Ninguno'}
                                 </div>
@@ -60,6 +69,7 @@ function Cart() {
                                         product.extras.map((e, i) => (
                                             <span key={i} className="border border-green-500 px-1 py-0.5 rounded text-sm mx-1 inline-block">
                                                 {e.name} +${e.price}
+                                                <p>qty: {e.quantity}</p>
                                             </span>
                                         ))
                                     ) : (
@@ -72,7 +82,7 @@ function Cart() {
                                     {product.sauces && product.sauces.length > 0 ? (
                                         product.sauces.map((e, i) => (
                                             <span key={i} className="border border-blue-500 px-1 py-0.5 rounded text-sm mx-1 inline-block">
-                                            {e.name} +${e.price}
+                                                {e.name}
                                             </span>
                                         ))
                                     ) : (
@@ -113,8 +123,8 @@ function Cart() {
                             total: ${total.toFixed(2)}
                         </div>
                         <button
-                        className="w-full bg-green-600 text-white py-3 rounded hover:bg-green-700"
-                        onClick={saveOrder}
+                            className="w-full bg-green-600 text-white py-3 rounded hover:bg-green-700"
+                            onClick={() => saveOrder(onCloseCart)}
                         >
                             guardar
                         </button>

@@ -1,11 +1,9 @@
-import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { MoonIcon, SunIcon, RocketLaunchIcon, ShoppingBagIcon, ShoppingCartIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-function SlideMenu({ isOpen, onClose }) {
+function SlideMenu({ isOpen, onClose, view, setView}) {
   const menuRef = useRef();
-  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -66,7 +64,7 @@ function SlideMenu({ isOpen, onClose }) {
             <li className="w-full flex flex-row flex-nowrap items-center mb-2">
               <button
                 onClick={() => {
-                  navigate('/');
+                  setView('home')
                   onClose();
                 }}
                 className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row"
@@ -78,7 +76,7 @@ function SlideMenu({ isOpen, onClose }) {
             <li className="w-full flex flex-row flex-nowrap items-center mb-2">
               <button
                 onClick={() => {
-                  navigate('/orders');
+                  setView('orders');
                   onClose();
                 }}
                 className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row"

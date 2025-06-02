@@ -20,6 +20,14 @@
   --bg-color-title-card-order: #f3f3f3;
 }
 
+/** ************************************* **
+  **              Global Styles
+  ** ************************************* **/
+
+  .overlay_loader {
+    background-color: #000000b8;
+  }
+
  /** ************************************* **
   **        Modal Options Products
   ** ************************************* **/
@@ -29,7 +37,6 @@
   flex-wrap: nowrap;
   justify-content: center;
   align-items: center;
-  max-height: 80vh;
   overflow-y: auto;
 }
 

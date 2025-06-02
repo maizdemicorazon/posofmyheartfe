@@ -1,64 +1,95 @@
-import { useCart } from '../../context/CartContext';
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useLoading } from '../../context/LoadingContext';
 
 function formatFullDate(dateStr) {
   const date = new Date(dateStr);
-  // Formato: DD/M/YYYY HH:MM:SS a.m.
   const day = date.getDate();
   const month = date.getMonth() + 1;
   const year = date.getFullYear();
-  
   let hours = date.getHours();
   const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
   hours = hours % 12;
-  hours = hours ? hours : 12; // Convertir 0 a 12
-  
+  hours = hours ? hours : 12;
   const minutes = date.getMinutes().toString().padStart(2, '0');
   const seconds = date.getSeconds().toString().padStart(2, '0');
-  
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds} ${ampm}`;
 }
 
 function formatKeyByFilter(dateStr, filter) {
   const date = new Date(dateStr);
-  
   if (filter === 'day') {
-    // Formato YYYY-MM-DD
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
-  
   if (filter === 'month') {
-    // Formato YYYY-MM
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
   }
-  
   if (filter === 'year') {
-    // Formato YYYY
     return `${date.getFullYear()}`;
   }
-  
   return dateStr;
 }
 
+function getExtraInfo(idExtra) {
+  try {
+    const extras = JSON.parse(sessionStorage.getItem('extras') || '[]');
+    return extras.find(e => e.idExtra === idExtra) || {};
+  } catch {
+    return {};
+  }
+}
+function getSauceInfo(idSauce) {
+  try {
+    const sauces = JSON.parse(sessionStorage.getItem('sauces') || '[]');
+    return sauces.find(e => e.idSauce === idSauce) || {};
+  } catch {
+    return {};
+  }
+}
+function getProductInfo(idProduct) {
+  try {
+    const products = JSON.parse(sessionStorage.getItem('products') || '[]');
+    return products.find(p => p.idProduct === idProduct) || {};
+  } catch {
+    return {};
+  }
+}
+function getVariantInfo(product, idVariant) {
+  if (!product || !product.options) return {};
+  return product.options.find(opt => opt.idVariant === idVariant) || {};
+}
+
 const getProductTotal = (product) => {
-  const optionsPrice = Array.isArray(product.options)
-    ? product.options.reduce((sum, option) => sum + Number(option?.price || 0), 0)
-    : 0;
+  const productInfo = getProductInfo(product.idProduct);
+  const variant = getVariantInfo(productInfo, product.idVariant);
+  const optionPrice = Number(variant.price || 0);
+  
+  // Extras
+  let extrasPrice = 0;
+  if (Array.isArray(product.extras)) {
+    extrasPrice = product.extras.reduce((sum, extra) => {
+      const extraInfo = getExtraInfo(extra.idExtra);
+      return sum + Number(extraInfo.price || 0) * Number(extra.quantity || 1);
+    }, 0);
+  }
 
-  const extrasPrice = Array.isArray(product.extras)
-    ? product.extras.reduce((sum, extra) => sum + Number(extra?.price || 0), 0)
-    : 0;
+  // Salsas (si tienen precio)
+  let saucesPrice = 0;
+  if (Array.isArray(product.sauces)) {
+    saucesPrice = product.sauces.reduce((sum, sauce) => {
+      const sauceInfo = getSauceInfo(sauce.idSauce);
+      return sum + Number(sauceInfo.price || 0);
+    }, 0);
+  }
 
-  const saucesPrice = Array.isArray(product.sauces)
-    ? product.sauces.reduce((sum, sauce) => sum + Number(sauce?.price || 0), 0)
-    : 0;
+  // Cantidad (si existe)
+  const quantity = Number(product.quantity || 1);
 
-  return (optionsPrice + extrasPrice + saucesPrice) * Number(product.quantity || 0);
+  return (optionPrice + extrasPrice + saucesPrice) * quantity;
 };
 
 const getOrderTotal = (order) => {
@@ -66,37 +97,48 @@ const getOrderTotal = (order) => {
 };
 
 function Orders() {
-  const { orders } = useCart();
-  const [filter, setFilter] = useState('day'); // 'day', 'month', 'year'
-  const [sortByDate, setSortByDate] = useState(true); // true: más reciente primero, false: más viejo primero
+  const [orders, setOrders] = useState([]);
+  const { setLoading } = useLoading();
+  const [filter, setFilter] = useState('day');
+  const [sortByDate, setSortByDate] = useState(true);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      setLoading(true);
+      try {
+        const url_base = 'https://posofmyheart-develop.up.railway.app/';
+        const endpoint = 'api/orders';
+        const res = await fetch(url_base + endpoint);
+        if (!res.ok) throw new Error('Error al obtener pedidos');
+        const data = await res.json();
+        console.log(data);
+        setOrders(data || []);
+      } catch (error) {
+        setOrders([]);
+      }
+      setLoading(false);
+    };
+    fetchOrders();
+  }, []);
 
   const groupedOrders = useMemo(() => {
     const groups = {};
     const groupTotals = {};
-    
-    // Agrupar pedidos por fecha según el filtro
     for (const order of orders) {
-      const key = formatKeyByFilter(order.date, filter);
+      const key = formatKeyByFilter(order.orderDate, filter);
       if (!groups[key]) {
         groups[key] = [];
         groupTotals[key] = 0;
       }
       groups[key].push(order);
-      // Sumar el total de este pedido al total del grupo
       groupTotals[key] += getOrderTotal(order);
     }
-
-    // Ordenar las entradas según el criterio de ordenamiento por fecha
     let sortedEntries;
     if (sortByDate) {
-      // Ordenar del más reciente al más viejo
       sortedEntries = Object.entries(groups).sort(([a], [b]) => new Date(b) - new Date(a));
     } else {
-      // Ordenar del más viejo al más reciente
       sortedEntries = Object.entries(groups).sort(([a], [b]) => new Date(a) - new Date(b));
     }
-    
-    // Devolver un objeto con los pedidos agrupados y los totales
     return {
       groups: Object.fromEntries(sortedEntries),
       totals: groupTotals
@@ -162,127 +204,135 @@ function Orders() {
 
       {/* Agrupación */}
       <div className="space-y-8">
-        {Object.entries(groupedOrders.groups).map(([groupKey, ordersInGroup]) => (
-          <div key={groupKey} className="mb-8">
-            <div className="flex justify-between items-center mb-4 border-b pb-2">
-              <h2 className="text-lg font-semibold">
-                {filter === 'day'
-                  ? `Pedidos del ${groupKey}`
-                  : filter === 'month'
-                  ? `Pedidos de ${groupKey}`
-                  : `Pedidos del año ${groupKey}`}
-              </h2>
-              <div className="text-lg font-semibold text-green-700">
-                Total: ${groupedOrders.totals[groupKey].toFixed(2)}
-              </div>
-            </div>
-
-            {ordersInGroup.map((order) => (
-              <div key={order.id} className="border border-gray-300 rounded mb-6">
-                <div className="border-b border-gray-300 p-3 bg-gray-50 title-card-order">
-                  <div className="font-medium text-title-order">
-                    Pedido guardado el: {formatFullDate(order.date)}
-                  </div>
+        {Object.entries(groupedOrders.groups).map(([groupKey, ordersInGroup]) => {
+          const sortedOrders = [...ordersInGroup].sort((a, b) => {
+            if (sortByDate) {
+              // Más recientes primero
+              return new Date(b.orderDate) - new Date(a.orderDate);
+            } else {
+              // Más antiguos primero
+              return new Date(a.orderDate) - new Date(b.orderDate);
+            }
+          });
+          return (
+            <div key={groupKey} className="mb-8">
+              <div className="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 className="text-lg font-semibold">
+                  {filter === 'day'
+                    ? `Pedidos del ${groupKey}`
+                    : filter === 'month'
+                    ? `Pedidos de ${groupKey}`
+                    : `Pedidos del año ${groupKey}`}
+                </h2>
+                <div className="text-lg font-semibold text-green-700">
+                  Total: ${groupedOrders.totals[groupKey].toFixed(2)}
                 </div>
-
-                {/* Productos en slider horizontal */}
-                <div className="p-4">
-                  <div className="overflow-x-auto">
-                    <div className="flex gap-4 pb-2" style={{ minWidth: 'max-content' }}>
-                      {order.items.map((product, idx) => (
-                        <div
-                          key={idx}
-                          className="min-w-[200px] max-w-[200px] border border-gray-300 rounded p-3 flex-shrink-0"
-                        >
-                          <div className="flex justify-center mb-2">
-                            <div className="w-16 h-16 rounded-full border border-gray-300 flex items-center justify-center overflow-hidden">
-                              <img
-                                src={product.image || '/api/placeholder/64/64'}
-                                alt="product"
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="text-sm">
-                            <div className="font-medium text-center mb-1">{product.name}</div>
-                            
-                            <div className="text-xs text-option-details mb-1">
-                              <span className="font-medium">Tamaño: </span>
-                              {Array.isArray(product.options) && product.options.length > 0
-                                ? product.options
-                                    .filter(e => e && typeof e.size !== 'undefined' && typeof e.price !== 'undefined')
-                                    .map(e => `${e.size} +${e.price}`)
-                                    .join(', ')
-                                : product.option
-                                ? `${product.option.size} +${product.option.price}`
-                                : 'Regular +$15'}
-                            </div>
-
-                            <div className="text-xs text-option-details mb-1">
-                              <span className="font-medium">Extras: </span>
-                              {product.extras && product.extras.length > 0 ? (
-                                <div className="mt-1">
-                                  {product.extras.map((e, i) => (
-                                    <span
-                                      key={i}
-                                      className="px-1 py-0.5 rounded border border-green-400 text-xs mr-1 inline-block mb-1"
-                                    >
-                                      {e.name} +${e.price}
-                                    </span>
-                                  ))}
+              </div>
+              {sortedOrders.map((order) => (
+                <div key={order.idOrder} className="border border-gray-300 rounded mb-6">
+                  <div className="border-b border-gray-300 p-3 bg-gray-50 title-card-order">
+                    <div className="font-medium text-title-order">
+                      Pedido guardado el: {formatFullDate(order.orderDate)}
+                    </div>
+                    <div className="text-xs text-gray-600">Cliente: {order.clientName}</div>
+                    <div className="text-xs text-gray-600">Comentario: {order.comment}</div>
+                  </div>
+                  <div className="p-4">
+                    <div className="overflow-x-auto">
+                      <div className="flex gap-4 pb-2" style={{ minWidth: 'max-content' }}>
+                        {order.items.map((product, idx) => {
+                          const productInfo = getProductInfo(product.idProduct);
+                          const variant = getVariantInfo(productInfo, product.idVariant);
+                          return (
+                            <div
+                              key={idx}
+                              className="min-w-[200px] max-w-[200px] border border-gray-300 rounded p-3 flex-shrink-0"
+                            >
+                              <div className="flex justify-center mb-2">
+                                <div className="w-16 h-16 rounded-full border border-gray-300 flex items-center justify-center overflow-hidden">
+                                  <img
+                                    src={productInfo.image || '/api/placeholder/64/64'}
+                                    alt="product"
+                                    className="w-full h-full object-cover"
+                                  />
                                 </div>
-                              ) : (
-                                'Ninguno'
-                              )}
-                            </div>
-
-                            <div className="text-xs text-option-details mb-1">
-                              <span className="font-medium">Salsas: </span>
-                              {product.sauces && product.sauces.length > 0 ? (
-                                <div className="mt-1">
-                                  {product.sauces.map((e, i) => (
-                                    <span
-                                      key={i}
-                                      className="px-1 py-0.5 rounded border border-blue-400 text-xs mr-1 inline-block mb-1"
-                                    >
-                                      {e.name} +${e.price}
-                                    </span>
-                                  ))}
+                              </div>
+                              <div className="text-sm">
+                                <div className="font-medium text-center mb-1">{productInfo.name || 'Producto'}</div>
+                                <div className="text-xs text-option-details mb-1">
+                                  <span className="font-medium">Tamaño: </span>
+                                  {variant.size
+                                    ? `${variant.size} +$${variant.price}`
+                                    : 'N/A'}
                                 </div>
-                              ) : (
-                                'Ninguno'
-                              )}
+                                <div className="text-xs text-option-details mb-1">
+                                  <span className="font-medium">Extras: </span>
+                                  {product.extras && product.extras.length > 0 ? (
+                                    <div className="mt-1">
+                                      {product.extras.map((e, i) => {
+                                        const extraInfo = getExtraInfo(e.idExtra);
+                                        return (
+                                          <span
+                                            key={i}
+                                            className="px-1 py-0.5 rounded border border-green-400 text-xs mr-1 inline-block mb-1"
+                                          >
+                                            {extraInfo.name || 'Extra'} +${extraInfo.price || 0} x{e.quantity}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    'Ninguno'
+                                  )}
+                                </div>
+                                <div className="text-xs text-option-details mb-1">
+                                  <span className="font-medium">Salsas: </span>
+                                  {product.sauces && product.sauces.length > 0 ? (
+                                    <div className="mt-1">
+                                      {product.sauces.map((e, i) => {
+                                        const sauceInfo = getSauceInfo(e.idSauce);
+                                        return (
+                                          <span
+                                            key={i}
+                                            className="px-1 py-0.5 rounded border border-blue-400 text-xs mr-1 inline-block mb-1"
+                                          >
+                                            {sauceInfo.name || e.name || 'Salsa'}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    'Ninguno'
+                                  )}
+                                </div>
+                                <div className="text-xs text-option-details mb-1">
+                                  <span className="font-medium">Cantidad: </span>
+                                  {product.quantity || 1}
+                                </div>
+                                <div className="text-xs text-option-details mb-2">
+                                  <span className="font-medium">Comentario: </span>
+                                  {product.comment || 'Sin comentario'}
+                                </div>
+                                <div className="text-right font-semibold text-sm border-t pt-1 mt-2">
+                                  Total: ${getProductTotal(product).toFixed(2)}
+                                </div>
+                              </div>
                             </div>
-
-                            <div className="text-xs text-option-details mb-1">
-                              <span className="font-medium">Cantidad: </span>{product.quantity || 1}
-                            </div>
-
-                            <div className="text-xs text-option-details mb-2">
-                              <span className="font-medium">Comentario: </span>{product.comment || 'Sin comentario'}
-                            </div>
-
-                            <div className="text-right font-semibold text-sm border-t pt-1 mt-2">
-                              Total: ${getProductTotal(product).toFixed(2)}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-300 p-3 text-right bg-gray-50">
+                    <div className="font-bold text-lg text-total-order">
+                      Total del pedido: ${getOrderTotal(order).toFixed(2)}
                     </div>
                   </div>
                 </div>
-
-                {/* Total del pedido */}
-                <div className="border-t border-gray-300 p-3 text-right bg-gray-50">
-                  <div className="font-bold text-lg text-total-order">
-                    Total del pedido: ${getOrderTotal(order).toFixed(2)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

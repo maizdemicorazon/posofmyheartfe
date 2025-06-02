@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import ProductOptionsModal from './ProductOptionsModal';
+import { useLoading } from '../../context/LoadingContext';
+import { useMessage } from '../../context/MessageContext';
 
 function ProductGrid({ selectedCategory }) {
     const [products, setProducts] = useState([]);
     const [showOptions, setShowOptions] = useState(false);
-    const [extras, setExtras] = useState([]);
-    const [sauces, setSauces] = useState([]);
     const [selectedProduct, setSelectedProduct] = useState(null);
-    const [errorMsg, setErrorMsg] = useState('');
+    const { loading, setLoading } = useLoading();
+    const { message, setMessage } = useMessage();
 
     useEffect(() => {
 
@@ -15,20 +16,24 @@ function ProductGrid({ selectedCategory }) {
             let urlBase = "https://posofmyheart-develop.up.railway.app/"
             let endponitApiProducts = "api/products";
             let urlGetApiProducts = urlBase + endponitApiProducts;
+            setLoading(true);
 
             try {
                 const res = await fetch(urlGetApiProducts);
-                if (!res.ok) throw new Error('Respuesta Fail');
+                if (!res.status === "error") throw new Error('Respuesta Fail');
                 const response = await res.json();
 
                 if (response.products && response.products.length > 0) {
-                    sessionStorage.setItem('products', JSON.stringify(response.products));
-                    setProducts(response.products);
-                    sessionStorage.setItem('extras', JSON.stringify(response.extras));
-                    setExtras(response.extras);
-                    sessionStorage.setItem('sauces', JSON.stringify(response.sauces));
-                    setSauces(response.sauces);
-                    setErrorMsg('');
+                    let productsList = response.products || [];
+                    let extrasList = response.extras || [];
+                    let saucesList = response.sauces || [];
+                    let paymentMethodsList = response.paymentMethods || [];
+                    sessionStorage.setItem('products', JSON.stringify(productsList));
+                    sessionStorage.setItem('extras', JSON.stringify(extrasList));
+                    sessionStorage.setItem('sauces', JSON.stringify(saucesList));
+                    sessionStorage.setItem('payment_methods', JSON.stringify(paymentMethodsList));
+                    setProducts(productsList);
+                    setMessage('');
                 } else {
                     throw new Error('No se recibieron productos');
                 }
@@ -37,22 +42,22 @@ function ProductGrid({ selectedCategory }) {
                 const storedProducts = sessionStorage.getItem('products');
                 const storedExtras = sessionStorage.getItem('extras');
                 const storedSauces = sessionStorage.getItem('sauces');
+                const storedPaymentMethods = sessionStorage.getItem('payment_methods');
                 if (storedProducts) {
-                    setProducts(JSON.parse(storedProducts));
-                    setExtras(storedExtras ? JSON.parse(storedExtras) : []);
-                    setSauces(storedSauces ? JSON.parse(storedSauces) : []);
-                    setErrorMsg('No se pudo actualizar, mostrando productos guardados.');
+                    sessionStorage.setItem('extras', storedExtras);
+                    sessionStorage.setItem('sauces', storedSauces);
+                    sessionStorage.setItem('payment_methods', storedPaymentMethods);
+                    setProducts(storedProducts ? JSON.parse(storedProducts) : []);
+                    setMessage({ text: 'No se pudo actualizar, mostrando productos guardados.', type: 'info' });
                 } else {
-                    setProducts([]);
-                    setExtras([]);
-                    setSauces([]);
-                    setErrorMsg('No hay productos disponibles.');
+                    setMessage({ text: 'No hay productos disponibles.', type: 'error' });
                 }
             }
+            setLoading(false);
         };
 
         fetchData();
-    }, []);
+    }, [setLoading, setMessage]);
 
     const filtered = selectedCategory
         ? products.filter((p) => p.idCategory === selectedCategory)
@@ -65,11 +70,6 @@ function ProductGrid({ selectedCategory }) {
 
     return (
         <div>
-            {errorMsg && (
-                <div className="text-center text-red-600 font-semibold mb-2">
-                    {errorMsg}
-                </div>
-            )}
             <div className="grid grid-cols-3 gap-4 p-4">
                 {filtered.length === 0 ? (
                     <div className="col-span-3 text-center text-gray-500">
@@ -83,7 +83,7 @@ function ProductGrid({ selectedCategory }) {
                             onClick={() => handleProductClick(product)}
                         >
                             <img
-                                src={product.image}
+                                src={product.image || 'https://via.placeholder.com/150'}
                                 alt={product.name}
                                 className="w-full h-2/3 object-cover"
                             />
@@ -98,8 +98,8 @@ function ProductGrid({ selectedCategory }) {
                 isOpen={showOptions}
                 onClose={() => setShowOptions(false)}
                 product={selectedProduct}
-                extras={extras}
-                sauces={sauces}
+                loading={loading}
+                message={message}
             />
         </div>
     );
