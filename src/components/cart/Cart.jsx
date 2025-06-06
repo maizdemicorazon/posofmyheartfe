@@ -2,7 +2,7 @@ import { useCart } from '../../context/CartContext';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 function Cart({ onCloseCart }) {
-    const { cart, removeFromCart, startEditProduct, saveOrder } = useCart();
+    const { cart, removeFromCart, startEditProduct, saveOrder, clearCart } = useCart();
 
     const getProductTotal = (product) => {
         const optionsPrice = Array.isArray(product.options)
@@ -23,7 +23,15 @@ function Cart({ onCloseCart }) {
 
     return (
         <div className="max-w-2xl mx-auto p-4">
-            <h1 className="text-2xl font-bold mb-4">Carrito</h1>
+            <div className="header-cart flex justify-between flex-row">
+                <h1 className="text-2xl font-bold mb-4">Carrito</h1>
+                <div
+                    className="clean_cart cursor-pointer"
+                    onClick={() => clearCart(onCloseCart)}
+                >
+                    <TrashIcon className="w-5 h-5 text-gray-500" />
+                </div>
+            </div>
             {cart.length === 0 ? (
                 <p>No hay productos en el carrito.</p>
             ) : (

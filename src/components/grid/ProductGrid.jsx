@@ -78,7 +78,7 @@ function ProductGrid({ selectedCategory }) {
                 ) : (
                     filtered.map((product) => (
                         <div
-                            key={product.idProduct}
+                            key={product.id_product}
                             className="aspect-square bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col"
                             onClick={() => handleProductClick(product)}
                         >

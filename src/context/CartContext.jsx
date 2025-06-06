@@ -109,6 +109,12 @@ export function CartProvider({ children }) {
     })
   };
 
+  const clearCart = (onCloseCart) => {
+      setCart([]);
+      onCloseCart();
+      return;
+  };
+
   const saveOrder = async (onCloseCart) => {
     setLoading(true);
     if (cart.length === 0) return;
@@ -117,12 +123,7 @@ export function CartProvider({ children }) {
         title: "¿A nombre de quien quieres la orden?",
         input: "text",
         inputPlaceholder: "Ingresa el nombre del cliente",
-        showCancelButton: true,
-        inputValidator: (value) => {
-          if (!value || value.trim() === '') {
-              return '¡Debes agregar el nombre del cliente!';
-          }
-        }
+        showCancelButton: true
     });
 
     if (result.isConfirmed) {
@@ -176,7 +177,8 @@ export function CartProvider({ children }) {
       orders,
       saveOrder,
       loading,
-      message
+      message,
+      clearCart
     }}>
       {children}
     </CartContext.Provider>
