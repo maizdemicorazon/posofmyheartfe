@@ -125,7 +125,7 @@ function Orders() {
     const groups = {};
     const groupTotals = {};
     for (const order of orders) {
-      const key = formatKeyByFilter(order.orderDate, filter);
+      const key = formatKeyByFilter(order.order_date, filter);
       if (!groups[key]) {
         groups[key] = [];
         groupTotals[key] = 0;
@@ -208,10 +208,10 @@ function Orders() {
           const sortedOrders = [...ordersInGroup].sort((a, b) => {
             if (sortByDate) {
               // Más recientes primero
-              return new Date(b.orderDate) - new Date(a.orderDate);
+              return new Date(b.order_date) - new Date(a.order_date);
             } else {
               // Más antiguos primero
-              return new Date(a.orderDate) - new Date(b.orderDate);
+              return new Date(a.order_date) - new Date(b.order_date);
             }
           });
           return (
