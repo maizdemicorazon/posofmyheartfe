@@ -60,7 +60,7 @@ function ProductGrid({ selectedCategory }) {
     }, [setLoading, setMessage]);
 
     const filtered = selectedCategory
-        ? products.filter((p) => p.idCategory === selectedCategory)
+        ? products.filter((p) => p.id_category === selectedCategory)
         : products;
 
     const handleProductClick = (product) => {
