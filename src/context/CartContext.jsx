@@ -66,16 +66,16 @@ export function CartProvider({ children }) {
       const flavors = Array.isArray(item.flavors) ? item.flavors.filter(Boolean) : [];
 
       return {
-        idProduct: item.id_product,
+        id_product: item.id_product,
         quantity: item.quantity || 1,
-        idVariant: options.length > 0 ? options[0].id_variant : 0,
-        idFlavor: flavors.length > 0 ? flavors[0].id_flavor : 0,
+        id_variant: options.length > 0 ? options[0].id_variant : 0,
+        id_flavor: flavors.length > 0 ? flavors[0].id_flavor : 0,
         extras: item.extras ? item.extras.map(extra => ({
-          idExtra: extra.id_extra,
+          id_extra: extra.id_extra,
           quantity: extra.quantity || 1,
         })) : [],
         sauces: item.sauces ? item.sauces.map(sauce => ({
-          idSauce: sauce.id_sauce,
+          id_sauce: sauce.id_sauce,
         })) : [],
       };
     });
@@ -128,8 +128,8 @@ export function CartProvider({ children }) {
     if (result.isConfirmed) {
       try {
         const order = {
-          idPaymentMethod: 1,
-          clientName: result.value,
+          id_payment_method: 1,
+          client_name: result.value,
           comment: "Pedido realizado desde el carrito",
           items: itemsDto(cart),
         };
