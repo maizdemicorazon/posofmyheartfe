@@ -135,7 +135,7 @@ export function CartProvider({ children }) {
         };
 
         const response = await saveOrderApi(order);
-        if (response.idOrder) {
+        if (response.id_order) {
           const updatedOrders = [order, ...orders];
 
           sessionStorage.setItem('orders', JSON.stringify(updatedOrders));
