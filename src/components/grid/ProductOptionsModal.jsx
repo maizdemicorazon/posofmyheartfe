@@ -77,10 +77,10 @@ function ProductOptionsModal({
                 catalogExtras = [];
             }
 
-            const selectedIds = initialExtras.map(e => e.idExtra);
+            const selectedIds = initialExtras.map(e => e.id_extra);
             const combinedExtras = [
                 ...initialExtras,
-                ...catalogExtras.filter(e => !selectedIds.includes(e.idExtra))
+                ...catalogExtras.filter(e => !selectedIds.includes(e.id_extra))
             ];
 
             let catalogSauces = [];
@@ -93,10 +93,10 @@ function ProductOptionsModal({
                 catalogSauces = [];
             }
 
-            const selectedSauceIds = initialSauces.map(e => e.idSauce);
+            const selectedSauceIds = initialSauces.map(e => e.id_sauce);
             const combinedSauces = [
                 ...initialSauces,
-                ...catalogSauces.filter(e => !selectedSauceIds.includes(e.idSauce))
+                ...catalogSauces.filter(e => !selectedSauceIds.includes(e.id_sauce))
             ];
 
             let catalogProducts = [];
@@ -109,7 +109,7 @@ function ProductOptionsModal({
                 catalogProducts = [];
             }
 
-            const originalProduct = catalogProducts.find(p => p.idProduct === product.idProduct);
+            const originalProduct = catalogProducts.find(p => p.id_product === product.id_product);
             const options = originalProduct?.options || product.options || [];
             const flavors = originalProduct?.flavors || product.flavors || [];
             if (options.length === 1) {
@@ -138,7 +138,7 @@ function ProductOptionsModal({
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isOpen, product?.idProduct]);
+    }, [isOpen, product?.id_product]);
 
     const handleOptionClick = (option) => {
         setSelectedOption(option);
@@ -152,7 +152,7 @@ function ProductOptionsModal({
 
     const handleExtraClick = async (extra, event) => {
         event.stopPropagation();
-        const alreadySelected = selectedExtras.some(e => e.idExtra === extra.idExtra);
+        const alreadySelected = selectedExtras.some(e => e.id_extra === extra.id_extra);
         const result = await Swal.fire({
             title: "¿Que cantidad de extra quieres agregar?",
             input: "text",
@@ -171,14 +171,14 @@ function ProductOptionsModal({
             setSelectedExtras((prev) => {
                 if (alreadySelected) {
                     return prev.map(e =>
-                        e.idExtra === extra.idExtra ? { ...e, quantity } : e
+                        e.id_extra === extra.id_extra ? { ...e, quantity } : e
                     );
                 }
                 return [...prev, { ...extra, quantity }];
             });
         } else if (result.isDismissed && alreadySelected) {
             setSelectedExtras((prev) =>
-                prev.filter((e) => e.idExtra !== extra.idExtra)
+                prev.filter((e) => e.id_extra !== extra.id_extra)
             );
         }
     };
@@ -248,7 +248,7 @@ function ProductOptionsModal({
                                     <div
                                         key={idx}
                                         className={`w-[10vh] min-w-[10vh] h-[12vh] m-2 aspect-square bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col text-white hover:bg-blue-600 ${
-                                            selectedOption?.idVariant === option.idVariant
+                                            selectedOption?.id_variant === option.id_variant
                                                 ? 'border-2 border-blue-700'
                                                 : 'border-1 border-transparent'
                                         }`}
@@ -258,7 +258,7 @@ function ProductOptionsModal({
                                             src="https://picsum.photos/200/300?random=1"
                                             alt={option.size}
                                             className={`w-full h-2/3 object-cover ${
-                                                selectedOption?.idVariant === option.idVariant ? 'grayscale' : ''
+                                                selectedOption?.id_variant === option.id_variant ? 'grayscale' : ''
                                             }`}
                                         />
                                         <div className="h-1/3 flex flex-col items-center justify-center px-2 text-center text-sm font-semibold text-black dark:text-white">
@@ -285,7 +285,7 @@ function ProductOptionsModal({
                                     <div
                                         key={idx}
                                         className={`w-[10vh] min-w-[10vh] h-[12vh] m-2 aspect-square bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col text-white hover:bg-blue-600 ${
-                                            selectedFlavor?.idFlavor === flavor.idFlavor
+                                            selectedFlavor?.id_flavor === flavor.id_flavor
                                                 ? 'border-2 border-blue-700'
                                                 : 'border-1 border-transparent'
                                         }`}
@@ -295,7 +295,7 @@ function ProductOptionsModal({
                                             src="https://picsum.photos/200/300?random=2"
                                             alt={flavor.name}
                                             className={`w-full h-2/3 object-cover ${
-                                                selectedFlavor?.idFlavor === flavor.idFlavor ? 'grayscale' : ''
+                                                selectedFlavor?.id_flavor === flavor.id_flavor ? 'grayscale' : ''
                                             }`}
                                         />
                                         <div className="h-1/3 flex flex-col items-center justify-center px-2 text-center text-sm font-semibold text-black dark:text-white">
@@ -337,16 +337,16 @@ function ProductOptionsModal({
                                     ) : (
                                         allExtras.map((extra) => (
                                             <div
-                                                key={extra.idExtra}
+                                                key={extra.id_extra}
                                                 className={`flex items-center px-4 py-3 rounded cursor-pointer transition-all duration-200
-                                                    ${selectedExtras.some(e => e.idExtra === extra.idExtra)
+                                                    ${selectedExtras.some(e => e.id_extra === extra.id_extra)
                                                     ? 'border border-green-500 mb-1'
                                                     : 'border border-gray-500 hover:border-gray-800 mb-1'}
                                                 `}
                                                 onClick={e => handleExtraClick(extra, e)}
                                             >
                                                 <img
-                                                    src={extra.image || 'https://picsum.photos/200/300?random=' + extra.idExtra}
+                                                    src={extra.image || 'https://picsum.photos/200/300?random=' + extra.id_extra}
                                                     alt={extra.name}
                                                     className="w-12 h-12 rounded-full object-cover mr-4"
                                                 />
@@ -355,12 +355,12 @@ function ProductOptionsModal({
                                                 <div className="flex flex-col flex-1 text-left text-xs text-sm/4">
                                                     <p className="font-medium text-gray-900">{extra.name}</p>
                                                     <p className="text-sm font-semibold text-right text-gray-500">+ ${extra.price}</p>
-                                                    <p className="text-sm font-semibold text-right text-gray-500">Qty: {selectedExtras.find(e => e.idExtra === extra.idExtra)?.quantity || 1}</p>
+                                                    <p className="text-sm font-semibold text-right text-gray-500">Qty: {selectedExtras.find(e => e.id_extra === extra.id_extra)?.quantity || 1}</p>
                                                     <input
                                                         type='hidden'
-                                                        className={`extra-` + extra.idExtra}
+                                                        className={`extra-` + extra.id_extra}
                                                         value={
-                                                            selectedExtras.find(e => e.idExtra === extra.idExtra)?.quantity || 1
+                                                            selectedExtras.find(e => e.id_extra === extra.id_extra)?.quantity || 1
                                                         }
                                                     />
                                                 </div>
@@ -379,9 +379,9 @@ function ProductOptionsModal({
                                     ) : (
                                         allSauces.map((sauce) => (
                                             <div
-                                                key={sauce.idSauce}
+                                                key={sauce.id_sauce}
                                                 className={`flex items-center justify-between px-4 py-3 rounded cursor-pointer transition-all duration-200
-                                                    ${selectedSauces.some(e => e.idSauce === sauce.idSauce)
+                                                    ${selectedSauces.some(e => e.id_sauce === sauce.id_sauce)
                                                     ? 'border border-blue-500 mb-1'
                                                     : 'border border-gray-500 hover:border-gray-800 mb-1'}
                                                 `}
@@ -394,7 +394,7 @@ function ProductOptionsModal({
 
                                                 {/* Imagen al lado derecho */}
                                                 <img
-                                                    src={sauce.image || 'https://picsum.photos/200/300?random=' + sauce.idSauce}
+                                                    src={sauce.image || 'https://picsum.photos/200/300?random=' + sauce.id_sauce}
                                                     alt={sauce.name}
                                                     className="w-12 aspect-square rounded-full object-cover ml-4"
                                                 />

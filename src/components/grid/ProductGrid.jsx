@@ -27,7 +27,7 @@ function ProductGrid({ selectedCategory }) {
                     let productsList = response.products || [];
                     let extrasList = response.extras || [];
                     let saucesList = response.sauces || [];
-                    let paymentMethodsList = response.paymentMethods || [];
+                    let paymentMethodsList = response.payment_methods || [];
                     sessionStorage.setItem('products', JSON.stringify(productsList));
                     sessionStorage.setItem('extras', JSON.stringify(extrasList));
                     sessionStorage.setItem('sauces', JSON.stringify(saucesList));

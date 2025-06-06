@@ -66,16 +66,16 @@ export function CartProvider({ children }) {
       const flavors = Array.isArray(item.flavors) ? item.flavors.filter(Boolean) : [];
 
       return {
-        idProduct: item.idProduct,
+        idProduct: item.id_product,
         quantity: item.quantity || 1,
-        idVariant: options.length > 0 ? options[0].idVariant : 0,
-        idFlavor: flavors.length > 0 ? flavors[0].idFlavor : 0,
+        idVariant: options.length > 0 ? options[0].id_variant : 0,
+        idFlavor: flavors.length > 0 ? flavors[0].id_flavor : 0,
         extras: item.extras ? item.extras.map(extra => ({
-          idExtra: extra.idExtra,
+          idExtra: extra.id_extra,
           quantity: extra.quantity || 1,
         })) : [],
         sauces: item.sauces ? item.sauces.map(sauce => ({
-          idSauce: sauce.idSauce,
+          idSauce: sauce.id_sauce,
         })) : [],
       };
     });

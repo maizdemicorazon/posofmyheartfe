@@ -34,45 +34,45 @@ function formatKeyByFilter(dateStr, filter) {
   return dateStr;
 }
 
-function getExtraInfo(idExtra) {
+function getExtraInfo(id_extra) {
   try {
     const extras = JSON.parse(sessionStorage.getItem('extras') || '[]');
-    return extras.find(e => e.idExtra === idExtra) || {};
+    return extras.find(e => e.id_extra === id_extra) || {};
   } catch {
     return {};
   }
 }
-function getSauceInfo(idSauce) {
+function getSauceInfo(id_sauce) {
   try {
     const sauces = JSON.parse(sessionStorage.getItem('sauces') || '[]');
-    return sauces.find(e => e.idSauce === idSauce) || {};
+    return sauces.find(e => e.id_sauce === id_sauce) || {};
   } catch {
     return {};
   }
 }
-function getProductInfo(idProduct) {
+function getProductInfo(id_product) {
   try {
     const products = JSON.parse(sessionStorage.getItem('products') || '[]');
-    return products.find(p => p.idProduct === idProduct) || {};
+    return products.find(p => p.id_product === id_product) || {};
   } catch {
     return {};
   }
 }
-function getVariantInfo(product, idVariant) {
+function getVariantInfo(product, id_variant) {
   if (!product || !product.options) return {};
-  return product.options.find(opt => opt.idVariant === idVariant) || {};
+  return product.options.find(opt => opt.id_variant === id_variant) || {};
 }
 
 const getProductTotal = (product) => {
-  const productInfo = getProductInfo(product.idProduct);
-  const variant = getVariantInfo(productInfo, product.idVariant);
+  const productInfo = getProductInfo(product.id_product);
+  const variant = getVariantInfo(productInfo, product.id_variant);
   const optionPrice = Number(variant.price || 0);
   
   // Extras
   let extrasPrice = 0;
   if (Array.isArray(product.extras)) {
     extrasPrice = product.extras.reduce((sum, extra) => {
-      const extraInfo = getExtraInfo(extra.idExtra);
+      const extraInfo = getExtraInfo(extra.id_extra);
       return sum + Number(extraInfo.price || 0) * Number(extra.quantity || 1);
     }, 0);
   }
@@ -81,7 +81,7 @@ const getProductTotal = (product) => {
   let saucesPrice = 0;
   if (Array.isArray(product.sauces)) {
     saucesPrice = product.sauces.reduce((sum, sauce) => {
-      const sauceInfo = getSauceInfo(sauce.idSauce);
+      const sauceInfo = getSauceInfo(sauce.id_sauce);
       return sum + Number(sauceInfo.price || 0);
     }, 0);
   }
@@ -229,20 +229,20 @@ function Orders() {
                 </div>
               </div>
               {sortedOrders.map((order) => (
-                <div key={order.idOrder} className="border border-gray-300 rounded mb-6">
+                <div key={order.id_order} className="border border-gray-300 rounded mb-6">
                   <div className="border-b border-gray-300 p-3 bg-gray-50 title-card-order">
                     <div className="font-medium text-title-order">
-                      Pedido guardado el: {formatFullDate(order.orderDate)}
+                      Pedido guardado el: {formatFullDate(order.order_date)}
                     </div>
-                    <div className="text-xs text-gray-600">Cliente: {order.clientName}</div>
+                    <div className="text-xs text-gray-600">Cliente: {order.client_name}</div>
                     <div className="text-xs text-gray-600">Comentario: {order.comment}</div>
                   </div>
                   <div className="p-4">
                     <div className="overflow-x-auto">
                       <div className="flex gap-4 pb-2" style={{ minWidth: 'max-content' }}>
                         {order.items.map((product, idx) => {
-                          const productInfo = getProductInfo(product.idProduct);
-                          const variant = getVariantInfo(productInfo, product.idVariant);
+                          const productInfo = getProductInfo(product.id_product);
+                          const variant = getVariantInfo(productInfo, product.id_variant);
                           return (
                             <div
                               key={idx}
@@ -270,7 +270,7 @@ function Orders() {
                                   {product.extras && product.extras.length > 0 ? (
                                     <div className="mt-1">
                                       {product.extras.map((e, i) => {
-                                        const extraInfo = getExtraInfo(e.idExtra);
+                                        const extraInfo = getExtraInfo(e.id_extra);
                                         return (
                                           <span
                                             key={i}
@@ -290,7 +290,7 @@ function Orders() {
                                   {product.sauces && product.sauces.length > 0 ? (
                                     <div className="mt-1">
                                       {product.sauces.map((e, i) => {
-                                        const sauceInfo = getSauceInfo(e.idSauce);
+                                        const sauceInfo = getSauceInfo(e.id_sauce);
                                         return (
                                           <span
                                             key={i}
