@@ -8,6 +8,9 @@ import Home from './components/Home';
 import CartPage from './components/cart/CartPage';
 import ProductOptionsModal from './components/grid/ProductOptionsModal';
 import Orders from './components/orders/Orders';
+import DailyEarnings from './components/metrics/DailyEarnings';
+import EarningsChart from './components/metrics/EarningsChart';
+import SalesReport from './components/reports/SalesReport'; // NUEVO IMPORT
 
 function AppContent() {
   const { editingProduct, saveEditProduct, cancelEditProduct } = useCart();
@@ -25,6 +28,9 @@ function AppContent() {
       {view === 'home' && <Home selectedCategory={selectedCategory} />}
       {view === 'cart' && <CartPage onBack={() => setView('home')} />}
       {view === 'orders' && <Orders onBack={() => setView('home')} />}
+      {view === 'metrics' && <DailyEarnings onBack={() => setView('home')} />}
+      {view === 'earnings-chart' && <EarningsChart onBack={() => setView('home')} />}
+      {view === 'sales-report' && <SalesReport onBack={() => setView('home')} />} {/* NUEVA VISTA */}
 
       {/* Modal de edición de producto */}
       {editingProduct && (
