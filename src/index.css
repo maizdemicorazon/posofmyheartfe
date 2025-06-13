@@ -4,7 +4,6 @@
 **             THEMES DARK AND LIGHT
 ** ****************************************** **/
 
-
 :root {
   --bg-color: white;
   --text-color: black;
@@ -12,6 +11,7 @@
   --text-total-order-color: white;
   --bg-color-title-card-order: #1a202c;
 }
+
 .theme-dark {
   --bg-color: #1a202c;
   --text-color: white;
@@ -24,11 +24,11 @@
   **              Global Styles
   ** ************************************* **/
 
-  .overlay_loader {
-    background-color: #000000b8;
-  }
+.overlay_loader {
+  background-color: #000000b8;
+}
 
- /** ************************************* **
+/** ************************************* **
   **        Modal Options Products
   ** ************************************* **/
 .container-options {
@@ -41,24 +41,54 @@
 }
 
 /** ************************************* **
+  **           Scrollbar Hide
+  ** ************************************* **/
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/** ************************************* **
   **              ORDERS
   ** ************************************* **/
 
-  .btn-filter-orders {
-    color: var(--text-color);
-  }
-  .font-medium {
-    color: var(--text-color);
-  }
-  .text-option-details{
-    color: var(--text-color);
-  }
-  .title-card-order {
-    background-color: var(--bg-color-title-card-order);
-  }
-  .text-title-order {
-    color: var(--text-title-order-color);
-  }
-  .text-total-order {
-    color: var(--text-total-order-color);
-  }
+.btn-filter-orders {
+  color: var(--text-color);
+}
+
+.font-medium {
+  color: var(--text-color);
+}
+
+.text-option-details {
+  color: var(--text-color);
+}
+
+.title-card-order {
+  background-color: var(--bg-color-title-card-order);
+}
+
+.text-title-order {
+  color: var(--text-title-order-color);
+}
+
+.text-total-order {
+  color: var(--text-total-order-color);
+}
+
+/** ************************************* **
+  **           Custom Animations
+  ** ************************************* **/
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}

@@ -113,15 +113,15 @@ El proyecto estará disponible en la URL que te indique la terminal (por defecto
 <!-- LICENCIA -->
 ## Licencia
 
-Distribuido bajo la licencia MIT. Consulta el archivo `LICENSE` para más información.
+Todos los derechos reservados.
 
 <p align="right">(<a href="#readme-top">volver al principio</a>)</p>
 
 <!-- CONTACTO -->
 ## Contacto
 
-Jesús Cardozo - gsuskr2o@gmail.com
-Raul Garcia - raul.e.garciacabrera@gmail.com
+- Jesús Cardozo - gsuskr2o@gmail.com
+- Raul Garcia - raul.e.garciacabrera@gmail.com
 
 Enlace al proyecto: [https://github.com/maizdemicorazon/posofmyheartfe](https://github.com/maizdemicorazon/posofmyheartfe)
 

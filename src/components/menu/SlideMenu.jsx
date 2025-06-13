@@ -1,22 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { MoonIcon, SunIcon, RocketLaunchIcon, ShoppingBagIcon, ShoppingCartIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useCart } from '../../context/CartContext';
+import CartBadge from '../cart/CartBadge';
+import {
+  MoonIcon,
+  SunIcon,
+  RocketLaunchIcon,
+  ShoppingBagIcon,
+  ShoppingCartIcon,
+  XMarkIcon
+} from '@heroicons/react/24/outline';
 
-function SlideMenu({ isOpen, onClose, view, setView}) {
-  const menuRef = useRef();
+function SlideMenu({ isOpen, onClose, view, setView }) {
   const { theme, toggleTheme } = useTheme();
+  const { cart } = useCart();
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+      if (!event.target.closest('.slide-menu') && isOpen) {
         onClose();
       }
     };
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-    } else {
-      document.removeEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
@@ -31,8 +38,7 @@ function SlideMenu({ isOpen, onClose, view, setView}) {
       }`}
     >
       <div
-        ref={menuRef}
-        className={`fixed top-0 left-0 h-full w-64 shadow-lg transform transition-transform duration-300
+        className={`slide-menu fixed top-0 left-0 h-full w-64 shadow-lg transform transition-transform duration-300
             ${theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-black'}
             ${isOpen ? 'translate-x-0' : '-translate-x-full'}
           `}
@@ -52,37 +58,51 @@ function SlideMenu({ isOpen, onClose, view, setView}) {
                   toggleTheme();
                   onClose();
                 }}
-                className="px-4 py-2 border"
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
-                {theme === 'light' ?
-                  <MoonIcon className="w-5 h-5" />
-                  :
-                  <SunIcon className="w-5 h-5" />
-                }
+                {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
               </button>
             </li>
+
             <li className="w-full flex flex-row flex-nowrap items-center mb-2">
               <button
                 onClick={() => {
-                  setView('home')
+                  setView('home');
                   onClose();
                 }}
-                className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row"
+                className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
                 <RocketLaunchIcon className="w-5 h-5" />
                 <span className='ml-2'>Productos</span>
               </button>
             </li>
+
             <li className="w-full flex flex-row flex-nowrap items-center mb-2">
               <button
                 onClick={() => {
                   setView('orders');
                   onClose();
                 }}
-                className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row"
+                className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
                 <ShoppingBagIcon className="w-5 h-5" />
                 <span className='ml-2'>Mis Pedidos</span>
+              </button>
+            </li>
+
+            <li className="w-full flex flex-row flex-nowrap items-center mb-2">
+              <button
+                onClick={() => {
+                  setView('cart');
+                  onClose();
+                }}
+                className="w-full px-4 py-2 border rounded flex justify-start items-center flex-row hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+              >
+                <ShoppingCartIcon className="w-5 h-5" />
+                <span className='ml-2'>Carrito</span>
+                <div className="ml-auto relative">
+                  <CartBadge count={cart.length} variant="green" size="sm" className="relative top-0 right-0" />
+                </div>
               </button>
             </li>
           </ol>

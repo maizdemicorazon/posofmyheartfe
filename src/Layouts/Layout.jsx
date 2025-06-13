@@ -1,18 +1,16 @@
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import SlideMenu from '../components/menu/SlideMenu';
-import { Bars3Icon, ShoppingBagIcon } from '@heroicons/react/24/outline';
-import { useCart } from '../context/CartContext';
 import { useLoading } from '../context/LoadingContext';
 import { useMessage } from '../context/MessageContext';
+import TopNav from '../components/menu/TopNav';
+import SlideMenu from "../components/menu/SlideMenu";
 
-function Layout({ children, view, setView }) {
+function Layout({ children, selectedCategory, onSelectCategory, view, setView }) {
   const { theme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { cart } = useCart();
   const { loading } = useLoading();
   const { message, setMessage } = useMessage();
-  
+
   const getAlertClasses = (type) => {
     switch (type) {
       case 'success':
@@ -27,7 +25,7 @@ function Layout({ children, view, setView }) {
 
   return (
     <div
-      className={`min-h-screen ${theme === 'dark' ? 'theme-dark' : ''}`}
+      className={`min-h-screen flex flex-col ${theme === 'dark' ? 'theme-dark' : ''}`}
       style={{
         backgroundColor: 'var(--bg-color)',
         color: 'var(--text-color)',
@@ -35,36 +33,19 @@ function Layout({ children, view, setView }) {
     >
       {/* Loader Overlay */}
       {loading && (
-        <div className="overlay_loader fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50" style={{ zIndex: 9999 }}>
           <div className="animate-spin rounded-full h-20 w-20 border-t-4 border-white border-solid"></div>
         </div>
       )}
-      
-      {/* Barra superior con botones */}
-      <div className="flex justify-between items-center px-4 py-2">
-        {/* Botón hamburguesa */}
-        <button
-          onClick={() => setIsMenuOpen(true)}
-          className="text-2xl"
-        >
-          <Bars3Icon className="w-6 h-6" />
-        </button>
 
-        {/* Botón carrito */}
-        <div className="relative">
-          <button
-            onClick={() => setView(view === 'cart' ? 'home' : 'cart')}
-            className="text-2xl"
-          >
-            <ShoppingBagIcon className="w-6 h-6" />
-          </button>
-          {cart.length > 0 && (
-            <span className="absolute bottom-0 right-3 bg-red-500 text-white rounded-full px-2 text-xs">
-              {cart.length}
-            </span>
-          )}
-        </div>
-      </div>
+      {/* Header y navegación - Solo mostrar en vista home */}
+      {view === 'home' && (
+        <TopNav
+          selectedCategory={selectedCategory}
+          onSelectCategory={onSelectCategory}
+          onMenuClick={() => setIsMenuOpen(true)}
+        />
+      )}
 
       {/* Menú lateral */}
       <SlideMenu
@@ -74,10 +55,12 @@ function Layout({ children, view, setView }) {
         setView={setView}
       />
 
-      <div className="min-h-screen">
-        {message && (
+      {/* Contenido principal */}
+      <div className="flex-1">
+        {/* Mensajes de alerta */}
+        {message && view === 'home' && (
           <div
-            className={`${getAlertClasses(message.type)} px-4 py-3 rounded relative mb-2`}
+            className={`${getAlertClasses(message.type)} px-4 py-3 rounded relative mb-2 mx-4 mt-2`}
             role="alert"
           >
             <strong className="font-bold">
@@ -100,6 +83,8 @@ function Layout({ children, view, setView }) {
             </button>
           </div>
         )}
+
+        {/* Contenido principal - children from App.jsx */}
         {children}
       </div>
     </div>

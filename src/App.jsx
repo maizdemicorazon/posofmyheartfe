@@ -1,21 +1,32 @@
 import { useState } from 'react';
 import { CartProvider, useCart } from './context/CartContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { LoadingProvider } from './context/LoadingContext';
+import { MessageProvider } from './context/MessageContext';
 import Layout from './Layouts/Layout';
 import Home from './components/Home';
-import Cart from './components/cart/Cart';
+import CartPage from './components/cart/CartPage';
 import ProductOptionsModal from './components/grid/ProductOptionsModal';
 import Orders from './components/orders/Orders';
 
 function AppContent() {
   const { editingProduct, saveEditProduct, cancelEditProduct } = useCart();
   const [view, setView] = useState('home');
+  const [selectedCategory, setSelectedCategory] = useState(null);
 
   return (
-    <Layout view={view} setView={setView}>
-      {view === 'home' && <Home />}
-      {view === 'cart' && <Cart onCloseCart={() => setView('home')} />}
-      {view === 'orders' && <Orders />}
-      {/* Modal para editar producto */}
+    <Layout
+      view={view}
+      setView={setView}
+      selectedCategory={selectedCategory}
+      onSelectCategory={setSelectedCategory}
+    >
+      {/* Renderizar solo según la vista actual */}
+      {view === 'home' && <Home selectedCategory={selectedCategory} />}
+      {view === 'cart' && <CartPage onBack={() => setView('home')} />}
+      {view === 'orders' && <Orders onBack={() => setView('home')} />}
+
+      {/* Modal de edición de producto */}
       {editingProduct && (
         <ProductOptionsModal
           isOpen={true}
@@ -35,12 +46,19 @@ function AppContent() {
   );
 }
 
-// Aquí solo pones el provider
 function App() {
   return (
-    <CartProvider>
-      <AppContent />
-    </CartProvider>
+    <div className="App">
+      <ThemeProvider>
+        <LoadingProvider>
+          <MessageProvider>
+            <CartProvider>
+              <AppContent />
+            </CartProvider>
+          </MessageProvider>
+        </LoadingProvider>
+      </ThemeProvider>
+    </div>
   );
 }
 

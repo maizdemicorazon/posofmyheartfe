@@ -1,24 +1,16 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState('light');
 
-  const toggleTheme = () => {
-    let themeSelected = theme === 'light' ? 'dark' : 'light';
-    sessionStorage.setItem('theme', themeSelected);
-    setTheme(themeSelected);
-  };
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
 
   useEffect(() => {
-    const storedTheme = sessionStorage.getItem('theme');
-    if (storedTheme) {
-      setTheme(storedTheme);
-      document.body.classList.toggle('dark', storedTheme === 'dark');
-    } else {
-      document.body.classList.toggle('dark', theme === 'dark');
-    }
+    document.body.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
   return (
