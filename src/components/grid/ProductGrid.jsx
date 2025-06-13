@@ -13,7 +13,6 @@ const fetchProductsApi = async () => {
     }
 
     const data = await response.json();
-    console.log('API Response:', data);
     return data;
   } catch (error) {
     console.error('Error fetching products:', error);

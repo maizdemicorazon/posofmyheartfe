@@ -1,7 +1,6 @@
 import { useCart } from '../../context/CartContext';
 import { PencilIcon, TrashIcon, ArrowLeftIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
-import plateImg from '/images/plate.jpg';
 
 function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
   const { cart, removeFromCart, startEditProduct, saveOrder, clearCart, calculateProductPrice, cartTotal } = useCart();
@@ -90,10 +89,10 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
         <div className="text-center py-8 lg:py-12">
           <div className="mb-4 flex justify-center">
             <div className={`${isMobile ? 'w-24 h-24' : 'w-32 h-32 lg:w-36 lg:h-36'} rounded-full bg-gray-100 flex items-center justify-center mx-auto`}>
-              <img src={plateImg} alt="Plato con cubiertos" />
+              <ShoppingCartIcon className="w-16 h-16 text-gray-400" />
             </div>
           </div>
-          <p className={`text-gray-500 ${isMobile ? 'text-base' : 'text-lg'}`}>Tu plato está vacío</p>
+          <p className={`text-gray-500 ${isMobile ? 'text-base' : 'text-lg'}`}>Tu carrito está vacío</p>
           <p className={`text-gray-400 mt-2 ${isMobile ? 'text-sm' : 'text-sm'}`}>Agrega algunos productos para comenzar</p>
 
           {isMobile && (
