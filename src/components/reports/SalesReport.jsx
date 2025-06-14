@@ -49,7 +49,14 @@ function SalesReport({ onBack }) {
   // Función para obtener datos del reporte
   const fetchSalesReport = async (days) => {
     try {
-      const response = await fetch(`http://localhost:8081/api/reports/sales/${days}`);
+      const response = await fetch(`http://localhost:8081/api/reports/sales/${days}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // Agregar token de autenticación si es necesario
+          // 'Authorization': `Bearer ${token}`
+        }
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -57,107 +64,69 @@ function SalesReport({ onBack }) {
 
       const data = await response.json();
       console.log('Sales Report Data:', data);
-      return data;
+
+      // Procesar datos para asegurar formato correcto
+      return processReportData(data);
     } catch (error) {
       console.error('Error fetching sales report:', error);
-      // Datos de ejemplo para demostración
-      return generateMockSalesReport(days);
+      setMessage({
+        text: `Error al cargar el reporte: ${error.message}`,
+        type: 'error'
+      });
     }
   };
 
-  // Generar datos de ejemplo
-  const generateMockSalesReport = (days) => {
-    const salesData = [];
-    const today = new Date();
-    let totalSales = 0;
-    let totalOrders = 0;
-
-    // Generar datos diarios
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-
-      const baseValue = 300 + Math.random() * 400;
-      const orders = Math.floor(5 + Math.random() * 15);
-      const weekendBoost = date.getDay() === 0 || date.getDay() === 6 ? 1.3 : 1;
-
-      const dailySales = Math.round(baseValue * weekendBoost);
-      const dailyOrders = Math.round(orders * weekendBoost);
-
-      totalSales += dailySales;
-      totalOrders += dailyOrders;
-
-      salesData.push({
-        date: date.toLocaleDateString('es-ES', {
-          month: 'short',
-          day: 'numeric'
-        }),
-        fullDate: date.toISOString().split('T')[0],
-        sales: dailySales,
-        orders: dailyOrders,
-        averageTicket: Math.round(dailySales / dailyOrders),
-        dayOfWeek: date.toLocaleDateString('es-ES', { weekday: 'long' })
-      });
-    }
-
-    // Análisis por categorías
-    const categoryAnalysis = [
-      { name: 'Esquites', sales: Math.round(totalSales * 0.45), orders: Math.round(totalOrders * 0.4), percentage: 45 },
-      { name: 'Elotes', sales: Math.round(totalSales * 0.35), orders: Math.round(totalOrders * 0.35), percentage: 35 },
-      { name: 'Bebidas', sales: Math.round(totalSales * 0.15), orders: Math.round(totalOrders * 0.2), percentage: 15 },
-      { name: 'Especiales', sales: Math.round(totalSales * 0.05), orders: Math.round(totalOrders * 0.05), percentage: 5 }
-    ];
-
-    // Análisis por días de la semana
-    const weekdayAnalysis = salesData.reduce((acc, day) => {
-      const dayName = day.dayOfWeek;
-      if (!acc[dayName]) {
-        acc[dayName] = { sales: 0, orders: 0, count: 0 };
-      }
-      acc[dayName].sales += day.sales;
-      acc[dayName].orders += day.orders;
-      acc[dayName].count += 1;
-      return acc;
-    }, {});
-
-    const weekdayData = Object.entries(weekdayAnalysis).map(([day, data]) => ({
-      day,
-      averageSales: Math.round(data.sales / data.count),
-      averageOrders: Math.round(data.orders / data.count),
-      totalSales: data.sales,
-      totalOrders: data.orders
-    }));
-
-    // Métricas de crecimiento simuladas
-    const previousPeriodSales = totalSales * (0.8 + Math.random() * 0.4); // -20% a +20%
-    const growthRate = ((totalSales - previousPeriodSales) / previousPeriodSales) * 100;
-
+  // Procesar datos del backend para asegurar compatibilidad
+  const processReportData = (data) => {
     return {
-      period: days,
-      totalSales,
-      totalOrders,
-      averageTicket: Math.round(totalSales / totalOrders),
-      dailyAverage: Math.round(totalSales / days),
-      ordersAverage: Math.round(totalOrders / days),
-      growthRate: Math.round(growthRate * 100) / 100,
-      previousPeriodSales: Math.round(previousPeriodSales),
-      dailyData: salesData,
-      categoryAnalysis,
-      weekdayAnalysis: weekdayData,
-      peakHours: [
-        { hour: '12:00-13:00', sales: Math.round(totalSales * 0.15), percentage: 15 },
-        { hour: '13:00-14:00', sales: Math.round(totalSales * 0.18), percentage: 18 },
-        { hour: '14:00-15:00', sales: Math.round(totalSales * 0.12), percentage: 12 },
-        { hour: '19:00-20:00', sales: Math.round(totalSales * 0.14), percentage: 14 },
-        { hour: '20:00-21:00', sales: Math.round(totalSales * 0.16), percentage: 16 }
-      ].sort((a, b) => b.percentage - a.percentage)
+      ...data,
+      // Asegurar que los números sean números JavaScript
+      totalSales: Number(data.total_sales || 0),
+      totalOrders: Number(data.total_orders || 0),
+      averageTicket: Number(data.average_ticket || 0),
+      dailyAverage: Number(data.daily_average || 0),
+      ordersAverage: Number(data.orders_average || 0),
+      growthRate: Number(data.growth_rate || 0),
+      previousPeriodSales: Number(data.previous_period_sales || 0),
+
+      // Procesar datos diarios
+      dailyData: (data.daily_data || []).map(day => ({
+        ...day,
+        sales: Number(day.sales || 0),
+        orders: Number(day.orders || 0),
+        averageTicket: Number(day.average_ticket || 0)
+      })),
+
+      // Procesar análisis por categorías
+      categoryAnalysis: (data.category_analysis || []).map(cat => ({
+        ...cat,
+        sales: Number(cat.sales || 0),
+        orders: Number(cat.orders || 0),
+        percentage: Number(cat.percentage || 0)
+      })),
+
+      // Procesar análisis por días de semana
+      weekdayAnalysis: (data.weekday_analysis || []).map(day => ({
+        ...day,
+        averageSales: Number(day.average_sales || 0),
+        averageOrders: Number(day.average_orders || 0),
+        totalSales: Number(day.total_sales || 0),
+        totalOrders: Number(day.total_orders || 0)
+      })),
+
+      // Procesar horarios pico
+      peakHours: (data.peak_hours || []).map(hour => ({
+        ...hour,
+        sales: Number(hour.sales || 0),
+        percentage: Number(hour.percentage || 0)
+      }))
     };
   };
 
   // Cargar datos iniciales
   useEffect(() => {
     loadReportData();
-  }, []);
+  }, [period, customDays]);
 
   const loadReportData = async () => {
     setLoading(true);
@@ -165,7 +134,16 @@ function SalesReport({ onBack }) {
       const days = period === 'custom' ? customDays : getPeriodDays(period);
       const data = await fetchSalesReport(days);
       setReportData(data);
-      setMessage(null);
+
+      // Mensaje de éxito solo si no hay errores
+      if (data && !data.error) {
+        setMessage({
+          text: 'Reporte cargado exitosamente',
+          type: 'success'
+        });
+        // Limpiar mensaje después de 3 segundos
+        setTimeout(() => setMessage(null), 3000);
+      }
     } catch (error) {
       console.error('Error loading sales report:', error);
       setMessage({
@@ -207,7 +185,7 @@ function SalesReport({ onBack }) {
         confirmButtonColor: '#10b981',
         cancelButtonColor: '#6b7280',
         inputValidator: (value) => {
-          if (value < 1) return '¡Mínimo 1 día!';
+          if (!value || value < 1) return '¡Mínimo 1 día!';
           if (value > 365) return '¡Máximo 365 días!';
         }
       });
@@ -215,36 +193,63 @@ function SalesReport({ onBack }) {
       if (result.isConfirmed) {
         setCustomDays(parseInt(result.value));
         setPeriod('custom');
-        setTimeout(loadReportData, 100);
       }
     } else {
       setPeriod(newPeriod);
-      setTimeout(loadReportData, 100);
     }
   };
 
   const exportReport = async (format) => {
     if (!reportData) return;
 
-    const result = await Swal.fire({
-      title: `Exportar reporte en ${format.toUpperCase()}`,
-      text: 'Esta funcionalidad se implementará próximamente',
-      icon: 'info',
-      confirmButtonText: 'Entendido',
-      confirmButtonColor: '#10b981'
-    });
+    try {
+      const response = await fetch(`http://localhost:8081/api/reports/sales/${reportData.period}/export/${format}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte-ventas-${reportData.period}-dias.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        setMessage({
+          text: `Reporte exportado en ${format.toUpperCase()}`,
+          type: 'success'
+        });
+      } else {
+        throw new Error('Error al exportar el reporte');
+      }
+    } catch (error) {
+      console.error('Error exporting report:', error);
+      await Swal.fire({
+        title: `Exportar reporte en ${format.toUpperCase()}`,
+        text: 'Error al exportar el reporte. Por favor intente nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#ef4444'
+      });
+    }
   };
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
       currency: 'MXN'
-    }).format(value);
+    }).format(value || 0);
   };
 
   const formatPercentage = (value) => {
     const sign = value >= 0 ? '+' : '';
-    return `${sign}${value.toFixed(1)}%`;
+    return `${sign}${(value || 0).toFixed(1)}%`;
   };
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -267,6 +272,11 @@ function SalesReport({ onBack }) {
       );
     }
     return null;
+  };
+
+  // Función para verificar si hay datos disponibles
+  const hasData = (data) => {
+    return data && data.length > 0;
   };
 
   if (loading) {
@@ -424,10 +434,10 @@ function SalesReport({ onBack }) {
                       Total Órdenes
                     </p>
                     <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                      {reportData.totalOrders.toLocaleString()}
+                      {(reportData.totalOrders || 0).toLocaleString()}
                     </p>
                     <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {reportData.ordersAverage}/día promedio
+                      {reportData.ordersAverage || 0}/día promedio
                     </p>
                   </div>
                 </div>
@@ -515,30 +525,38 @@ function SalesReport({ onBack }) {
                   <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                     📈 Ventas Diarias
                   </h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={reportData.dailyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#f0f0f0'} />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                        />
-                        <YAxis
-                          tickFormatter={formatCurrency}
-                          tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Line
-                          type="monotone"
-                          dataKey="sales"
-                          stroke="#10b981"
-                          strokeWidth={3}
-                          dot={{ r: 4 }}
-                          name="Ventas"
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {hasData(reportData.dailyData) ? (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={reportData.dailyData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#f0f0f0'} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                          />
+                          <YAxis
+                            tickFormatter={formatCurrency}
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                          />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Line
+                            type="monotone"
+                            dataKey="sales"
+                            stroke="#10b981"
+                            strokeWidth={3}
+                            dot={{ r: 4 }}
+                            name="Ventas"
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                        No hay datos disponibles para este período
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Top productos */}
@@ -548,34 +566,42 @@ function SalesReport({ onBack }) {
                   <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                     🏆 Top Categorías
                   </h3>
-                  <div className="space-y-4">
-                    {reportData.categoryAnalysis.map((category, index) => (
-                      <div key={category.name} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold`}
-                               style={{ backgroundColor: COLORS[index % COLORS.length] }}>
-                            {index + 1}
+                  {hasData(reportData.categoryAnalysis) ? (
+                    <div className="space-y-4">
+                      {reportData.categoryAnalysis.map((category, index) => (
+                        <div key={category.name} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold`}
+                                 style={{ backgroundColor: COLORS[index % COLORS.length] }}>
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {category.name}
+                              </p>
+                              <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {category.orders} órdenes
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {category.name}
+                          <div className="text-right">
+                            <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                              {formatCurrency(category.sales)}
                             </p>
                             <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {category.orders} órdenes
+                              {category.percentage}%
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                            {formatCurrency(category.sales)}
-                          </p>
-                          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {category.percentage}%
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                        No hay datos de categorías disponibles
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -587,95 +613,105 @@ function SalesReport({ onBack }) {
                 <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                   📈 Tendencias de Ventas y Órdenes
                 </h3>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.dailyData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#f0f0f0'} />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                      />
-                      <YAxis
-                        yAxisId="sales"
-                        orientation="left"
-                        tickFormatter={formatCurrency}
-                        tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                      />
-                      <YAxis
-                        yAxisId="orders"
-                        orientation="right"
-                        tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                      />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend />
-                      <Bar
-                        yAxisId="sales"
-                        dataKey="sales"
-                        fill="#10b981"
-                        name="Ventas ($)"
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Bar
-                        yAxisId="orders"
-                        dataKey="orders"
-                        fill="#3b82f6"
-                        name="Órdenes"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                {hasData(reportData.dailyData) ? (
+                  <>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={reportData.dailyData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#f0f0f0'} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                          />
+                          <YAxis
+                            yAxisId="sales"
+                            orientation="left"
+                            tickFormatter={formatCurrency}
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                          />
+                          <YAxis
+                            yAxisId="orders"
+                            orientation="right"
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                          />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend />
+                          <Bar
+                            yAxisId="sales"
+                            dataKey="sales"
+                            fill="#10b981"
+                            name="Ventas ($)"
+                            radius={[4, 4, 0, 0]}
+                          />
+                          <Bar
+                            yAxisId="orders"
+                            dataKey="orders"
+                            fill="#3b82f6"
+                            name="Órdenes"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
 
-                {/* Análisis de tendencias */}
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className={`p-4 rounded-lg ${
-                    theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                  }`}>
-                    <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                      📊 Mejor Día
-                    </h4>
-                    <p className={`text-lg font-bold text-green-600`}>
-                      {reportData.dailyData.reduce((max, day) =>
-                        day.sales > max.sales ? day : max
-                      ).date}
-                    </p>
-                    <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {formatCurrency(Math.max(...reportData.dailyData.map(d => d.sales)))}
+                    {/* Análisis de tendencias */}
+                    <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className={`p-4 rounded-lg ${
+                        theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}>
+                        <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                          📊 Mejor Día
+                        </h4>
+                        <p className={`text-lg font-bold text-green-600`}>
+                          {reportData.dailyData.reduce((max, day) =>
+                            day.sales > max.sales ? day : max
+                          ).date}
+                        </p>
+                        <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {formatCurrency(Math.max(...reportData.dailyData.map(d => d.sales)))}
+                        </p>
+                      </div>
+
+                      <div className={`p-4 rounded-lg ${
+                        theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}>
+                        <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                          📉 Día Más Bajo
+                        </h4>
+                        <p className={`text-lg font-bold text-orange-600`}>
+                          {reportData.dailyData.reduce((min, day) =>
+                            day.sales < min.sales ? day : min
+                          ).date}
+                        </p>
+                        <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {formatCurrency(Math.min(...reportData.dailyData.map(d => d.sales)))}
+                        </p>
+                      </div>
+
+                      <div className={`p-4 rounded-lg ${
+                        theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}>
+                        <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                          🎯 Variación
+                        </h4>
+                        <p className={`text-lg font-bold text-purple-600`}>
+                          {(((Math.max(...reportData.dailyData.map(d => d.sales)) -
+                              Math.min(...reportData.dailyData.map(d => d.sales))) /
+                              reportData.dailyAverage) * 100).toFixed(1)}%
+                        </p>
+                        <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Volatilidad
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-80 flex items-center justify-center">
+                    <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                      No hay datos de tendencias disponibles
                     </p>
                   </div>
-
-                  <div className={`p-4 rounded-lg ${
-                    theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                  }`}>
-                    <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                      📉 Día Más Bajo
-                    </h4>
-                    <p className={`text-lg font-bold text-orange-600`}>
-                      {reportData.dailyData.reduce((min, day) =>
-                        day.sales < min.sales ? day : min
-                      ).date}
-                    </p>
-                    <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {formatCurrency(Math.min(...reportData.dailyData.map(d => d.sales)))}
-                    </p>
-                  </div>
-
-                  <div className={`p-4 rounded-lg ${
-                    theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                  }`}>
-                    <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                      🎯 Variación
-                    </h4>
-                    <p className={`text-lg font-bold text-purple-600`}>
-                      {(((Math.max(...reportData.dailyData.map(d => d.sales)) -
-                          Math.min(...reportData.dailyData.map(d => d.sales))) /
-                          reportData.dailyAverage) * 100).toFixed(1)}%
-                    </p>
-                    <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                      Volatilidad
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -688,27 +724,35 @@ function SalesReport({ onBack }) {
                   <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                     🥧 Distribución por Categorías
                   </h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={reportData.categoryAnalysis}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({name, percentage}) => `${name} ${percentage}%`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="sales"
-                        >
-                          {reportData.categoryAnalysis.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => formatCurrency(value)} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {hasData(reportData.categoryAnalysis) ? (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={reportData.categoryAnalysis}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({name, percentage}) => `${name} ${percentage}%`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="sales"
+                          >
+                            {reportData.categoryAnalysis.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value) => formatCurrency(value)} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                        No hay datos de categorías disponibles
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Análisis detallado por categoría */}
@@ -718,80 +762,88 @@ function SalesReport({ onBack }) {
                   <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                     📋 Análisis Detallado
                   </h3>
-                  <div className="space-y-4">
-                    {reportData.categoryAnalysis.map((category, index) => (
-                      <div key={category.name} className={`p-4 rounded-lg border ${
-                        theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-4 h-4 rounded-full"
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            ></div>
-                            <h4 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {category.name}
-                            </h4>
+                  {hasData(reportData.categoryAnalysis) ? (
+                    <div className="space-y-4">
+                      {reportData.categoryAnalysis.map((category, index) => (
+                        <div key={category.name} className={`p-4 rounded-lg border ${
+                          theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-4 h-4 rounded-full"
+                                style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                              ></div>
+                              <h4 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {category.name}
+                              </h4>
+                            </div>
+                            <span className={`text-sm font-bold ${
+                              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                            }`}>
+                              {category.percentage}%
+                            </span>
                           </div>
-                          <span className={`text-sm font-bold ${
-                            theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                          }`}>
-                            {category.percentage}%
-                          </span>
-                        </div>
 
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
-                              Ventas
-                            </p>
-                            <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {formatCurrency(category.sales)}
-                            </p>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
+                                Ventas
+                              </p>
+                              <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {formatCurrency(category.sales)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
+                                Órdenes
+                              </p>
+                              <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {category.orders}
+                              </p>
+                            </div>
+                            <div>
+                              <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
+                                Ticket Promedio
+                              </p>
+                              <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {formatCurrency(category.sales / (category.orders || 1))}
+                              </p>
+                            </div>
+                            <div>
+                              <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
+                                Órdenes/Día
+                              </p>
+                              <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {(category.orders / (reportData.period || 1)).toFixed(1)}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
-                              Órdenes
-                            </p>
-                            <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {category.orders}
-                            </p>
-                          </div>
-                          <div>
-                            <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
-                              Ticket Promedio
-                            </p>
-                            <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {formatCurrency(category.sales / category.orders)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
-                              Órdenes/Día
-                            </p>
-                            <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {(category.orders / reportData.period).toFixed(1)}
-                            </p>
-                          </div>
-                        </div>
 
-                        {/* Barra de progreso */}
-                        <div className="mt-3">
-                          <div className={`w-full rounded-full h-2 ${
-                            theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200'
-                          }`}>
-                            <div
-                              className="h-2 rounded-full transition-all duration-500"
-                              style={{
-                                width: `${category.percentage}%`,
-                                backgroundColor: COLORS[index % COLORS.length]
-                              }}
-                            ></div>
+                          {/* Barra de progreso */}
+                          <div className="mt-3">
+                            <div className={`w-full rounded-full h-2 ${
+                              theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200'
+                            }`}>
+                              <div
+                                className="h-2 rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${category.percentage}%`,
+                                  backgroundColor: COLORS[index % COLORS.length]
+                                }}
+                              ></div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                        No hay datos de categorías disponibles
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -805,31 +857,39 @@ function SalesReport({ onBack }) {
                   <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                     📅 Rendimiento por Día de la Semana
                   </h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={reportData.weekdayAnalysis} layout="horizontal">
-                        <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#f0f0f0'} />
-                        <XAxis
-                          type="number"
-                          tickFormatter={formatCurrency}
-                          tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                        />
-                        <YAxis
-                          type="category"
-                          dataKey="day"
-                          tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
-                          width={80}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Bar
-                          dataKey="averageSales"
-                          fill="#10b981"
-                          name="Promedio Ventas"
-                          radius={[0, 4, 4, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {hasData(reportData.weekdayAnalysis) ? (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={reportData.weekdayAnalysis} layout="horizontal">
+                          <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#f0f0f0'} />
+                          <XAxis
+                            type="number"
+                            tickFormatter={formatCurrency}
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="day"
+                            tick={{ fontSize: 12, fill: theme === 'dark' ? '#d1d5db' : '#6b7280' }}
+                            width={80}
+                          />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Bar
+                            dataKey="averageSales"
+                            fill="#10b981"
+                            name="Promedio Ventas"
+                            radius={[0, 4, 4, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                        No hay datos de días disponibles
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Horarios pico */}
@@ -839,50 +899,60 @@ function SalesReport({ onBack }) {
                   <h3 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                     ⏰ Horarios Pico
                   </h3>
-                  <div className="space-y-3">
-                    {reportData.peakHours.map((hour, index) => (
-                      <div key={hour.hour} className={`flex items-center justify-between p-3 rounded-lg ${
-                        theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                      }`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
-                            index === 0 ? 'bg-yellow-500' :
-                            index === 1 ? 'bg-gray-400' :
-                            index === 2 ? 'bg-amber-600' : 'bg-blue-500'
+                  {hasData(reportData.peakHours) ? (
+                    <>
+                      <div className="space-y-3">
+                        {reportData.peakHours.map((hour, index) => (
+                          <div key={hour.hour} className={`flex items-center justify-between p-3 rounded-lg ${
+                            theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
                           }`}>
-                            {index + 1}
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                                index === 0 ? 'bg-yellow-500' :
+                                index === 1 ? 'bg-gray-400' :
+                                index === 2 ? 'bg-amber-600' : 'bg-blue-500'
+                              }`}>
+                                {index + 1}
+                              </div>
+                              <div>
+                                <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                  {hour.hour}
+                                </p>
+                                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {hour.percentage}% del total
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {formatCurrency(hour.sales)}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {hour.hour}
-                            </p>
-                            <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {hour.percentage}% del total
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                            {formatCurrency(hour.sales)}
-                          </p>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  {/* Recomendaciones */}
-                  <div className={`mt-6 p-4 rounded-lg border-l-4 border-blue-500 ${
-                    theme === 'dark' ? 'bg-blue-900/20' : 'bg-blue-50'
-                  }`}>
-                    <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-900'}`}>
-                      💡 Recomendaciones
-                    </h4>
-                    <ul className={`text-sm space-y-1 ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>
-                      <li>• Reforzar personal en horarios pico</li>
-                      <li>• Preparar más inventario antes de las {reportData.peakHours[0]?.hour}</li>
-                      <li>• Considerar promociones en horarios bajos</li>
-                    </ul>
-                  </div>
+                      {/* Recomendaciones */}
+                      <div className={`mt-6 p-4 rounded-lg border-l-4 border-blue-500 ${
+                        theme === 'dark' ? 'bg-blue-900/20' : 'bg-blue-50'
+                      }`}>
+                        <h4 className={`font-medium mb-2 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-900'}`}>
+                          💡 Recomendaciones
+                        </h4>
+                        <ul className={`text-sm space-y-1 ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>
+                          <li>• Reforzar personal en horarios pico</li>
+                          <li>• Preparar más inventario antes de las {reportData.peakHours[0]?.hour}</li>
+                          <li>• Considerar promociones en horarios bajos</li>
+                        </ul>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <p className={`text-lg ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                        No hay datos de horarios disponibles
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -925,8 +995,8 @@ function SalesReport({ onBack }) {
                     <li className="flex items-start gap-2">
                       <span className="text-purple-500">🏆</span>
                       <span>
-                        Categoría top: <strong>{reportData.categoryAnalysis[0]?.name}</strong>
-                        ({reportData.categoryAnalysis[0]?.percentage}%)
+                        Categoría top: <strong>{reportData.categoryAnalysis[0]?.name || 'N/A'}</strong>
+                        {reportData.categoryAnalysis[0]?.percentage && ` (${reportData.categoryAnalysis[0].percentage}%)`}
                       </span>
                     </li>
                   </ul>
@@ -940,15 +1010,19 @@ function SalesReport({ onBack }) {
                     <li className="flex items-start gap-2">
                       <span className="text-yellow-500">💡</span>
                       <span>
-                        Optimizar horarios de {reportData.peakHours[0]?.hour}
-                        (pico de ventas)
+                        {reportData.peakHours?.[0] ?
+                          `Optimizar horarios de ${reportData.peakHours[0].hour} (pico de ventas)` :
+                          'Analizar horarios de mayor demanda'
+                        }
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-orange-500">🎯</span>
                       <span>
-                        Promocionar {reportData.categoryAnalysis[reportData.categoryAnalysis.length - 1]?.name}
-                        (menor participación)
+                        {reportData.categoryAnalysis?.length > 0 ?
+                          `Promocionar ${reportData.categoryAnalysis[reportData.categoryAnalysis.length - 1].name} (menor participación)` :
+                          'Identificar categorías con potencial de crecimiento'
+                        }
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
@@ -969,6 +1043,24 @@ function SalesReport({ onBack }) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Mensaje cuando no hay datos */}
+        {!loading && !reportData && (
+          <div className={`rounded-xl shadow-sm border p-12 text-center ${
+            theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+          }`}>
+            <ChartBarIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+            <p className={`text-lg ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+              No hay datos de reporte disponibles
+            </p>
+            <button
+              onClick={loadReportData}
+              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Cargar Reporte
+            </button>
+          </div>
         )}
       </div>
     </div>
