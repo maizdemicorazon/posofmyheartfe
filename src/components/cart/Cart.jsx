@@ -111,7 +111,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
             {cart.map((product, idx) => (
               <div key={product.id || idx} className="flex items-start gap-3 lg:gap-4 border-b pb-4">
                 <img
-                  src={product.image || 'https://via.placeholder.com/64'}
+                  src={product.image}
                   alt="product"
                   className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} rounded-full object-cover border flex-shrink-0`}
                 />
@@ -206,7 +206,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
           </div>
 
           {/* Total y botones */}
-          <div className="border-t pt-4">
+          <div className="pt-4">
             <div className={`flex justify-between items-center font-bold ${isMobile ? 'text-lg' : 'text-xl'} mb-4`}>
               <span>Total:</span>
               <span className="text-green-600">${cartTotal.toFixed(2)}</span>

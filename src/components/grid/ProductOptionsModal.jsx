@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
-import { PlusIcon, MinusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, MinusIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
+import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
 function ProductOptionsModal({
   isOpen,
@@ -30,6 +31,41 @@ function ProductOptionsModal({
   const [comment, setComment] = useState('');
   const [errors, setErrors] = useState({});
 
+  // ✅ Estado para manejo de imagen del producto
+  const [productImageState, setProductImageState] = useState({
+    hasError: false,
+    errorCount: 0
+  });
+
+  // ✅ FUNCIÓN PARA OPTIMIZAR IMAGEN DEL PRODUCTO CON PROTECCIÓN ANTI-LOOP
+  const getOptimizedProductImage = () => {
+    const isDark = theme === 'dark';
+    if (!product?.image) {
+      return generatePlaceholderUrl(product?.name || 'Producto', 400, isDark);
+    }
+    return optimizeGoogleDriveImageUrl(product.image, 400) || generatePlaceholderUrl(product.name, 400, isDark);
+  };
+
+  const handleProductImageError = (e) => {
+    setProductImageState(prev => {
+      // Prevenir loop infinito
+      if (prev.errorCount >= 1) {
+        console.log(`❌ Product image failed multiple times for ${product.name}, stopping retries`);
+        return prev;
+      }
+
+      const placeholderSrc = generatePlaceholderUrl(product.name, 400, theme === 'dark');
+      console.log(`❌ Product image failed for ${product.name}, using SVG placeholder`);
+
+      e.target.src = placeholderSrc;
+
+      return {
+        hasError: true,
+        errorCount: prev.errorCount + 1
+      };
+    });
+  };
+
   // Resetear estados cuando se abre/cierra el modal o cambia el producto
   useEffect(() => {
     if (isOpen && product) {
@@ -38,6 +74,12 @@ function ProductOptionsModal({
       setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
       setComment(initialComment || '');
       setErrors({});
+
+      // ✅ Resetear estado de imagen del producto
+      setProductImageState({
+        hasError: false,
+        errorCount: 0
+      });
 
       // Configurar opciones
       if (product.options && product.options.length > 0) {
@@ -73,6 +115,10 @@ function ProductOptionsModal({
       setSelectedSauces([]);
       setComment('');
       setErrors({});
+      setProductImageState({
+        hasError: false,
+        errorCount: 0
+      });
     }
   }, [isOpen, product?.id_product, isEditing, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment]);
 
@@ -246,92 +292,114 @@ function ProductOptionsModal({
 
         <div className="h-[90vh] overflow-y-scroll">
           <div className="space-y-6">
-            {/* Imagen del producto */}
+            {/* ✅ Imagen del producto CORREGIDA con protección anti-loop */}
             <div className="flex justify-center">
-              <img
-                src={product.image || 'https://via.placeholder.com/200'}
-                alt={product.name}
-                className="w-32 h-32 object-cover rounded-lg shadow-md"
-                onError={(e) => {
-                  e.target.src = 'https://via.placeholder.com/200?text=' + encodeURIComponent(product.name);
-                }}
-              />
+              <div className="relative">
+                <img
+                  src={getOptimizedProductImage()}
+                  alt={product.name}
+                  className="w-32 h-32 object-cover rounded-lg shadow-md"
+                  onError={handleProductImageError}
+                />
+                {productImageState.hasError && (
+                  <div className="absolute inset-0 bg-gray-100 dark:bg-gray-700 rounded-lg flex flex-col items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                    </svg>
+                    <span className="text-xs text-gray-500 text-center">{product.name}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Tamaños/Opciones */}
+            {/* ✅ Tamaños/Opciones MEJORADO con iconos de check y mejor espaciado */}
             {product.options && product.options.length > 0 && (
               <div>
-                <h3 className="text-xl font-semibold mb-3">Tamaños</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <h3 className="text-xl font-semibold mb-4">Tamaños</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 lg:gap-5">
                   {product.options.map((option, idx) => (
                     <div
                       key={`option-${option.id_variant}-${idx}`}
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                      className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 min-h-[80px] ${
                         selectedOption?.id_variant === option.id_variant
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
                       }`}
                       onClick={() => {
                         setSelectedOption(option);
                         setErrors(prev => ({ ...prev, option: '' }));
                       }}
                     >
+                      {/* ✅ Icono de check con mejor posicionamiento */}
+                      {selectedOption?.id_variant === option.id_variant && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
                       <div className="text-center">
-                        <p className="font-medium">{option.size}</p>
-                        <p className="text-sm text-gray-600">${option.price}</p>
+                        <p className="font-medium text-sm sm:text-base">{option.size}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">${option.price}</p>
                       </div>
                     </div>
                   ))}
                 </div>
                 {errors.option && (
-                  <p className="text-red-500 text-sm mt-1">{errors.option}</p>
+                  <p className="text-red-500 text-sm mt-2">{errors.option}</p>
                 )}
               </div>
             )}
 
-            {/* Sabores */}
+            {/* ✅ Sabores MEJORADO con iconos de check */}
             {product.flavors && product.flavors.length > 0 && (
               <div>
-                <h3 className="text-xl font-semibold mb-3">Sabores</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <h3 className="text-xl font-semibold mb-4">Sabores</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 lg:gap-5">
                   {product.flavors.map((flavor, idx) => (
                     <div
                       key={`flavor-${flavor.id_flavor}-${idx}`}
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                      className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 min-h-[70px] ${
                         selectedFlavor?.id_flavor === flavor.id_flavor
-                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
                       }`}
                       onClick={() => {
                         setSelectedFlavor(flavor);
                         setErrors(prev => ({ ...prev, flavor: '' }));
                       }}
                     >
+                      {/* ✅ Icono de check para sabores */}
+                      {selectedFlavor?.id_flavor === flavor.id_flavor && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
                       <div className="text-center">
-                        <p className="font-medium">{flavor.name}</p>
+                        <p className="font-medium text-sm sm:text-base">{flavor.name}</p>
                       </div>
                     </div>
                   ))}
                 </div>
                 {errors.flavor && (
-                  <p className="text-red-500 text-sm mt-1">{errors.flavor}</p>
+                  <p className="text-red-500 text-sm mt-2">{errors.flavor}</p>
                 )}
               </div>
             )}
 
             {/* Cantidad */}
             <div>
-              <h3 className="text-xl font-semibold mb-3">Cantidad</h3>
-              <div className="flex items-center justify-center gap-4">
+              <h3 className="text-xl font-semibold mb-4">Cantidad</h3>
+              <div className="flex items-center justify-center gap-6">
                 <button
-                  className="p-2 rounded-full border border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="p-3 rounded-full border border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   onClick={() => setQuantity(prev => Math.max(1, prev - 1))}
                 >
                   <MinusIcon className="w-5 h-5" />
                 </button>
-                <span className="text-2xl font-bold px-4">{quantity}</span>
+                <span className="text-2xl font-bold px-6 min-w-[3rem] text-center">{quantity}</span>
                 <button
-                  className="p-2 rounded-full border border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="p-3 rounded-full border border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   onClick={() => setQuantity(prev => prev + 1)}
                 >
                   <PlusIcon className="w-5 h-5" />
@@ -339,37 +407,45 @@ function ProductOptionsModal({
               </div>
             </div>
 
-            {/* Extras */}
+            {/* ✅ Extras MEJORADO con mejor espaciado */}
             {extras && extras.length > 0 && (
               <div>
-                <h3 className="text-xl font-semibold mb-3">Extras</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <h3 className="text-xl font-semibold mb-4">Extras</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {extras.map((extra, idx) => (
                     <div
                       key={`extra-${extra.id_extra}-${idx}`}
-                      className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                      className={`relative flex items-center p-4 rounded-lg border cursor-pointer transition-all duration-200 min-h-[70px] ${
                         selectedExtras.some(e => e.id_extra === extra.id_extra)
-                          ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
                       }`}
                       onClick={() => handleExtraClick(extra)}
                     >
-                      <div className="flex-1">
-                        <p className="font-medium">{extra.name}</p>
-                        <p className="text-sm text-gray-600">+${extra.price}</p>
+                      {/* ✅ Icono de check para extras */}
+                      {selectedExtras.some(e => e.id_extra === extra.id_extra) && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 pr-8">
+                        <p className="font-medium text-sm sm:text-base">{extra.name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">+${extra.price}</p>
                         {selectedExtras.find(e => e.id_extra === extra.id_extra) && (
-                          <p className="text-xs text-orange-600">
-                            Qty: {selectedExtras.find(e => e.id_extra === extra.id_extra)?.quantity}
+                          <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                            Cantidad: {selectedExtras.find(e => e.id_extra === extra.id_extra)?.quantity}
                           </p>
                         )}
                       </div>
+
                       {selectedExtras.some(e => e.id_extra === extra.id_extra) && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             removeExtra(extra.id_extra, extra.name);
                           }}
-                          className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded"
+                          className="absolute top-2 right-2 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-20"
                         >
                           <XMarkIcon className="w-4 h-4" />
                         </button>
@@ -380,23 +456,30 @@ function ProductOptionsModal({
               </div>
             )}
 
-            {/* Salsas */}
+            {/* ✅ Salsas MEJORADO con iconos de check */}
             {sauces && sauces.length > 0 && (
               <div>
-                <h3 className="text-xl font-semibold mb-3">Salsas</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <h3 className="text-xl font-semibold mb-4">Salsas</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {sauces.map((sauce, idx) => (
                     <div
                       key={`sauce-${sauce.id_sauce}-${idx}`}
-                      className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                      className={`relative flex items-center p-4 rounded-lg border cursor-pointer transition-all duration-200 min-h-[70px] ${
                         selectedSauces.some(s => s.id_sauce === sauce.id_sauce)
-                          ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'border-red-500 bg-red-50 dark:bg-red-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
                       }`}
                       onClick={() => handleSauceClick(sauce)}
                     >
+                      {/* ✅ Icono de check para salsas */}
+                      {selectedSauces.some(s => s.id_sauce === sauce.id_sauce) && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
                       <div className="flex-1 text-center">
-                        <p className="font-medium text-sm">{sauce.name}</p>
+                        <p className="font-medium text-sm sm:text-base">{sauce.name}</p>
                       </div>
                     </div>
                   ))}
@@ -406,9 +489,13 @@ function ProductOptionsModal({
 
             {/* Comentarios */}
             <div>
-              <h3 className="text-xl font-semibold mb-3">Comentarios</h3>
+              <h3 className="text-xl font-semibold mb-4">Comentarios</h3>
               <textarea
-                className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600"
+                className={`w-full p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                  theme === 'dark'
+                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                    : 'bg-white'
+                }`}
                 rows="3"
                 placeholder="Escribe tus comentarios aquí..."
                 value={comment}
@@ -418,7 +505,7 @@ function ProductOptionsModal({
 
             {/* Botón guardar/agregar */}
             <button
-              className="w-full py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-lg"
+              className="w-full py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-lg shadow-md hover:shadow-lg"
               onClick={handleSave}
             >
               {isEditing ? 'Guardar cambios' : 'Agregar al carrito'}
