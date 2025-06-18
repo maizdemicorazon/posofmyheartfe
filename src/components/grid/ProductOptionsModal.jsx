@@ -1,222 +1,520 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { PlusIcon, MinusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useCart } from '../../context/CartContext';
+import { PlusIcon, MinusIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
+import Swal from 'sweetalert2';
+import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
 function ProductOptionsModal({
-    isOpen,
-    onClose,
-    product,
-    extras,
-    initialQuantity = 1,
-    initialOptions = null,
-    initialExtras = [],
-    initialComment = '',
-    onSave,
-    isEditing = false
+  isOpen,
+  onClose,
+  product,
+  initialQuantity = 1,
+  initialOptions = [],
+  initialFlavors = [],
+  initialExtras = [],
+  initialSauces = [],
+  initialComment = '',
+  onSave,
+  isEditing = false,
+  onAddedToCart
 }) {
-    const modalRef = useRef();
-    const { theme } = useTheme();
-    const [quantity, setQuantity] = useState(1);
-    const [selectedOption, setSelectedOption] = useState(null);
-    const [selectedExtras, setSelectedExtras] = useState([]);
-    const [comment, setComment] = useState('');
-    const [error, setError] = useState('');
-    const [allOptions, setAllOptions] = useState([]);
-    const [allExtras, setAllExtras] = useState([]);
-    const { addToCart } = useCart();
+  const { theme } = useTheme();
+  const { addToCart, extras, sauces } = useCart();
 
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (modalRef.current && !modalRef.current.contains(event.target)) {
-                onClose();
-            }
-        };
+  // Estados locales
+  const [quantity, setQuantity] = useState(1);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [selectedFlavor, setSelectedFlavor] = useState(null);
+  const [selectedExtras, setSelectedExtras] = useState([]);
+  const [selectedSauces, setSelectedSauces] = useState([]);
+  const [comment, setComment] = useState('');
+  const [errors, setErrors] = useState({});
 
-        if (isOpen) {
+  // ✅ Estado para manejo de imagen del producto
+  const [productImageState, setProductImageState] = useState({
+    hasError: false,
+    errorCount: 0
+  });
 
-            console.log('Product:', product);
-            console.log('Product options:', product.options);
-            console.log('extras:', extras);
-            
-            setQuantity(initialQuantity);
-            setSelectedExtras(initialExtras);
-            setComment(initialComment);
-            setError('');
+  // ✅ FUNCIÓN PARA OPTIMIZAR IMAGEN DEL PRODUCTO CON PROTECCIÓN ANTI-LOOP
+  const getOptimizedProductImage = () => {
+    const isDark = theme === 'dark';
+    if (!product?.image) {
+      return generatePlaceholderUrl(product?.name || 'Producto', 400, isDark);
+    }
+    return optimizeGoogleDriveImageUrl(product.image, 400) || generatePlaceholderUrl(product.name, 400, isDark);
+  };
 
-            if (product && product.options && product.options.length === 1) {
-                setSelectedOption(product.options[0]);
-            } else {
-                setSelectedOption(initialOptions);
-            }
+  const handleProductImageError = (e) => {
+    setProductImageState(prev => {
+      // Prevenir loop infinito
+      if (prev.errorCount >= 1) {
+        console.log(`❌ Product image failed multiple times for ${product.name}, stopping retries`);
+        return prev;
+      }
 
-            let catalogExtras = [];
-            try {
-                const extrasStr = sessionStorage.getItem('extras');
-                if (extrasStr) {
-                    catalogExtras = JSON.parse(extrasStr);
-                }
-            } catch (e) {
-                catalogExtras = [];
-            }
+      const placeholderSrc = generatePlaceholderUrl(product.name, 400, theme === 'dark');
+      console.log(`❌ Product image failed for ${product.name}, using SVG placeholder`);
 
-            const selectedIds = initialExtras.map(e => e.id);
-            const combinedExtras = [
-                ...initialExtras,
-                ...catalogExtras.filter(e => !selectedIds.includes(e.id))
-            ];
+      e.target.src = placeholderSrc;
 
-            let catalogProducts = [];
-            try {
-                const productsStr = sessionStorage.getItem('products');
-                if (productsStr) {
-                    catalogProducts = JSON.parse(productsStr);
-                }
-            } catch (e) {
-                catalogProducts = [];
-            }
+      return {
+        hasError: true,
+        errorCount: prev.errorCount + 1
+      };
+    });
+  };
 
-            const originalProduct = catalogProducts.find(p => p.id === product.id);
-            const options = originalProduct?.options || product.options || [];
-            if (options.length === 1) {
-                setSelectedOption(options[0]);
-            } else {
-                setSelectedOption(Array.isArray(initialOptions) ? initialOptions[0] : initialOptions);
+  // Resetear estados cuando se abre/cierra el modal o cambia el producto
+  useEffect(() => {
+    if (isOpen && product) {
+      setQuantity(initialQuantity || 1);
+      setSelectedExtras(Array.isArray(initialExtras) ? [...initialExtras] : []);
+      setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
+      setComment(initialComment || '');
+      setErrors({});
 
-            }
+      // ✅ Resetear estado de imagen del producto
+      setProductImageState({
+        hasError: false,
+        errorCount: 0
+      });
 
-            setAllOptions(options);
-            setAllExtras(combinedExtras);
-            
-            document.addEventListener('mousedown', handleClickOutside);
+      // Configurar opciones
+      if (product.options && product.options.length > 0) {
+        if (product.options.length === 1) {
+          setSelectedOption(product.options[0]);
+        } else if (isEditing && initialOptions && initialOptions.length > 0) {
+          setSelectedOption(initialOptions[0]);
         } else {
-            document.removeEventListener('mousedown', handleClickOutside);
+          setSelectedOption(null);
         }
+      } else {
+        setSelectedOption(null);
+      }
 
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isOpen, product?.id]);
-
-    const handleOptionClick = (option) => {
-        setSelectedOption(option);
-        setError('');
-    };
-
-    const handleExtraClick = (extra) => {
-        setSelectedExtras((prev) =>
-        prev.includes(extra)
-            ? prev.filter((e) => e !== extra)
-            : [...prev, extra]
-        );
-    };
-
-    const handleSave = () => {
-        if (product.options && product.options.length > 1 && !selectedOption) {
-            setError('Seleccione una opción.');
-            return;
-        }
-
-        const productData = {
-            ...product,
-            options: [selectedOption],
-            quantity: quantity,
-            extras: selectedExtras,
-            comment,
-        };
-
-        if (isEditing && onSave) {
-            onSave(productData);
+      // Configurar sabores
+      if (product.flavors && product.flavors.length > 0) {
+        if (product.flavors.length === 1) {
+          setSelectedFlavor(product.flavors[0]);
+        } else if (isEditing && initialFlavors && initialFlavors.length > 0) {
+          setSelectedFlavor(initialFlavors[0]);
         } else {
-            addToCart(productData);
+          setSelectedFlavor(null);
         }
+      } else {
+        setSelectedFlavor(null);
+      }
+    } else if (!isOpen) {
+      // Limpiar estados cuando se cierra el modal
+      setQuantity(1);
+      setSelectedOption(null);
+      setSelectedFlavor(null);
+      setSelectedExtras([]);
+      setSelectedSauces([]);
+      setComment('');
+      setErrors({});
+      setProductImageState({
+        hasError: false,
+        errorCount: 0
+      });
+    }
+  }, [isOpen, product?.id_product, isEditing, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment]);
 
-        onClose();
+  // CORREGIDO: Usar SweetAlert2 para cantidad de extras
+  const handleExtraClick = async (extra) => {
+    const result = await Swal.fire({
+      title: '¿Qué cantidad de extra quieres agregar?',
+      input: 'number',
+      inputLabel: extra.name,
+      inputPlaceholder: 'Cantidad',
+      inputValue: 1,
+      inputAttributes: {
+        min: 1,
+        max: 10,
+        step: 1
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Agregar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#6b7280',
+      inputValidator: (value) => {
+        if (!value || value < 1) {
+          return '¡Debes agregar al menos 1 extra!';
+        }
+        if (value > 10) {
+          return '¡Máximo 10 extras por producto!';
+        }
+      }
+    });
+
+    if (result.isConfirmed) {
+      const qty = parseInt(result.value);
+      setSelectedExtras(prev => {
+        const existing = prev.find(e => e.id_extra === extra.id_extra);
+        if (existing) {
+          return prev.map(e =>
+            e.id_extra === extra.id_extra ? { ...e, quantity: qty } : e
+          );
+        }
+        return [...prev, { ...extra, quantity: qty }];
+      });
+
+      // Mostrar mensaje de confirmación
+      await Swal.fire({
+        title: '¡Extra agregado!',
+        text: `${qty} ${extra.name} agregado al producto`,
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end'
+      });
+    }
+  };
+
+  const removeExtra = async (extraId, extraName) => {
+    const result = await Swal.fire({
+      title: '¿Estás seguro?',
+      text: `¿Quieres quitar ${extraName} del producto?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, quitar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280'
+    });
+
+    if (result.isConfirmed) {
+      setSelectedExtras(prev => prev.filter(e => e.id_extra !== extraId));
+
+      await Swal.fire({
+        title: '¡Extra removido!',
+        text: `${extraName} quitado del producto`,
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end'
+      });
+    }
+  };
+
+  const handleSauceClick = (sauce) => {
+    setSelectedSauces(prev => {
+      const existing = prev.find(s => s.id_sauce === sauce.id_sauce);
+      if (existing) {
+        return prev.filter(s => s.id_sauce !== sauce.id_sauce);
+      }
+      return [...prev, sauce];
+    });
+  };
+
+  const handleSave = async () => {
+    const newErrors = {};
+
+    // Validar opciones requeridas
+    if (product.options && product.options.length > 1 && !selectedOption) {
+      newErrors.option = 'Por favor selecciona un tamaño.';
+    }
+
+    // Validar sabores requeridos
+    if (product.flavors && product.flavors.length > 1 && !selectedFlavor) {
+      newErrors.flavor = 'Por favor selecciona un sabor.';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+
+      // Mostrar error con SweetAlert2
+      await Swal.fire({
+        title: '¡Faltan datos!',
+        text: 'Por favor completa todos los campos requeridos.',
+        icon: 'warning',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#f59e0b'
+      });
+      return;
+    }
+
+    const productData = {
+      ...product,
+      options: selectedOption ? [selectedOption] : [],
+      flavors: selectedFlavor ? [selectedFlavor] : [],
+      quantity: quantity,
+      extras: selectedExtras,
+      sauces: selectedSauces,
+      comment: comment,
     };
 
-    if (!isOpen || !product) return null;
+    if (isEditing && onSave) {
+      onSave(productData);
+      await Swal.fire({
+        title: '¡Producto actualizado!',
+        text: 'Los cambios se han guardado correctamente',
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false
+      });
+    } else {
+      addToCart(productData);
+      if (typeof onAddedToCart === 'function') {
+        onAddedToCart();
+      }
+      await Swal.fire({
+        title: '¡Agregado al carrito!',
+        text: `${product.name} se agregó correctamente`,
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false
+      });
+    }
+    onClose();
+  };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40">
-            <div
-                ref={modalRef}
-                className={`w-full sm:w-[500px] max-h-[100vh] rounded-t-xl p-4 shadow-lg
-                ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}
-            >
-                <div className="flex justify-between items-center border-b pb-2 mb-4">
-                    <h2 className="text-lg font-semibold">{product.name}</h2>
-                    <button onClick={onClose} className="text-xl font-bold"><XMarkIcon className="w-6 h-6" /></button>
-                </div>
+  // No renderizar si no está abierto o no hay producto
+  if (!isOpen || !product) return null;
 
-                <div className="text-center text-gray-400 dark:text-gray-500">
-                    <div className="manager-options flex flex-wrap gap-2 justify-center">
-                        {allOptions.map((option, idx) => (
-                            <button
-                                key={idx}
-                                className={`px-4 py-2 rounded ${
-                                    selectedOption?.size === option.size
-                                        ? 'bg-blue-700'
-                                        : 'bg-blue-500'
-                                } text-white hover:bg-blue-600`}
-                                onClick={() => handleOptionClick(option)}
-                            >
-                                {option.size} - ${option.price}
-                            </button>
-                        ))}
-                    </div>
-
-                    {error && (
-                        <div className="text-red-600 font-semibold mt-2">{error}</div>
-                    )}
-
-                    <div className="manager-quantity flex flex-wrap gap-2 justify-center mt-5">
-                        <button
-                            className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600"
-                            onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
-                        >
-                            <MinusIcon className="w-5 h-5" />
-                        </button>
-                        <span className="text-lg font-semibold">Cantidad: {quantity}</span>
-                        <button
-                            className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600"
-                            onClick={() => setQuantity((prev) => prev + 1)}
-                        >
-                            <PlusIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-                    <p className="mt-5 text-xl ...">Extras</p>
-                    <div className='manager-extras border-2 border-red-500 w-full h-[25vh] overflow-y-scroll'>
-                        {allExtras.map((extra) => (
-                            <button
-                                key={extra.id}
-                                className={`w-full h-[5vh] mb-2 rounded ${
-                                selectedExtras.some(e => e.id === extra.id)
-                                    ? 'bg-blue-700'
-                                    : 'bg-blue-500'
-                                } text-white hover:bg-blue-600`}
-                                onClick={() => handleExtraClick(extra)}
-                            >
-                                {extra.name} (+${extra.price})
-                            </button>
-                        ))}
-                    </div>
-                    <p className="mt-5 text-xl ...">Comentarios</p>
-                    <textarea
-                        className="w-full h-[8vh] mb-5 border-2 border-gray-300 rounded p-2 mt-2"
-                        placeholder="Escribe tus comentarios aquí..."
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                    />
-                    <button
-                        className="w-full h-[7vh] bg-green-500 text-white rounded hover:bg-green-600"
-                        onClick={handleSave}
-                    >
-                        {isEditing ? 'Guardar cambios' : 'Agregar al carrito'}
-                    </button>
-                </div>
-            </div>
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40">
+      <div
+        className={`w-full sm:w-[800px] h-[100vh] max-h-[100vh] rounded-t-xl p-4 shadow-lg
+        ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}
+      >
+        <div className="flex justify-between items-center border-b pb-2 mb-4">
+          <h2 className="text-lg font-semibold">{product.name}</h2>
+          <button onClick={onClose} className="text-xl font-bold">
+            <XMarkIcon className="w-6 h-6" />
+          </button>
         </div>
-    );
+
+        <div className="h-[90vh] overflow-y-scroll">
+          <div className="space-y-6">
+            {/* ✅ Imagen del producto CORREGIDA con protección anti-loop */}
+            <div className="flex justify-center">
+              <div className="relative">
+                <img
+                  src={getOptimizedProductImage()}
+                  alt={product.name}
+                  className="w-32 h-32 object-cover rounded-lg shadow-md"
+                  onError={handleProductImageError}
+                />
+                {productImageState.hasError && (
+                  <div className="absolute inset-0 bg-gray-100 dark:bg-gray-700 rounded-lg flex flex-col items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                    </svg>
+                    <span className="text-xs text-gray-500 text-center">{product.name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ✅ Tamaños/Opciones MEJORADO con iconos de check y mejor espaciado */}
+            {product.options && product.options.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Tamaños</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 lg:gap-5">
+                  {product.options.map((option, idx) => (
+                    <div
+                      key={`option-${option.id_variant}-${idx}`}
+                      className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 min-h-[80px] ${
+                        selectedOption?.id_variant === option.id_variant
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
+                      }`}
+                      onClick={() => {
+                        setSelectedOption(option);
+                        setErrors(prev => ({ ...prev, option: '' }));
+                      }}
+                    >
+                      {/* ✅ Icono de check con mejor posicionamiento */}
+                      {selectedOption?.id_variant === option.id_variant && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
+                      <div className="text-center">
+                        <p className="font-medium text-sm sm:text-base">{option.size}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">${option.price}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {errors.option && (
+                  <p className="text-red-500 text-sm mt-2">{errors.option}</p>
+                )}
+              </div>
+            )}
+
+            {/* ✅ Sabores MEJORADO con iconos de check */}
+            {product.flavors && product.flavors.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Sabores</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 lg:gap-5">
+                  {product.flavors.map((flavor, idx) => (
+                    <div
+                      key={`flavor-${flavor.id_flavor}-${idx}`}
+                      className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 min-h-[70px] ${
+                        selectedFlavor?.id_flavor === flavor.id_flavor
+                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
+                      }`}
+                      onClick={() => {
+                        setSelectedFlavor(flavor);
+                        setErrors(prev => ({ ...prev, flavor: '' }));
+                      }}
+                    >
+                      {/* ✅ Icono de check para sabores */}
+                      {selectedFlavor?.id_flavor === flavor.id_flavor && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
+                      <div className="text-center">
+                        <p className="font-medium text-sm sm:text-base">{flavor.name}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {errors.flavor && (
+                  <p className="text-red-500 text-sm mt-2">{errors.flavor}</p>
+                )}
+              </div>
+            )}
+
+            {/* Cantidad */}
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Cantidad</h3>
+              <div className="flex items-center justify-center gap-6">
+                <button
+                  className="p-3 rounded-full border border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  onClick={() => setQuantity(prev => Math.max(1, prev - 1))}
+                >
+                  <MinusIcon className="w-5 h-5" />
+                </button>
+                <span className="text-2xl font-bold px-6 min-w-[3rem] text-center">{quantity}</span>
+                <button
+                  className="p-3 rounded-full border border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  onClick={() => setQuantity(prev => prev + 1)}
+                >
+                  <PlusIcon className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* ✅ Extras MEJORADO con mejor espaciado */}
+            {extras && extras.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Extras</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {extras.map((extra, idx) => (
+                    <div
+                      key={`extra-${extra.id_extra}-${idx}`}
+                      className={`relative flex items-center p-4 rounded-lg border cursor-pointer transition-all duration-200 min-h-[70px] ${
+                        selectedExtras.some(e => e.id_extra === extra.id_extra)
+                          ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
+                      }`}
+                      onClick={() => handleExtraClick(extra)}
+                    >
+                      {/* ✅ Icono de check para extras */}
+                      {selectedExtras.some(e => e.id_extra === extra.id_extra) && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 pr-8">
+                        <p className="font-medium text-sm sm:text-base">{extra.name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">+${extra.price}</p>
+                        {selectedExtras.find(e => e.id_extra === extra.id_extra) && (
+                          <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                            Cantidad: {selectedExtras.find(e => e.id_extra === extra.id_extra)?.quantity}
+                          </p>
+                        )}
+                      </div>
+
+                      {selectedExtras.some(e => e.id_extra === extra.id_extra) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeExtra(extra.id_extra, extra.name);
+                          }}
+                          className="absolute top-2 right-2 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-20"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ✅ Salsas MEJORADO con iconos de check */}
+            {sauces && sauces.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Salsas</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {sauces.map((sauce, idx) => (
+                    <div
+                      key={`sauce-${sauce.id_sauce}-${idx}`}
+                      className={`relative flex items-center p-4 rounded-lg border cursor-pointer transition-all duration-200 min-h-[70px] ${
+                        selectedSauces.some(s => s.id_sauce === sauce.id_sauce)
+                          ? 'border-red-500 bg-red-50 dark:bg-red-900/20 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-sm'
+                      }`}
+                      onClick={() => handleSauceClick(sauce)}
+                    >
+                      {/* ✅ Icono de check para salsas */}
+                      {selectedSauces.some(s => s.id_sauce === sauce.id_sauce) && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-md z-10">
+                          <CheckIcon className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 text-center">
+                        <p className="font-medium text-sm sm:text-base">{sauce.name}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Comentarios */}
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Comentarios</h3>
+              <textarea
+                className={`w-full p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                  theme === 'dark'
+                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                    : 'bg-white'
+                }`}
+                rows="3"
+                placeholder="Escribe tus comentarios aquí..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+              />
+            </div>
+
+            {/* Botón guardar/agregar */}
+            <button
+              className="w-full py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-lg shadow-md hover:shadow-lg"
+              onClick={handleSave}
+            >
+              {isEditing ? 'Guardar cambios' : 'Agregar al carrito'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default ProductOptionsModal;

@@ -4,20 +4,263 @@
 **             THEMES DARK AND LIGHT
 ** ****************************************** **/
 
-
 :root {
   --bg-color: white;
   --text-color: black;
+  --text-title-order-color: white;
+  --text-total-order-color: white;
+  --bg-color-title-card-order: #1a202c;
+
+  /* Nuevas variables para mejor soporte */
+  --primary-bg: #ffffff;
+  --secondary-bg: #f9fafb;
+  --border-color: #e5e7eb;
+  --card-bg: #ffffff;
+  --hover-bg: #f3f4f6;
 }
 
-.theme-dark {
+.theme-dark,
+.dark {
   --bg-color: #1a202c;
   --text-color: white;
+  --text-title-order-color: #1a202c;
+  --text-total-order-color: #1a202c;
+  --bg-color-title-card-order: #f3f3f3;
+
+  /* Nuevas variables para tema oscuro */
+  --primary-bg: #1a202c;
+  --secondary-bg: #2d3748;
+  --border-color: #4a5568;
+  --card-bg: #2d3748;
+  --hover-bg: #4a5568;
 }
 
+/* Aplicar variables CSS a elementos */
+.theme-bg {
+  background-color: var(--primary-bg);
+  color: var(--text-color);
+}
 
+.theme-card {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+}
 
-/** ************************************** **
- **          GRID PRODUCTS STYLES
- ** ************************************** **/
+.theme-secondary-bg {
+  background-color: var(--secondary-bg);
+}
 
+.theme-hover:hover {
+  background-color: var(--hover-bg);
+}
+
+/** ************************************* **
+  **              Global Styles
+  ** ************************************* **/
+
+.overlay_loader {
+  background-color: #000000b8;
+}
+
+/* Transiciones suaves para cambio de tema */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Mejoras para el tema oscuro */
+.dark .bg-white {
+  background-color: var(--card-bg) !important;
+}
+
+.dark .text-black {
+  color: var(--text-color) !important;
+}
+
+.dark .text-gray-900 {
+  color: #f7fafc !important;
+}
+
+.dark .text-gray-800 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-gray-700 {
+  color: #cbd5e0 !important;
+}
+
+.dark .text-gray-600 {
+  color: #a0aec0 !important;
+}
+
+.dark .text-gray-500 {
+  color: #718096 !important;
+}
+
+.dark .border-gray-200 {
+  border-color: var(--border-color) !important;
+}
+
+.dark .border-gray-300 {
+  border-color: #4a5568 !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: #2d3748 !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: #4a5568 !important;
+}
+
+.dark .bg-gray-200 {
+  background-color: #718096 !important;
+}
+
+/* Hover effects para tema oscuro */
+.dark .hover\:bg-gray-100:hover {
+  background-color: var(--hover-bg) !important;
+}
+
+.dark .hover\:bg-gray-200:hover {
+  background-color: #718096 !important;
+}
+
+/** ************************************* **
+  **        Modal Options Products
+  ** ************************************* **/
+.container-options {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  overflow-y: auto;
+}
+
+/** ************************************* **
+  **           Scrollbar Hide
+  ** ************************************* **/
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Scrollbar personalizado para tema oscuro */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #2d3748;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4a5568;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
+
+/** ************************************* **
+  **              ORDERS
+  ** ************************************* **/
+
+.btn-filter-orders {
+  color: var(--text-color);
+}
+
+.font-medium {
+  color: var(--text-color);
+}
+
+.text-option-details {
+  color: var(--text-color);
+}
+
+.title-card-order {
+  background-color: var(--bg-color-title-card-order);
+}
+
+.text-title-order {
+  color: var(--text-title-order-color);
+}
+
+.text-total-order {
+  color: var(--text-total-order-color);
+}
+
+/** ************************************* **
+  **           Custom Animations
+  ** ************************************* **/
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Animación de fade para cambio de tema */
+@keyframes theme-fade {
+  0% { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+
+.theme-transition {
+  animation: theme-fade 0.3s ease-in-out;
+}
+
+/* Mejoras para componentes específicos */
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.dark .shadow-md {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+}
+
+.dark .shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+}
+
+.dark .shadow-xl {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+}
+
+/* Estilos para botones en tema oscuro */
+.dark .bg-white {
+  background-color: #2d3748 !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .border-white {
+  border-color: #4a5568 !important;
+}
+
+/* Placeholder text en tema oscuro */
+.dark ::placeholder {
+  color: #a0aec0;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #2d3748;
+  border-color: #4a5568;
+  color: #e2e8f0;
+}
+
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  border-color: #63b3ed;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}

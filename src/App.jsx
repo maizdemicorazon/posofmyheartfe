@@ -1,48 +1,70 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useState } from 'react';
 import { CartProvider, useCart } from './context/CartContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { LoadingProvider } from './context/LoadingContext';
+import { MessageProvider } from './context/MessageContext';
 import Layout from './Layouts/Layout';
 import Home from './components/Home';
-import Cart from './components/cart/Cart';
+import CartPage from './components/cart/CartPage';
 import ProductOptionsModal from './components/grid/ProductOptionsModal';
 import Orders from './components/orders/Orders';
+import DailyEarnings from './components/metrics/DailyEarnings';
+import EarningsChart from './components/metrics/EarningsChart';
+import SalesReport from './components/reports/SalesReport'; // NUEVO IMPORT
 
 function AppContent() {
   const { editingProduct, saveEditProduct, cancelEditProduct } = useCart();
+  const [view, setView] = useState('home');
+  const [selectedCategory, setSelectedCategory] = useState(null);
 
   return (
-    <Router>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/cart" element={<Cart />} />
-          <Route path="/orders" element={<Orders />} />
-        </Routes>
-        {/* Modal para editar producto */}
-        {editingProduct && (
-          <ProductOptionsModal
-            isOpen={true}
-            onClose={cancelEditProduct}
-            product={editingProduct}
-            extras={editingProduct.extras || []}
-            initialQuantity={editingProduct.quantity}
-            initialOptions={editingProduct.options}
-            initialExtras={editingProduct.extras}
-            initialComment={editingProduct.comment}
-            onSave={saveEditProduct}
-            isEditing={true}
-          />
-        )}
-      </Layout>
-    </Router>
+    <Layout
+      view={view}
+      setView={setView}
+      selectedCategory={selectedCategory}
+      onSelectCategory={setSelectedCategory}
+    >
+      {/* Renderizar solo según la vista actual */}
+      {view === 'home' && <Home selectedCategory={selectedCategory} />}
+      {view === 'cart' && <CartPage onBack={() => setView('home')} />}
+      {view === 'orders' && <Orders onBack={() => setView('home')} />}
+      {view === 'metrics' && <DailyEarnings onBack={() => setView('home')} />}
+      {view === 'earnings-chart' && <EarningsChart onBack={() => setView('home')} />}
+      {view === 'sales-report' && <SalesReport onBack={() => setView('home')} />} {/* NUEVA VISTA */}
+
+      {/* Modal de edición de producto */}
+      {editingProduct && (
+        <ProductOptionsModal
+          isOpen={true}
+          onClose={cancelEditProduct}
+          product={editingProduct}
+          initialQuantity={editingProduct.quantity}
+          initialOptions={editingProduct.options}
+          initialFlavors={editingProduct.flavors}
+          initialExtras={editingProduct.extras}
+          initialSauces={editingProduct.sauces}
+          initialComment={editingProduct.comment}
+          onSave={saveEditProduct}
+          isEditing={true}
+        />
+      )}
+    </Layout>
   );
 }
 
-// Aquí solo pones el provider
 function App() {
   return (
-    <CartProvider>
-      <AppContent />
-    </CartProvider>
+    <div className="App">
+      <ThemeProvider>
+        <LoadingProvider>
+          <MessageProvider>
+            <CartProvider>
+              <AppContent />
+            </CartProvider>
+          </MessageProvider>
+        </LoadingProvider>
+      </ThemeProvider>
+    </div>
   );
 }
 
