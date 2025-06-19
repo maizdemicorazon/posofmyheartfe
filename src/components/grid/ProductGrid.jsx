@@ -34,9 +34,27 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
   const { setMessage } = useMessage();
   const { theme } = useTheme();
 
+  // ✅ Usar useRef para evitar dobles peticiones
+  const hasFetched = useRef(false);
+  const isCurrentlyFetching = useRef(false);
+
   useEffect(() => {
     const fetchData = async () => {
+      // ✅ Prevenir múltiples llamadas simultáneas
+      if (isCurrentlyFetching.current) {
+        console.log('🚫 Ya hay una petición en curso, saltando...');
+        return;
+      }
+
+      // ✅ Si ya se cargaron productos y hay data, no volver a cargar
+      if (hasFetched.current && products.length > 0) {
+        console.log('✅ Productos ya cargados, saltando fetch');
+        return;
+      }
+
+      isCurrentlyFetching.current = true;
       setLoading(true);
+
       try {
         console.log('🔍 Fetching products from API...');
 
@@ -49,11 +67,13 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
           setExtras(response.extras || []);
           setSauces(response.sauces || []);
           setMessage(null);
+          hasFetched.current = true; // ✅ Marcar como cargado exitosamente
         } else {
           throw new Error('No se recibieron productos');
         }
       } catch (error) {
         console.error('❌ Error al obtener los productos:', error);
+        hasFetched.current = false; // ✅ Permitir retry en caso de error
 
         let errorMessage = 'Error de conexión con el servidor.';
 
@@ -71,13 +91,23 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         });
       } finally {
         setLoading(false);
+        isCurrentlyFetching.current = false;
       }
     };
 
-    if (products.length === 0) {
-      fetchData();
-    }
-  }, [products.length, setProducts, setExtras, setSauces, setLoading, setMessage]);
+    fetchData();
+
+    // ✅ Solo incluir dependencias que realmente importan para el timing del fetch
+    // Remover los setters que causan renders innecesarios
+  }, [products.length]); // ✅ Solo products.length como dependencia
+
+  // ✅ Función para refrescar datos manualmente (si necesitas)
+  const refreshProducts = () => {
+    hasFetched.current = false;
+    isCurrentlyFetching.current = false;
+    // Esto va a triggear el useEffect porque products.length cambiará
+    setProducts([]);
+  };
 
   // ✅ Filtrado optimizado con useMemo
   const filteredProducts = useMemo(() => {
@@ -216,6 +246,16 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
                 : 'Intenta refrescar la página o verifica tu conexión.'
               }
             </p>
+            {/* ✅ Botón para refrescar manualmente si hay error */}
+            <button
+              onClick={refreshProducts}
+              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 flex items-center gap-2 mx-auto"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refrescar productos
+            </button>
           </div>
         ) : (
           filteredProducts.map((product) => (

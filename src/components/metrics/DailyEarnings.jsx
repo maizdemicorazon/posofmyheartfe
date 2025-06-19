@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
 import {
@@ -21,8 +21,19 @@ function DailyEarnings({ onBack }) {
   const [loading, setLoading] = useState(false);
   const { setMessage } = useMessage();
 
+    // ✅ Usar useRef para evitar dobles peticiones
+    const hasFetched = useRef(false);
+    const isCurrentlyFetching = useRef(false);
+
   // Función para obtener métricas
   const fetchMetrics = async (days) => {
+    console.log('🔍 Iniciando fetchMetrics...');
+    if (isCurrentlyFetching.current) {
+        console.log('🚫 Ya hay una petición en curso, saltando...');
+        return;
+    }
+
+    isCurrentlyFetching.current = true;
     setLoading(true);
     try {
       const response = await fetch(`http://localhost:8081/api/metrics/daily-earnings/${days}`);
@@ -35,8 +46,10 @@ function DailyEarnings({ onBack }) {
       console.log('Daily Earnings Data:', data);
       setMetricsData(data);
       setMessage(null);
+      hasFetched.current = true; // ✅ Marcar como cargado exitosamente
     } catch (error) {
       console.error('Error fetching daily earnings:', error);
+      hasFetched.current = false; // ✅ Permitir retry en caso de error
       setMessage({
         text: 'Error al cargar las métricas. Verifica tu conexión.',
         type: 'error'
@@ -67,6 +80,7 @@ function DailyEarnings({ onBack }) {
       });
     } finally {
       setLoading(false);
+      isCurrentlyFetching.current = false;
     }
   };
 

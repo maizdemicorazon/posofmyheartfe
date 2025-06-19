@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useCart } from '../../context/CartContext';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
@@ -34,9 +34,19 @@ function Orders({ onBack }) {
 
   console.log('📊 Current state - orders:', orders?.length || 0, 'loading:', isLoadingOrders, 'filter:', filter);
 
+  // ✅ Usar useRef para evitar dobles peticiones
+  const hasFetched = useRef(false);
+  const isCurrentlyFetching = useRef(false);
+
   // ✅ Función para obtener órdenes de la API con mejor debugging y transformación
   const fetchOrders = async () => {
     console.log('🔍 Iniciando fetchOrders...');
+      if (isCurrentlyFetching.current) {
+        console.log('🚫 Ya hay una petición en curso, saltando...');
+        return;
+      }
+
+    isCurrentlyFetching.current = true;
     setIsLoadingOrders(true);
 
     try {
@@ -105,8 +115,10 @@ function Orders({ onBack }) {
       setOrders(transformedOrders);
       console.log('✅ Órdenes guardadas en estado:', transformedOrders);
       setMessage(null); // Limpiar mensajes de error previos
+      hasFetched.current = true; // ✅ Marcar como cargado exitosamente
     } catch (error) {
       console.error('❌ Error fetching orders:', error);
+      hasFetched.current = false; // ✅ Permitir retry en caso de error
 
       let errorMessage = 'Error al cargar las órdenes.';
 
@@ -128,6 +140,7 @@ function Orders({ onBack }) {
     } finally {
       console.log('🏁 fetchOrders completed, setting loading to false');
       setIsLoadingOrders(false);
+      isCurrentlyFetching.current = false;
     }
   };
 

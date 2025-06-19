@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
 import { useTheme } from '../../context/ThemeContext'; // AGREGADO
@@ -41,10 +41,16 @@ function EarningsChart({ onBack }) {
   const { setMessage } = useMessage();
   const { theme } = useTheme(); // AGREGADO
 
+   // ✅ Usar useRef para evitar dobles peticiones
+    const hasFetched = useRef(false);
+    const isCurrentlyFetching = useRef(false);
+
   // Función para obtener datos de ganancias
   const fetchEarningsData = async (days, label) => {
     try {
       const response = await fetch(`http://localhost:8081/api/metrics/daily-earnings/${days}`);
+
+      console.log('🔍 Iniciando fetchOrders...');
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -68,43 +74,24 @@ function EarningsChart({ onBack }) {
         dayIndex: index
       })) || [];
     } catch (error) {
-      console.error(`Error fetching ${label}:`, error);
-      // Datos de ejemplo para demostración
-      return generateMockData(days, label);
+        console.error(`Error fetching ${label}:`, error);
+        let errorMessage = 'Error al cargar las órdenes.';
+
+        if (error.name === 'TimeoutError') {
+            errorMessage = 'Tiempo de espera agotado. Verifica que el backend esté corriendo.';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'No se puede conectar al servidor. Verifica que el backend esté corriendo en http://localhost:8081';
+        } else if (error.message.includes('CORS')) {
+            errorMessage = 'Error de CORS. Verifica la configuración del backend.';
+        } else if (error.message.includes('HTTP error')) {
+          errorMessage = `Error del servidor: ${error.message}`;
+        }
+
+        setMessage({
+        text: errorMessage,
+        type: 'error'
+        });
     }
-  };
-
-  // Generar datos de ejemplo
-  const generateMockData = (days, label) => {
-    const data = [];
-    const today = new Date();
-
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-
-      // Simulamos variación realista en los datos
-      const baseValue = 200 + Math.random() * 300;
-      const orders = Math.floor(3 + Math.random() * 7);
-      const seasonalFactor = 1 + 0.3 * Math.sin((i / days) * Math.PI * 2); // Variación estacional
-
-      data.push({
-        date: date.toLocaleDateString('es-ES', {
-          month: 'short',
-          day: 'numeric'
-        }),
-        fullDate: date.toISOString().split('T')[0],
-        dateObj: date,
-        grossSells: Math.round(baseValue * 1.5 * seasonalFactor),
-        grossProfit: Math.round(baseValue * seasonalFactor),
-        netProfit: Math.round(baseValue * 0.4 * seasonalFactor),
-        orders: orders,
-        terminalDiscount: Math.round(baseValue * 0.05),
-        dayIndex: days - 1 - i
-      });
-    }
-
-    return data;
   };
 
   // Cargar datos iniciales
@@ -113,6 +100,12 @@ function EarningsChart({ onBack }) {
   }, []);
 
   const loadChartData = async () => {
+     if (isCurrentlyFetching.current) {
+      console.log('🚫 Ya hay una petición en curso, saltando...');
+      return;
+    }
+
+    isCurrentlyFetching.current = true;
     setLoading(true);
     try {
       const [data1, data2] = await Promise.all([
@@ -123,14 +116,17 @@ function EarningsChart({ onBack }) {
       setChartData(data1);
       setCompareData(data2);
       setMessage(null);
+      hasFetched.current = true; // ✅ Marcar como cargado exitosamente
     } catch (error) {
       console.error('Error loading chart data:', error);
+      hasFetched.current = false; // ✅ Permitir retry en caso de error
       setMessage({
         text: 'Error al cargar los datos de la gráfica',
         type: 'error'
       });
     } finally {
       setLoading(false);
+      isCurrentlyFetching.current = false;
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -45,6 +45,10 @@ function SalesReport({ onBack }) {
 
   // Colores para gráficas
   const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'];
+
+  // ✅ Usar useRef para evitar dobles peticiones
+  const hasFetched = useRef(false);
+  const isCurrentlyFetching = useRef(false);
 
   // Función para obtener datos del reporte
   const fetchSalesReport = async (days) => {
@@ -129,6 +133,12 @@ function SalesReport({ onBack }) {
   }, [period, customDays]);
 
   const loadReportData = async () => {
+    if (isCurrentlyFetching.current) {
+      console.log('🚫 Ya hay una petición en curso, saltando...');
+      return;
+    }
+
+    isCurrentlyFetching.current = true;
     setLoading(true);
     try {
       const days = period === 'custom' ? customDays : getPeriodDays(period);
@@ -144,14 +154,17 @@ function SalesReport({ onBack }) {
         // Limpiar mensaje después de 3 segundos
         setTimeout(() => setMessage(null), 3000);
       }
+    hasFetched.current = true; // ✅ Marcar como cargado exitosamente
     } catch (error) {
       console.error('Error loading sales report:', error);
+      hasFetched.current = false; // ✅ Permitir retry en caso de error
       setMessage({
         text: 'Error al cargar el reporte de ventas',
         type: 'error'
       });
     } finally {
       setLoading(false);
+      isCurrentlyFetching.current = false;
     }
   };
 
