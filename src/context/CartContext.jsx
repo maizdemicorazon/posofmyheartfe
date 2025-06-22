@@ -3,6 +3,14 @@ import { useLoading } from './LoadingContext';
 import { useMessage } from './MessageContext';
 import Swal from 'sweetalert2';
 
+// ✅ IMPORTAR NUEVAS UTILIDADES DE API
+import {
+  createOrder,
+  getOrders,
+  updateOrder,
+  getOrderById
+} from '../utils/api';
+
 // Crear el contexto
 const CartContext = createContext(undefined);
 
@@ -45,216 +53,218 @@ export function CartProvider({ children }) {
       ? product.sauces.reduce((sum, sauce) => sum + Number(sauce?.price || 0), 0)
       : 0;
 
-    return (optionsPrice + extrasPrice + saucesPrice) * Number(product.quantity || 1);
+    const flavorsPrice = Array.isArray(product.flavors)
+      ? product.flavors.reduce((sum, flavor) => sum + Number(flavor?.price || 0), 0)
+      : 0;
+
+    const basePrice = Number(product.price || 0);
+    const quantity = Number(product.quantity || 1);
+
+    return (basePrice + optionsPrice + extrasPrice + saucesPrice + flavorsPrice) * quantity;
   }, []);
 
-  // Total del carrito calculado
+  // Calcular total del carrito
   const cartTotal = useMemo(() => {
-    return cart.reduce((sum, product) => sum + calculateProductPrice(product), 0);
+    return cart.reduce((total, item) => {
+      if (item.totalPrice) {
+        return total + item.totalPrice;
+      }
+      return total + calculateProductPrice(item);
+    }, 0);
   }, [cart, calculateProductPrice]);
 
-  // ✅ NUEVA FUNCIÓN: Transformar datos de orden mejorada
-  const transformOrderData = useCallback((orderData) => {
-    return {
-      id_order: orderData.id_order,
-      client_name: orderData.client_name || 'Cliente',
-      order_date: orderData.order_date,
-      total: orderData.bill || orderData.total || 0,
-      payment_method: {
-        id_payment_method: orderData.payment_method,
-        name: orderData.payment_name || 'Desconocido'
-      },
-      comment: orderData.comment,
-      items: (orderData.items || []).map(item => ({
-        id_order_detail: item.id_order_detail,
-        id_product: item.id_product,
-        id_variant: item.id_variant,
-        quantity: item.quantity || 1,
-        price: item.price || item.product_price || 0,
-
-        // ✅ Estructura anidada para compatibilidad con OrderEditModal
-        product: {
-          id_product: item.id_product,
-          name: item.product_name,
-          image: item.product_image
-        },
-        variant: {
-          id_variant: item.id_variant,
-          size: item.variant_name
-        },
-
-        // ✅ También mantener campos directos por compatibilidad
-        product_name: item.product_name,
-        product_image: item.product_image,
-        variant_name: item.variant_name,
-
-        sauces: item.sauces || [],
-        extras: item.extras || [],
-        flavors: item.flavors || []
-      }))
+  // Función para agregar al carrito
+  const addToCart = useCallback((item) => {
+    const newItem = {
+      id: Date.now() + Math.random(),
+      ...item,
+      totalPrice: item.totalPrice || calculateProductPrice(item)
     };
+
+    setCart(prev => [...prev, newItem]);
+    console.log('Item added to cart:', newItem);
+  }, [calculateProductPrice]);
+
+  // Función para remover del carrito
+  const removeFromCart = useCallback((itemId) => {
+    setCart(prev => prev.filter(item => item.id !== itemId));
+    console.log('Item removed from cart:', itemId);
   }, []);
 
-  // Funciones del carrito
-  const addToCart = useCallback((productData) => {
-    try {
-      setLoading(true);
-      setCart(prev => [...prev, { ...productData, id: Date.now() + Math.random() }]);
-      setMessage({ text: 'Producto agregado al carrito', type: 'success' });
-    } catch (error) {
-      setMessage({ text: 'Error al agregar producto al carrito', type: 'error' });
-      console.error('Error al agregar producto:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setMessage]);
+  // Función para limpiar carrito
+  const clearCart = useCallback(() => {
+    setCart([]);
+    setEditingProduct(null);
+    console.log('Cart cleared');
+  }, []);
 
-  const removeFromCart = useCallback((index) => {
-    setCart(prev => prev.filter((_, i) => i !== index));
-    setMessage({ text: 'Producto removido del carrito', type: 'info' });
-  }, [setMessage]);
+  // Funciones para edición de productos
+  const startEditProduct = useCallback((cartItem) => {
+    setEditingProduct(cartItem);
+    console.log('Started editing product:', cartItem);
+  }, []);
 
-  const startEditProduct = useCallback((index) => {
-    const product = cart[index];
-    if (product) {
-      setEditingProduct({ ...product, index });
-    }
-  }, [cart]);
+  const saveEditProduct = useCallback((updatedItem) => {
+    if (!editingProduct) return;
 
-  const saveEditProduct = useCallback((productData) => {
-    if (editingProduct?.index !== undefined) {
-      setCart(prev =>
-        prev.map((item, i) =>
-          i === editingProduct.index ? { ...productData, id: item.id } : item
-        )
-      );
-      setEditingProduct(null);
-      setMessage({ text: 'Producto actualizado', type: 'success' });
-    }
-  }, [editingProduct, setMessage]);
+    setCart(prev => prev.map(item =>
+      item.id === editingProduct.id
+        ? { ...updatedItem, id: editingProduct.id, totalPrice: updatedItem.totalPrice || calculateProductPrice(updatedItem) }
+        : item
+    ));
+
+    setEditingProduct(null);
+    console.log('Product updated:', updatedItem);
+  }, [editingProduct, calculateProductPrice]);
 
   const cancelEditProduct = useCallback(() => {
     setEditingProduct(null);
+    console.log('Product edit cancelled');
   }, []);
 
-  const clearCart = useCallback(() => {
-    setCart([]);
-    setMessage({ text: 'Carrito limpiado', type: 'info' });
-  }, [setMessage]);
-
-  // ✅ Guardar orden con API real (MEJORADO con SweetAlert2)
-  const saveOrder = useCallback(async () => {
-    if (cart.length === 0) {
-      await Swal.fire({
-        title: 'Carrito vacío',
-        text: 'Agrega productos antes de realizar un pedido',
-        icon: 'warning',
-        confirmButtonText: 'Entendido',
-        confirmButtonColor: '#f59e0b'
-      });
-      return;
-    }
-
-    // ✅ SweetAlert2 para capturar nombre del cliente
-    const { value: clientName } = await Swal.fire({
-      title: '¿A nombre de quién es la orden?',
-      input: 'text',
-      inputLabel: 'Nombre del cliente',
-      inputPlaceholder: 'Escribe el nombre...',
-      showCancelButton: true,
-      confirmButtonText: 'Continuar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#10b981',
-      cancelButtonColor: '#6b7280',
-      inputValidator: (value) => {
-        if (!value || value.trim().length < 2) {
-          return 'El nombre debe tener al menos 2 caracteres';
-        }
-      }
-    });
-
-    if (!clientName) return;
-
-    setLoading(true);
-
-    try {
-      // Estructura según los ejemplos de Postman
-      const order = {
-        id_payment_method: 1,
-        client_name: clientName.trim(),
-        comment: "Pedido realizado desde el carrito",
-        items: cart.map(item => {
+  // ✅ FUNCIÓN PARA TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND - CORREGIDA
+  const transformOrderData = useCallback((orderData = null) => {
+    // Si no se proporciona orderData, transformar desde el carrito
+    if (!orderData) {
+      return {
+        order_items: cart.map(item => {
           const orderItem = {
-            id_product: item.id_product,
+            id_product: item.product?.id_product || item.id_product,
             quantity: item.quantity || 1,
-            id_variant: item.options?.[0]?.id_variant || item.id_variant || 0
+            unit_price: item.selectedOption?.price || item.product?.price || item.price || 0,
+            comment: item.comment || null
           };
 
-          // Agregar extras si existen
-          if (item.extras && item.extras.length > 0) {
-            orderItem.extras = item.extras.map(extra => ({
+          // Agregar opción seleccionada
+          if (item.selectedOption) {
+            orderItem.id_variant = item.selectedOption.id_variant;
+          }
+
+          // Agregar sabor seleccionado
+          if (item.selectedFlavor) {
+            orderItem.id_flavor = item.selectedFlavor.id_flavor;
+          }
+
+          // Agregar extras seleccionados
+          if (item.selectedExtras && item.selectedExtras.length > 0) {
+            orderItem.extras = item.selectedExtras.map(extra => ({
               id_extra: extra.id_extra,
-              quantity: extra.quantity || 1
+              quantity: 1
             }));
           }
 
-          // Agregar salsas si existen
-          if (item.sauces && item.sauces.length > 0) {
-            orderItem.sauces = item.sauces.map(sauce => ({
+          // Agregar salsas seleccionadas
+          if (item.selectedSauces && item.selectedSauces.length > 0) {
+            orderItem.sauces = item.selectedSauces.map(sauce => ({
               id_sauce: sauce.id_sauce
             }));
-          }
-
-          // Agregar sabor si existe (nota: es "flavor" singular, no "flavors")
-          if (item.flavors && item.flavors.length > 0) {
-            orderItem.flavor = item.flavors[0].id_flavor;
           }
 
           return orderItem;
         })
       };
+    }
 
-      console.log('📤 Enviando orden:', JSON.stringify(order, null, 2));
+    // ✅ TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND CON MAPEO CORRECTO
+    return {
+      id_order: orderData.id_order,
+      client_name: orderData.client_name || '',
+      comment: orderData.comment || '',
 
-      const response = await fetch('http://localhost:8081/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // ✅ MAPEO CORRECTO: bill → total_amount
+      total_amount: Number(orderData.bill || orderData.total_amount || 0),
+
+      // ✅ MAPEO CORRECTO: order_date → created_at
+      created_at: orderData.order_date || orderData.created_at,
+      updated_at: orderData.updated_at,
+
+      // ✅ MAPEO CORRECTO: payment_method del backend
+      payment_method: {
+        id_payment_method: orderData.payment_method,
+        name: orderData.payment_name || 'Desconocido'
+      },
+
+      // ✅ MAPEO CORRECTO: items → items (no order_items)
+      items: (orderData.items || []).map((item, index) => ({
+        id_order_detail: item.id_order_detail || `temp-${index}`,
+        id_product: item.id_product,
+        id_variant: item.id_variant,
+        quantity: Number(item.quantity || 1),
+        unit_price: Number(item.product_price || item.unit_price || 0),
+        total_price: Number(item.product_price || item.total_price || 0),
+        comment: item.comment || '',
+
+        // ✅ Estructura del producto (anidada para compatibilidad)
+        product: {
+          id_product: item.id_product,
+          name: item.product_name,
+          image: item.product_image
         },
-        body: JSON.stringify(order),
-        signal: AbortSignal.timeout(15000) // ✅ 15 segundos timeout
-      });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${errorText}`);
-      }
+        // ✅ Estructura de la variante (anidada para compatibilidad)
+        variant: {
+          id_variant: item.id_variant,
+          size: item.variant_name,
+          name: item.variant_name
+        },
 
-      const savedOrder = await response.json();
-      console.log('✅ Orden guardada:', savedOrder);
+        // ✅ Campos directos para compatibilidad
+        product_name: item.product_name,
+        product_image: item.product_image,
+        variant_name: item.variant_name,
 
-      // Actualizar la lista local de órdenes
-      setOrders(prev => [transformOrderData(savedOrder), ...prev]);
+        // ✅ Arrays de modificaciones
+        extras: item.extras || [],
+        sauces: item.sauces || [],
+
+        // ✅ IMPORTANTE: Manejar sabor como objeto único (no array)
+        flavor: item.flavor || null,
+        flavors: item.flavor ? [item.flavor] : [] // Para compatibilidad
+      }))
+    };
+  }, [cart]);
+
+  // ✅ GUARDAR ORDEN - MIGRADO A NUEVAS UTILIDADES
+  const saveOrder = useCallback(async () => {
+    if (cart.length === 0) {
+      setMessage({ text: 'El carrito está vacío', type: 'error' });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('💾 Saving order with cart:', cart);
+
+      const orderData = transformOrderData();
+      console.log('📤 Order data to send:', JSON.stringify(orderData, null, 2));
+
+      // ✅ USAR NUEVA FUNCIÓN DE API EN LUGAR DE FETCH DIRECTO
+      const response = await createOrder(orderData);
+
+      console.log('✅ Order saved successfully:', response);
+
+      // Limpiar carrito
       setCart([]);
+      setEditingProduct(null);
+
+      // Actualizar lista de órdenes
+      await loadAllOrders();
 
       // ✅ SweetAlert2 success
       await Swal.fire({
-        title: '¡Orden guardada!',
-        text: `Orden #${savedOrder.id_order || 'N/A'} creada exitosamente`,
+        title: '¡Pedido guardado!',
+        text: `Orden #${response.id_order || 'Nueva'} creada exitosamente`,
         icon: 'success',
         timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end'
+        showConfirmButton: false
       });
 
-      setMessage({ text: 'Orden guardada con éxito', type: 'success' });
-      return savedOrder;
+      setMessage({ text: 'Orden guardada exitosamente', type: 'success' });
 
     } catch (error) {
-      console.error('❌ Error al guardar la orden:', error);
+      console.error('❌ Error saving order:', error);
 
-      let errorMessage = 'Error al guardar la orden';
+      let errorMessage = 'Error al guardar la orden.';
       let errorIcon = 'error';
 
       if (error.name === 'TimeoutError') {
@@ -282,29 +292,18 @@ export function CartProvider({ children }) {
     }
   }, [cart, transformOrderData, setLoading, setMessage]);
 
-  // ✅ Cargar todas las órdenes (MEJORADO)
+  // ✅ CARGAR TODAS LAS ÓRDENES - MIGRADO CON TRANSFORMACIÓN CORRECTA
   const loadAllOrders = useCallback(async () => {
     setLoading(true);
     try {
       console.log('📡 Cargando órdenes desde CartContext...');
 
-      const response = await fetch('http://localhost:8081/api/orders', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout(15000) // 15 segundos
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
-
-      const ordersData = await response.json();
+      // ✅ USAR NUEVA FUNCIÓN DE API
+      const ordersData = await getOrders();
       console.log('📋 Raw orders data:', ordersData);
 
-      // ✅ Usar la función de transformación mejorada
-      const transformedOrders = ordersData.map(transformOrderData);
+      // ✅ Usar la función de transformación corregida
+      const transformedOrders = ordersData.map(order => transformOrderData(order));
 
       console.log('✅ Transformed orders:', transformedOrders);
       setOrders(transformedOrders);
@@ -338,108 +337,83 @@ export function CartProvider({ children }) {
     }
   }, [setLoading, setMessage, transformOrderData]);
 
-  // Funciones para edición de órdenes
+  // ✅ CARGAR ORDEN PARA EDICIÓN - MIGRADO CON TRANSFORMACIÓN CORRECTA
   const loadOrderForEdit = useCallback(async (orderId) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8081/api/orders/${orderId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: AbortSignal.timeout(10000)
-      });
+      // ✅ USAR NUEVA FUNCIÓN DE API
+      const orderData = await getOrderById(orderId);
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
-
-      const orderData = await response.json();
-      return transformOrderData(orderData); // ✅ Usar función de transformación
+      // ✅ USAR TRANSFORMACIÓN CORRECTA
+      return transformOrderData(orderData);
 
     } catch (error) {
-      console.error('Error al cargar la orden:', error);
-
-      let errorMessage = 'Error al cargar la orden para edición';
-
-      if (error.name === 'TimeoutError') {
-        errorMessage = 'Tiempo de espera agotado al cargar la orden';
-      } else if (error.message.includes('Failed to fetch')) {
-        errorMessage = 'No se puede conectar al servidor para cargar la orden';
-      }
-
-      setMessage({ text: errorMessage, type: 'error' });
+      console.error('❌ Error al cargar orden para edición:', error);
+      setMessage({
+        text: `Error al cargar la orden: ${error.message}`,
+        type: 'error'
+      });
       throw error;
     } finally {
       setLoading(false);
     }
   }, [setLoading, setMessage, transformOrderData]);
 
-  const updateOrder = useCallback(async (orderId, updateData) => {
+  // ✅ ACTUALIZAR ORDEN - MIGRADO CON ESTRUCTURA CORRECTA
+  const updateOrderContext = useCallback(async (orderId, updateData) => {
     setLoading(true);
     try {
-      // Preparar datos en formato snake_case según ejemplos de Postman
+      console.log('🔄 Actualizando orden:', orderId, updateData);
+
+      // ✅ PREPARAR DATOS SEGÚN LA ESTRUCTURA ESPERADA POR EL BACKEND
       const requestData = {
-        id_payment_method: updateData.id_payment_method,
+        comment: updateData.comment || '',
+        id_payment_method: Number(updateData.id_payment_method),
+        ...(updateData.client_name && { client_name: updateData.client_name }),
         updated_items: updateData.updated_items.map(item => {
           const cleanItem = {
-            id_order_detail: item.id_order_detail,
-            id_product: item.id_product,
-            id_variant: item.id_variant
+            id_product: Number(item.id_product),
+            id_variant: Number(item.id_variant)
           };
 
-          // Solo agregar campos si tienen contenido
+          // ✅ ITEM EXISTENTE vs NUEVO
+          if (item.id_order_detail) {
+            cleanItem.id_order_detail = Number(item.id_order_detail);
+          } else {
+            cleanItem.id_order = Number(orderId);
+          }
+
+          // ✅ EXTRAS: Solo incluir si hay extras
           if (item.updated_extras && item.updated_extras.length > 0) {
             cleanItem.updated_extras = item.updated_extras.map(extra => ({
-              id_extra: extra.id_extra,
-              quantity: extra.quantity
+              id_extra: Number(extra.id_extra),
+              quantity: Number(extra.quantity) || 1
             }));
           }
 
+          // ✅ SALSAS: Solo incluir si hay salsas
           if (item.updated_sauces && item.updated_sauces.length > 0) {
             cleanItem.updated_sauces = item.updated_sauces.map(sauce => ({
-              id_sauce: sauce.id_sauce
+              id_sauce: Number(sauce.id_sauce)
             }));
           }
 
-          if (item.updated_flavors && item.updated_flavors.length > 0) {
-            cleanItem.updated_flavors = item.updated_flavors.map(flavor => ({
-              id_flavor: flavor.id_flavor
-            }));
+          // ✅ SABOR: Solo incluir si hay sabor (como número, no objeto)
+          if (item.flavor && item.flavor.id_flavor) {
+            cleanItem.flavor = Number(item.flavor.id_flavor);
           }
 
           return cleanItem;
         })
       };
 
-      // Agregar campos opcionales solo si están presentes
-      if (updateData.client_name && updateData.client_name.trim()) {
-        requestData.client_name = updateData.client_name.trim();
-      }
-
-      if (updateData.comment && updateData.comment.trim()) {
-        requestData.comment = updateData.comment.trim();
-      }
-
       console.log('📤 Enviando datos de actualización:', JSON.stringify(requestData, null, 2));
 
-      const response = await fetch(`http://localhost:8081/api/orders/${orderId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${errorText}`);
-      }
-
-      const updatedOrder = await response.json();
+      // ✅ USAR NUEVA FUNCIÓN DE API
+      const updatedOrder = await updateOrder(orderId, requestData);
       const transformedOrder = transformOrderData(updatedOrder);
 
-      // Actualizar la lista local de órdenes si existe
+      // Actualizar la lista local de órdenes
       setOrders(prev => prev.map(order =>
         order.id_order === orderId ? transformedOrder : order
       ));
@@ -458,64 +432,6 @@ export function CartProvider({ children }) {
       setLoading(false);
     }
   }, [setLoading, setMessage, transformOrderData]);
-
-  const loadCatalogsForEdit = useCallback(async () => {
-    try {
-      const [extrasRes, saucesRes, flavorsRes, paymentsRes] = await Promise.allSettled([
-        fetch('http://localhost:8081/api/extras'),
-        fetch('http://localhost:8081/api/sauces'),
-        fetch('http://localhost:8081/api/flavors'),
-        fetch('http://localhost:8081/api/payments')
-      ]);
-
-      const catalogs = {};
-
-      if (extrasRes.status === 'fulfilled' && extrasRes.value.ok) {
-        catalogs.extras = await extrasRes.value.json();
-      } else {
-        catalogs.extras = [];
-      }
-
-      if (saucesRes.status === 'fulfilled' && saucesRes.value.ok) {
-        catalogs.sauces = await saucesRes.value.json();
-      } else {
-        catalogs.sauces = [];
-      }
-
-      if (flavorsRes.status === 'fulfilled' && flavorsRes.value.ok) {
-        catalogs.flavors = await flavorsRes.value.json();
-      } else {
-        catalogs.flavors = [];
-      }
-
-      if (paymentsRes.status === 'fulfilled' && paymentsRes.value.ok) {
-        catalogs.paymentMethods = await paymentsRes.value.json();
-      } else {
-        catalogs.paymentMethods = [
-          { id_payment_method: 1, name: 'Efectivo' },
-          { id_payment_method: 2, name: 'Tarjeta' },
-          { id_payment_method: 3, name: 'Transferencia' }
-        ];
-      }
-
-      return catalogs;
-
-    } catch (error) {
-      console.error('Error al cargar catálogos:', error);
-      setMessage({ text: 'Error al cargar catálogos para edición', type: 'error' });
-
-      return {
-        extras: [],
-        sauces: [],
-        flavors: [],
-        paymentMethods: [
-          { id_payment_method: 1, name: 'Efectivo' },
-          { id_payment_method: 2, name: 'Tarjeta' },
-          { id_payment_method: 3, name: 'Transferencia' }
-        ]
-      };
-    }
-  }, [setMessage]);
 
   // ✅ Valor del contexto OPTIMIZADO
   const contextValue = useMemo(() => ({
@@ -546,8 +462,7 @@ export function CartProvider({ children }) {
 
     // Funciones de edición de órdenes
     loadOrderForEdit,
-    updateOrder,
-    loadCatalogsForEdit,
+    updateOrder: updateOrderContext, // Renombrado para evitar conflictos
     loadAllOrders,
     transformOrderData
   }), [
@@ -567,8 +482,7 @@ export function CartProvider({ children }) {
     saveOrder,
     calculateProductPrice,
     loadOrderForEdit,
-    updateOrder,
-    loadCatalogsForEdit,
+    updateOrderContext,
     loadAllOrders,
     transformOrderData
   ]);

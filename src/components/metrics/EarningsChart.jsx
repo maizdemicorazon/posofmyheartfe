@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
-import { useTheme } from '../../context/ThemeContext'; // AGREGADO
+import { useTheme } from '../../context/ThemeContext';
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -30,6 +30,9 @@ import {
   ReferenceLine
 } from 'recharts';
 
+// ✅ IMPORTAR NUEVAS UTILIDADES DE API
+import { getDailyEarnings } from '../../utils/api';
+
 function EarningsChart({ onBack }) {
   const [chartData, setChartData] = useState([]);
   const [compareData, setCompareData] = useState([]);
@@ -39,24 +42,19 @@ function EarningsChart({ onBack }) {
   const [loading, setLoading] = useState(false);
   const [showComparison, setShowComparison] = useState(true);
   const { setMessage } = useMessage();
-  const { theme } = useTheme(); // AGREGADO
+  const { theme } = useTheme();
 
-   // ✅ Usar useRef para evitar dobles peticiones
-    const hasFetched = useRef(false);
-    const isCurrentlyFetching = useRef(false);
+  // ✅ Usar useRef para evitar dobles peticiones
+  const hasFetched = useRef(false);
+  const isCurrentlyFetching = useRef(false);
 
-  // Función para obtener datos de ganancias
+  // ✅ Función para obtener datos de ganancias - MIGRADA
   const fetchEarningsData = async (days, label) => {
     try {
-      const response = await fetch(`http://localhost:8081/api/metrics/daily-earnings/${days}`);
+      console.log(`🔍 Fetching earnings data for ${days} days (${label})`);
 
-      console.log('🔍 Iniciando fetchOrders...');
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // ✅ USAR NUEVA FUNCIÓN DE API
+      const data = await getDailyEarnings(days);
       console.log(`${label} Data:`, data);
 
       return data.daily_earnings?.map((day, index) => ({
@@ -73,140 +71,176 @@ function EarningsChart({ onBack }) {
         terminalDiscount: Math.round(day.commission?.terminal_discount || 0),
         dayIndex: index
       })) || [];
+
     } catch (error) {
-        console.error(`Error fetching ${label}:`, error);
-        let errorMessage = 'Error al cargar las órdenes.';
+      console.error(`Error fetching ${label}:`, error);
+      let errorMessage = 'Error al cargar las ganancias.';
 
-        if (error.name === 'TimeoutError') {
-            errorMessage = 'Tiempo de espera agotado. Verifica que el backend esté corriendo.';
-        } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'No se puede conectar al servidor. Verifica que el backend esté corriendo en http://localhost:8081';
-        } else if (error.message.includes('CORS')) {
-            errorMessage = 'Error de CORS. Verifica la configuración del backend.';
-        } else if (error.message.includes('HTTP error')) {
-          errorMessage = `Error del servidor: ${error.message}`;
-        }
+      if (error.name === 'TimeoutError') {
+        errorMessage = 'Tiempo de espera agotado. Verifica que el backend esté corriendo.';
+      } else if (error.message.includes('Failed to fetch')) {
+        errorMessage = 'No se puede conectar al servidor. Verifica que el backend esté corriendo.';
+      } else if (error.message.includes('CORS')) {
+        errorMessage = 'Error de CORS. Verifica la configuración del backend.';
+      }
 
-        setMessage({
+      setMessage({
         text: errorMessage,
         type: 'error'
-        });
+      });
+      throw error;
     }
   };
 
-  // Cargar datos iniciales
-  useEffect(() => {
-    loadChartData();
-  }, []);
-
+  // ✅ Función para cargar datos de ambos períodos
   const loadChartData = async () => {
-     if (isCurrentlyFetching.current) {
+    if (isCurrentlyFetching.current) {
       console.log('🚫 Ya hay una petición en curso, saltando...');
       return;
     }
 
     isCurrentlyFetching.current = true;
     setLoading(true);
-    try {
-      const [data1, data2] = await Promise.all([
-        fetchEarningsData(period1, `Período ${period1} días`),
-        fetchEarningsData(period2, `Período ${period2} días`)
-      ]);
 
-      setChartData(data1);
-      setCompareData(data2);
+    try {
+      console.log('📊 Cargando datos del gráfico...');
+
+      // Cargar datos del período principal
+      const primaryData = await fetchEarningsData(period1, `Últimos ${period1} días`);
+      setChartData(primaryData);
+
+      // Si se muestra comparación, cargar datos del segundo período
+      if (showComparison && period2 !== period1) {
+        const secondaryData = await fetchEarningsData(period2, `Últimos ${period2} días`);
+
+        // Combinar datos para comparación
+        const combinedData = primaryData.map((day, index) => {
+          const compareDay = secondaryData[index] || {};
+          return {
+            ...day,
+            compareGrossSells: compareDay.grossSells || 0,
+            compareGrossProfit: compareDay.grossProfit || 0,
+            compareNetProfit: compareDay.netProfit || 0,
+            compareOrders: compareDay.orders || 0
+          };
+        });
+
+        setCompareData(combinedData);
+      } else {
+        setCompareData([]);
+      }
+
+      hasFetched.current = true;
       setMessage(null);
-      hasFetched.current = true; // ✅ Marcar como cargado exitosamente
+
     } catch (error) {
-      console.error('Error loading chart data:', error);
-      hasFetched.current = false; // ✅ Permitir retry en caso de error
-      setMessage({
-        text: 'Error al cargar los datos de la gráfica',
-        type: 'error'
+      console.error('❌ Error al cargar datos del gráfico:', error);
+      hasFetched.current = false;
+
+      // Mostrar error con SweetAlert2
+      await Swal.fire({
+        title: 'Error al cargar datos',
+        text: 'No se pudieron cargar los datos de ganancias. Verifica tu conexión.',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#ef4444'
       });
+
     } finally {
       setLoading(false);
       isCurrentlyFetching.current = false;
     }
   };
 
-  // Función para cambiar períodos
-  const handlePeriodChange = async (periodType) => {
-    const result = await Swal.fire({
-      title: `Seleccionar período ${periodType === 'period1' ? '1' : '2'}`,
-      input: 'select',
-      inputOptions: {
-        '1': 'Ayer (1 día)',
-        '7': 'Última semana (7 días)',
-        '15': 'Últimos 15 días',
-        '30': 'Último mes (30 días)',
-        '60': 'Últimos 2 meses',
-        '90': 'Últimos 3 meses',
-        'custom': 'Personalizado...'
-      },
-      inputValue: periodType === 'period1' ? period1.toString() : period2.toString(),
-      showCancelButton: true,
-      confirmButtonText: 'Aplicar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#10b981',
-      cancelButtonColor: '#6b7280'
-    });
+  // ✅ Cargar datos al montar el componente
+  useEffect(() => {
+    if (!hasFetched.current) {
+      loadChartData();
+    }
+  }, []);
 
-    if (result.isConfirmed) {
-      let days = parseInt(result.value);
+  // ✅ Recargar datos cuando cambien los períodos
+  useEffect(() => {
+    if (hasFetched.current) {
+      hasFetched.current = false;
+      loadChartData();
+    }
+  }, [period1, period2, showComparison]);
 
-      if (result.value === 'custom') {
-        const customResult = await Swal.fire({
-          title: 'Días personalizados',
-          input: 'number',
-          inputLabel: 'Número de días',
-          inputPlaceholder: 'Ej: 45',
-          inputAttributes: {
-            min: 1,
-            max: 365,
-            step: 1
-          },
-          inputValidator: (value) => {
-            if (value < 1) return '¡Mínimo 1 día!';
-            if (value > 365) return '¡Máximo 365 días!';
-          }
-        });
+  // ✅ Función para refrescar datos manualmente
+  const refreshData = async () => {
+    hasFetched.current = false;
+    await loadChartData();
+  };
 
-        if (!customResult.isConfirmed) return;
-        days = parseInt(customResult.value);
+  // ✅ Cambiar período
+  const handlePeriodChange = async (newPeriod, isPrimary = true) => {
+    if (newPeriod === 'custom') {
+      const result = await Swal.fire({
+        title: 'Período personalizado',
+        text: 'Ingresa el número de días (máximo 365):',
+        input: 'number',
+        inputAttributes: {
+          min: 1,
+          max: 365,
+          step: 1
+        },
+        inputValue: isPrimary ? period1 : period2,
+        showCancelButton: true,
+        confirmButtonText: 'Aplicar',
+        cancelButtonText: 'Cancelar',
+        inputValidator: (value) => {
+          if (!value) return '¡Debes ingresar un número!';
+          if (value < 1) return '¡Mínimo 1 día!';
+          if (value > 365) return '¡Máximo 365 días!';
+        }
+      });
+
+      if (result.isConfirmed) {
+        if (isPrimary) {
+          setPeriod1(parseInt(result.value));
+        } else {
+          setPeriod2(parseInt(result.value));
+        }
       }
-
-      if (periodType === 'period1') {
-        setPeriod1(days);
+    } else {
+      if (isPrimary) {
+        setPeriod1(parseInt(newPeriod));
       } else {
-        setPeriod2(days);
+        setPeriod2(parseInt(newPeriod));
       }
-
-      // Recargar datos después de cambiar período
-      setTimeout(() => {
-        loadChartData();
-      }, 100);
     }
   };
 
-  // Combinar datos para comparación
-  const combinedData = chartData.map((item, index) => {
-    const compareItem = compareData[index] || {};
-    return {
-      ...item,
-      // Datos del período 2 para comparación
-      grossSells2: compareItem.grossSells || 0,
-      grossProfit2: compareItem.grossProfit || 0,
-      netProfit2: compareItem.netProfit || 0,
-      orders2: compareItem.orders || 0
-    };
-  });
+  // ✅ Calcular estadísticas
+  const calculateStats = (data) => {
+    if (!data || data.length === 0) return {};
 
-  // Tooltip personalizado
+    const totalSales = data.reduce((sum, day) => sum + day.grossSells, 0);
+    const totalProfit = data.reduce((sum, day) => sum + day.grossProfit, 0);
+    const totalOrders = data.reduce((sum, day) => sum + day.orders, 0);
+    const avgSales = totalSales / data.length;
+    const avgProfit = totalProfit / data.length;
+    const avgOrders = totalOrders / data.length;
+
+    return {
+      totalSales,
+      totalProfit,
+      totalOrders,
+      avgSales,
+      avgProfit,
+      avgOrders,
+      avgTicket: totalOrders > 0 ? totalSales / totalOrders : 0
+    };
+  };
+
+  const stats = calculateStats(chartData);
+
+  // ✅ Tooltip personalizado
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className={`p-4 border rounded-lg shadow-lg max-w-xs ${
+        <div className={`p-3 rounded-lg shadow-lg border ${
           theme === 'dark'
             ? 'bg-gray-800 border-gray-600 text-white'
             : 'bg-white border-gray-300 text-gray-900'
@@ -237,7 +271,7 @@ function EarningsChart({ onBack }) {
     return null;
   };
 
-  // Formatear moneda para ejes
+  // ✅ Formatear moneda para ejes
   const formatCurrency = (value) => {
     if (value >= 1000) {
       return `$${(value / 1000).toFixed(1)}k`;
@@ -245,10 +279,29 @@ function EarningsChart({ onBack }) {
     return `$${value}`;
   };
 
-  // Formatear tooltip
+  // ✅ Formatear tooltip
   const formatTooltipValue = (value, name) => {
     return [`$${value?.toLocaleString() || 0}`, name];
   };
+
+  // ✅ Renderizar loading
+  if (loading) {
+    return (
+      <div className={`min-h-screen transition-colors duration-300 ${
+        theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <BusinessHeader />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <ChartBarIcon className="w-12 h-12 mx-auto mb-4 animate-pulse text-green-600" />
+            <p className={`text-lg ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              Cargando datos de ganancias...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${
@@ -263,245 +316,308 @@ function EarningsChart({ onBack }) {
             ? 'bg-gray-800 border-gray-700'
             : 'bg-white border-gray-200'
         }`}>
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <button
                 onClick={onBack}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-              >
-                <ArrowLeftIcon className="w-5 h-5" />
-                <span className="font-medium">Volver</span>
-              </button>
-
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
-                  <ChartBarIcon className="w-8 h-8 text-purple-600" />
-                  Gráfica de Ganancias
-                </h1>
-                <p className="text-gray-600 mt-1">Análisis comparativo y tendencias de ingresos</p>
-              </div>
-            </div>
-
-            {/* Controles */}
-            <div className="flex flex-wrap gap-2">
-              {/* Tipo de gráfica */}
-              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-                {[
-                  { type: 'line', icon: '📈', label: 'Línea' },
-                  { type: 'bar', icon: '📊', label: 'Barras' },
-                  { type: 'area', icon: '🔵', label: 'Área' }
-                ].map((chart) => (
-                  <button
-                    key={chart.type}
-                    onClick={() => setChartType(chart.type)}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                      chartType === chart.type
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-gray-700 hover:bg-gray-200'
-                    }`}
-                    title={chart.label}
-                  >
-                    {chart.icon}
-                  </button>
-                ))}
-              </div>
-
-              {/* Toggle comparación */}
-              <button
-                onClick={() => setShowComparison(!showComparison)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  showComparison
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${
+                  theme === 'dark'
+                    ? 'text-gray-300 hover:bg-gray-700'
+                    : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                {showComparison ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
-                Comparar
+                <ArrowLeftIcon className="w-6 h-6" />
               </button>
+              <div>
+                <h1 className={`text-2xl font-bold ${
+                  theme === 'dark' ? 'text-white' : 'text-gray-900'
+                }`}>
+                  Gráfico de Ganancias
+                </h1>
+                <p className={`text-sm ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  Análisis detallado de ingresos y ganancias
+                </p>
+              </div>
+            </div>
 
-              {/* Actualizar */}
-              <button
-                onClick={loadChartData}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            <button
+              onClick={refreshData}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ArrowTrendingUpIcon className={`w-5 h-5 ${loading ? 'animate-pulse' : ''}`} />
+              Actualizar
+            </button>
+          </div>
+
+          {/* Controles */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Período Principal */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Período Principal
+              </label>
+              <select
+                value={period1}
+                onChange={(e) => handlePeriodChange(e.target.value, true)}
+                className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-green-500 ${
+                  theme === 'dark'
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
               >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                ) : (
-                  <ArrowTrendingUpIcon className="w-4 h-4" />
-                )}
-                {loading ? 'Cargando...' : 'Actualizar'}
-              </button>
+                <option value={7}>Últimos 7 días</option>
+                <option value={14}>Últimos 14 días</option>
+                <option value={30}>Últimos 30 días</option>
+                <option value={60}>Últimos 60 días</option>
+                <option value={90}>Últimos 90 días</option>
+                <option value="custom">Personalizado...</option>
+              </select>
             </div>
-          </div>
-        </div>
 
-        {/* Controles de período */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 p-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div className="flex flex-wrap gap-4">
+            {/* Comparación */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Período Comparación
+              </label>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                  <CalendarIcon className="w-4 h-4" />
-                  Período Principal:
-                </span>
                 <button
-                  onClick={() => handlePeriodChange('period1')}
-                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors border border-blue-200"
+                  onClick={() => setShowComparison(!showComparison)}
+                  className={`p-2 rounded-lg border transition-colors ${
+                    showComparison
+                      ? 'bg-green-600 text-white border-green-600'
+                      : theme === 'dark'
+                        ? 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                  }`}
                 >
-                  📊 {period1} días
+                  {showComparison ? <EyeIcon className="w-5 h-5" /> : <EyeSlashIcon className="w-5 h-5" />}
                 </button>
+                <select
+                  value={period2}
+                  onChange={(e) => handlePeriodChange(e.target.value, false)}
+                  disabled={!showComparison}
+                  className={`flex-1 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-green-500 disabled:opacity-50 ${
+                    theme === 'dark'
+                      ? 'bg-gray-700 border-gray-600 text-white'
+                      : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                >
+                  <option value={14}>Últimos 14 días</option>
+                  <option value={30}>Últimos 30 días</option>
+                  <option value={60}>Últimos 60 días</option>
+                  <option value={90}>Últimos 90 días</option>
+                  <option value="custom">Personalizado...</option>
+                </select>
               </div>
-
-              {showComparison && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">Comparar con:</span>
-                  <button
-                    onClick={() => handlePeriodChange('period2')}
-                    className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors border border-green-200"
-                  >
-                    📈 {period2} días
-                  </button>
-                </div>
-              )}
             </div>
 
-            {chartData.length > 0 && (
-              <div className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-lg">
-                📅 Mostrando {chartData.length} días de datos
-              </div>
-            )}
+            {/* Tipo de Gráfico */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${
+                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                Tipo de Gráfico
+              </label>
+              <select
+                value={chartType}
+                onChange={(e) => setChartType(e.target.value)}
+                className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-green-500 ${
+                  theme === 'dark'
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              >
+                <option value="line">Líneas</option>
+                <option value="bar">Barras</option>
+                <option value="area">Área</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* Gráfica */}
-        {loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="flex flex-col items-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-purple-600 border-t-transparent mx-auto mb-4"></div>
-              <p className="text-gray-600 text-lg">Cargando datos de ganancias...</p>
-              <p className="text-gray-500 text-sm mt-2">Procesando información financiera</p>
+        {/* Estadísticas */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div className={`p-6 rounded-xl shadow-sm border ${
+            theme === 'dark'
+              ? 'bg-gray-800 border-gray-700'
+              : 'bg-white border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={`text-sm font-medium ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  Ventas Totales
+                </p>
+                <p className="text-2xl font-bold text-green-600">
+                  ${stats.totalSales?.toLocaleString() || 0}
+                </p>
+                <p className={`text-xs ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                }`}>
+                  Promedio: ${stats.avgSales?.toFixed(0) || 0}/día
+                </p>
+              </div>
+              <CurrencyDollarIcon className="w-12 h-12 text-green-600" />
             </div>
           </div>
-        ) : chartData.length > 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {chartType === 'line' && '📈 Tendencias de Ganancias'}
-                {chartType === 'bar' && '📊 Comparación por Días'}
-                {chartType === 'area' && '🔵 Volumen de Ganancias'}
-              </h3>
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span>Ventas Brutas ({period1}d)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span>Ganancia Bruta ({period1}d)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                  <span>Ganancia Neta ({period1}d)</span>
-                </div>
-                {showComparison && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-green-300 rounded-full border-2 border-green-500"></div>
-                      <span>Ventas Brutas ({period2}d)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-blue-300 rounded-full border-2 border-blue-500"></div>
-                      <span>Ganancia Bruta ({period2}d)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-purple-300 rounded-full border-2 border-purple-500"></div>
-                      <span>Ganancia Neta ({period2}d)</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
 
+          <div className={`p-6 rounded-xl shadow-sm border ${
+            theme === 'dark'
+              ? 'bg-gray-800 border-gray-700'
+              : 'bg-white border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={`text-sm font-medium ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  Ganancias Brutas
+                </p>
+                <p className="text-2xl font-bold text-blue-600">
+                  ${stats.totalProfit?.toLocaleString() || 0}
+                </p>
+                <p className={`text-xs ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                }`}>
+                  Promedio: ${stats.avgProfit?.toFixed(0) || 0}/día
+                </p>
+              </div>
+              <BanknotesIcon className="w-12 h-12 text-blue-600" />
+            </div>
+          </div>
+
+          <div className={`p-6 rounded-xl shadow-sm border ${
+            theme === 'dark'
+              ? 'bg-gray-800 border-gray-700'
+              : 'bg-white border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={`text-sm font-medium ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  Total Órdenes
+                </p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {stats.totalOrders || 0}
+                </p>
+                <p className={`text-xs ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                }`}>
+                  Promedio: {stats.avgOrders?.toFixed(1) || 0}/día
+                </p>
+              </div>
+              <CalendarIcon className="w-12 h-12 text-purple-600" />
+            </div>
+          </div>
+
+          <div className={`p-6 rounded-xl shadow-sm border ${
+            theme === 'dark'
+              ? 'bg-gray-800 border-gray-700'
+              : 'bg-white border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={`text-sm font-medium ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  Ticket Promedio
+                </p>
+                <p className="text-2xl font-bold text-orange-600">
+                  ${stats.avgTicket?.toFixed(2) || 0}
+                </p>
+                <p className={`text-xs ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                }`}>
+                  Por orden
+                </p>
+              </div>
+              <ArrowTrendingUpIcon className="w-12 h-12 text-orange-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico */}
+        <div className={`rounded-xl shadow-sm border p-6 ${
+          theme === 'dark'
+            ? 'bg-gray-800 border-gray-700'
+            : 'bg-white border-gray-200'
+        }`}>
+          <h2 className={`text-lg font-semibold mb-4 ${
+            theme === 'dark' ? 'text-white' : 'text-gray-900'
+          }`}>
+            Evolución de Ganancias - Últimos {period1} días
+          </h2>
+
+          {chartData.length > 0 ? (
             <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
                 {chartType === 'line' && (
-                  <LineChart data={showComparison ? combinedData : chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <LineChart data={showComparison ? compareData : chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#e5e7eb'} />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      stroke="#6b7280"
+                      stroke={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                      fontSize={12}
                     />
                     <YAxis
                       tickFormatter={formatCurrency}
-                      tick={{ fontSize: 12 }}
-                      stroke="#6b7280"
+                      stroke={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                      fontSize={12}
                     />
-                    <Tooltip
-                      content={<CustomTooltip />}
-                      formatter={formatTooltipValue}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend />
-
-                    {/* Líneas principales */}
                     <Line
                       type="monotone"
                       dataKey="grossSells"
                       stroke="#10b981"
                       strokeWidth={3}
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                      name={`💰 Ventas Brutas (${period1}d)`}
+                      name="Ventas Brutas"
+                      dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="grossProfit"
                       stroke="#3b82f6"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                      name={`📊 Ganancia Bruta (${period1}d)`}
+                      strokeWidth={3}
+                      name="Ganancia Bruta"
+                      dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="netProfit"
                       stroke="#8b5cf6"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                      name={`💎 Ganancia Neta (${period1}d)`}
+                      strokeWidth={3}
+                      name="Ganancia Neta"
+                      dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }}
                     />
-
-                    {/* Líneas de comparación */}
                     {showComparison && (
                       <>
                         <Line
                           type="monotone"
-                          dataKey="grossSells2"
+                          dataKey="compareGrossSells"
                           stroke="#10b981"
                           strokeWidth={2}
-                          strokeDasharray="8 4"
-                          dot={{ r: 2 }}
-                          name={`💰 Ventas Brutas (${period2}d)`}
+                          strokeDasharray="5 5"
+                          name={`Ventas (${period2}d)`}
+                          dot={{ fill: '#10b981', strokeWidth: 1, r: 2 }}
                         />
                         <Line
                           type="monotone"
-                          dataKey="grossProfit2"
+                          dataKey="compareGrossProfit"
                           stroke="#3b82f6"
-                          strokeWidth={1}
-                          strokeDasharray="8 4"
-                          dot={{ r: 2 }}
-                          name={`📊 Ganancia Bruta (${period2}d)`}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="netProfit2"
-                          stroke="#8b5cf6"
-                          strokeWidth={1}
-                          strokeDasharray="8 4"
-                          dot={{ r: 2 }}
-                          name={`💎 Ganancia Neta (${period2}d)`}
+                          strokeWidth={2}
+                          strokeDasharray="5 5"
+                          name={`Ganancia (${period2}d)`}
+                          dot={{ fill: '#3b82f6', strokeWidth: 1, r: 2 }}
                         />
                       </>
                     )}
@@ -509,65 +625,49 @@ function EarningsChart({ onBack }) {
                 )}
 
                 {chartType === 'bar' && (
-                  <BarChart data={showComparison ? combinedData : chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#e5e7eb'} />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      stroke="#6b7280"
+                      stroke={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                      fontSize={12}
                     />
                     <YAxis
                       tickFormatter={formatCurrency}
-                      tick={{ fontSize: 12 }}
-                      stroke="#6b7280"
+                      stroke={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                      fontSize={12}
                     />
-                    <Tooltip
-                      content={<CustomTooltip />}
-                      formatter={formatTooltipValue}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend />
-
-                    <Bar dataKey="grossSells" fill="#10b981" name={`💰 Ventas Brutas (${period1}d)`} />
-                    <Bar dataKey="grossProfit" fill="#3b82f6" name={`📊 Ganancia Bruta (${period1}d)`} />
-                    <Bar dataKey="netProfit" fill="#8b5cf6" name={`💎 Ganancia Neta (${period1}d)`} />
-
-                    {showComparison && (
-                      <>
-                        <Bar dataKey="grossSells2" fill="#10b981" fillOpacity={0.5} name={`💰 Ventas Brutas (${period2}d)`} />
-                        <Bar dataKey="grossProfit2" fill="#3b82f6" fillOpacity={0.5} name={`📊 Ganancia Bruta (${period2}d)`} />
-                        <Bar dataKey="netProfit2" fill="#8b5cf6" fillOpacity={0.5} name={`💎 Ganancia Neta (${period2}d)`} />
-                      </>
-                    )}
+                    <Bar dataKey="grossSells" fill="#10b981" name="Ventas Brutas" />
+                    <Bar dataKey="grossProfit" fill="#3b82f6" name="Ganancia Bruta" />
+                    <Bar dataKey="netProfit" fill="#8b5cf6" name="Ganancia Neta" />
                   </BarChart>
                 )}
 
                 {chartType === 'area' && (
-                  <AreaChart data={showComparison ? combinedData : chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <AreaChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#e5e7eb'} />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      stroke="#6b7280"
+                      stroke={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                      fontSize={12}
                     />
                     <YAxis
                       tickFormatter={formatCurrency}
-                      tick={{ fontSize: 12 }}
-                      stroke="#6b7280"
+                      stroke={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                      fontSize={12}
                     />
-                    <Tooltip
-                      content={<CustomTooltip />}
-                      formatter={formatTooltipValue}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend />
-
                     <Area
                       type="monotone"
                       dataKey="grossSells"
                       stackId="1"
                       stroke="#10b981"
                       fill="#10b981"
-                      fillOpacity={0.8}
-                      name={`💰 Ventas Brutas (${period1}d)`}
+                      fillOpacity={0.6}
+                      name="Ventas Brutas"
                     />
                     <Area
                       type="monotone"
@@ -576,100 +676,32 @@ function EarningsChart({ onBack }) {
                       stroke="#3b82f6"
                       fill="#3b82f6"
                       fillOpacity={0.6}
-                      name={`📊 Ganancia Bruta (${period1}d)`}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="netProfit"
-                      stackId="3"
-                      stroke="#8b5cf6"
-                      fill="#8b5cf6"
-                      fillOpacity={0.6}
-                      name={`💎 Ganancia Neta (${period1}d)`}
+                      name="Ganancia Bruta"
                     />
                   </AreaChart>
                 )}
               </ResponsiveContainer>
             </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <ChartBarIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No hay datos disponibles</h3>
-            <p className="text-gray-600 mb-6">No se encontraron datos de ganancias para mostrar en la gráfica.</p>
-            <button
-              onClick={loadChartData}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
-            >
-              🔄 Reintentar carga de datos
-            </button>
-          </div>
-        )}
-
-        {/* Estadísticas resumidas */}
-        {!loading && chartData.length > 0 && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-              <div className="flex items-center">
-                <div className="p-3 rounded-full bg-green-100">
-                  <CurrencyDollarIcon className="w-6 h-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Promedio Ventas</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ${(chartData.reduce((sum, d) => sum + d.grossSells, 0) / chartData.length).toFixed(0)}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Últimos {period1} días</p>
-                </div>
+          ) : (
+            <div className="h-96 flex items-center justify-center">
+              <div className="text-center">
+                <ChartBarIcon className={`w-16 h-16 mx-auto mb-4 ${
+                  theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
+                }`} />
+                <h3 className={`text-lg font-medium mb-2 ${
+                  theme === 'dark' ? 'text-white' : 'text-gray-900'
+                }`}>
+                  No hay datos disponibles
+                </h3>
+                <p className={`text-sm ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  No se encontraron datos de ganancias para el período seleccionado.
+                </p>
               </div>
             </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-              <div className="flex items-center">
-                <div className="p-3 rounded-full bg-blue-100">
-                  <ArrowTrendingUpIcon className="w-6 h-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Promedio Ganancia</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ${(chartData.reduce((sum, d) => sum + d.grossProfit, 0) / chartData.length).toFixed(0)}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Ganancia bruta diaria</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-              <div className="flex items-center">
-                <div className="p-3 rounded-full bg-purple-100">
-                  <BanknotesIcon className="w-6 h-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Mejor Día</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ${Math.max(...chartData.map(d => d.grossSells)).toFixed(0)}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Máximo en ventas</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-              <div className="flex items-center">
-                <div className="p-3 rounded-full bg-yellow-100">
-                  <ChartBarIcon className="w-6 h-6 text-yellow-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Órdenes</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {chartData.reduce((sum, d) => sum + d.orders, 0)}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">En {period1} días</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

@@ -3,20 +3,12 @@
  * Archivo: src/utils/helpers.js
  */
 
-// ======================================
-// 🔗 API UTILITIES
-// ======================================
+// ✅ IMPORTAR CONFIGURACIÓN CENTRALIZADA
+import { API_CONFIG, DEBUG_CONFIG } from '../config/constants.js';
 
-/**
- * Configuración base para requests de API
- */
-export const API_CONFIG = {
-  baseURL: 'http://localhost:8081/api',
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-  }
-};
+// ======================================
+// 🔗 ERROR CLASSES
+// ======================================
 
 /**
  * Clase de error personalizada para APIs
@@ -41,41 +33,6 @@ export class ValidationError extends Error {
     this.field = field;
   }
 }
-
-/**
- * Wrapper para fetch con configuración predeterminada y manejo de errores
- * @param {string} endpoint - Endpoint de la API
- * @param {object} options - Opciones del fetch
- * @returns {Promise} Promesa del fetch
- */
-export const apiRequest = async (endpoint, options = {}) => {
-  const url = `${API_CONFIG.baseURL}${endpoint}`;
-
-  const config = {
-    method: 'GET',
-    headers: API_CONFIG.headers,
-    signal: AbortSignal.timeout(API_CONFIG.timeout),
-    ...options
-  };
-
-  console.log(`📡 API Request: ${config.method} ${url}`);
-
-  try {
-    const response = await fetch(url, config);
-
-    if (!response.ok) {
-      throw new APIError(`HTTP error! status: ${response.status} - ${response.statusText}`, response.status);
-    }
-
-    const data = await response.json();
-    console.log(`✅ API Response: ${config.method} ${url}`, data);
-
-    return data;
-  } catch (error) {
-    console.error(`❌ API Error: ${config.method} ${url}`, error);
-    throw error;
-  }
-};
 
 /**
  * Maneja errores de API de manera uniforme
@@ -404,13 +361,14 @@ export const formatDate = (dateString, options = {}) => {
 // ======================================
 
 /**
- * Logger mejorado para debugging
+ * Logger mejorado para debugging (usa configuración centralizada)
  * @param {string} category - Categoría del log
  * @param {string} message - Mensaje
  * @param {any} data - Datos adicionales
  */
 export const debugLog = (category, message, data = null) => {
-  if (process.env.NODE_ENV === 'development') {
+  // ✅ USA LA CONFIGURACIÓN CENTRALIZADA DE DEBUG
+  if (DEBUG_CONFIG.ENABLED) {
     const timestamp = new Date().toISOString().substr(11, 8);
     const emoji = {
       'API': '📡',
@@ -433,7 +391,7 @@ export const debugLog = (category, message, data = null) => {
  * @param {any} data - Datos a examinar
  */
 export const debugDataStructure = (label, data) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (DEBUG_CONFIG.ENABLED) {
     console.group(`🔍 DEBUG: ${label}`);
     console.log('Type:', typeof data);
     console.log('Is Array:', Array.isArray(data));
@@ -444,7 +402,7 @@ export const debugDataStructure = (label, data) => {
 };
 
 // ======================================
-// 🎯 CATALOG LOADING UTILITIES
+// 🎯 CATALOG UTILITIES (SIN DUPLICAR API)
 // ======================================
 
 /**
@@ -473,65 +431,6 @@ export const CATALOG_CONFIGS = {
   }
 };
 
-/**
- * Carga un catálogo específico con manejo de errores
- * @param {string} catalogType - Tipo de catálogo (extras, sauces, etc.)
- * @returns {Promise<Array>} Datos del catálogo
- */
-export const loadCatalog = async (catalogType) => {
-  const config = CATALOG_CONFIGS[catalogType];
-
-  if (!config) {
-    throw new ValidationError(`Tipo de catálogo inválido: ${catalogType}`);
-  }
-
-  try {
-    debugLog('CATALOG', `Loading ${config.name}...`);
-
-    const data = await apiRequest(config.endpoint);
-    const validatedData = validateCatalogData(data, config.idField);
-
-    debugLog('SUCCESS', `${config.name} loaded`, {
-      total: data.length,
-      valid: validatedData.length
-    });
-
-    return validatedData;
-
-  } catch (error) {
-    debugLog('ERROR', `Failed to load ${config.name}`, error);
-    throw new APIError(`Error cargando ${config.name}: ${error.message}`, error.status, config.endpoint);
-  }
-};
-
-/**
- * Carga múltiples catálogos de forma paralela
- * @param {Array<string>} catalogTypes - Tipos de catálogos a cargar
- * @returns {Promise<Object>} Objeto con los catálogos cargados
- */
-export const loadMultipleCatalogs = async (catalogTypes) => {
-  const results = {};
-  const errors = {};
-
-  const loadPromises = catalogTypes.map(async (catalogType) => {
-    try {
-      const data = await loadCatalog(catalogType);
-      results[catalogType] = data;
-    } catch (error) {
-      errors[catalogType] = error;
-      results[catalogType] = []; // Array vacío, NO datos hardcodeados
-    }
-  });
-
-  await Promise.allSettled(loadPromises);
-
-  return {
-    data: results,
-    errors: errors,
-    hasErrors: Object.keys(errors).length > 0
-  };
-};
-
 // ======================================
 // 🚀 PERFORMANCE UTILITIES
 // ======================================
@@ -554,13 +453,71 @@ export const debounce = (func, wait) => {
   };
 };
 
+/**
+ * Throttle function para limitar frecuencia de ejecución
+ * @param {Function} func - Función a throttle
+ * @param {number} limit - Límite en ms
+ * @returns {Function} Función con throttle
+ */
+export const throttle = (func, limit) => {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+};
+
+// ======================================
+// 💰 PRICE UTILITIES
+// ======================================
+
+/**
+ * Formatea precio para mostrar en UI
+ * @param {number} price - Precio a formatear
+ * @param {string} currency - Código de moneda (default: MXN)
+ * @returns {string} Precio formateado
+ */
+export const formatPrice = (price, currency = 'MXN') => {
+  try {
+    const numPrice = Number(price);
+    if (isNaN(numPrice)) return '$0.00';
+
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(numPrice);
+  } catch (error) {
+    console.error('Error formatting price:', error);
+    return '$0.00';
+  }
+};
+
+/**
+ * Calcula total de un carrito de productos
+ * @param {Array} cartItems - Items del carrito
+ * @returns {number} Total calculado
+ */
+export const calculateCartTotal = (cartItems) => {
+  if (!Array.isArray(cartItems)) return 0;
+
+  return cartItems.reduce((total, item) => {
+    const itemPrice = Number(item.totalPrice || item.price || 0);
+    const quantity = Number(item.quantity || 1);
+    return total + (itemPrice * quantity);
+  }, 0);
+};
+
 // ======================================
 // 📊 EXPORT DEFAULT OBJECT
 // ======================================
 
 export default {
-  // API utilities
-  apiRequest,
+  // Error handling
   handleApiError,
   APIError,
   ValidationError,
@@ -578,15 +535,18 @@ export default {
   // Date utilities
   formatDate,
 
-  // Debugging
+  // Price utilities
+  formatPrice,
+  calculateCartTotal,
+
+  // Debugging (usa configuración centralizada)
   debugLog,
   debugDataStructure,
 
   // Catalog utilities
-  loadCatalog,
-  loadMultipleCatalogs,
   CATALOG_CONFIGS,
 
   // Performance
-  debounce
+  debounce,
+  throttle
 };

@@ -14,7 +14,6 @@ import {
 import Swal from 'sweetalert2';
 import ErrorBoundary, { MinimalErrorFallback } from '../errors/ErrorBoundary';
 import {
-  loadMultipleCatalogs,
   handleApiError,
   validateExtraQuantity,
   validateOrderData,
@@ -23,10 +22,19 @@ import {
   generatePlaceholderUrl,
   debugLog,
   debugDataStructure,
-  apiRequest,
   APIError,
   ValidationError
 } from '../../utils/helpers';
+
+// ✅ IMPORTAR UTILIDADES DE API
+import {
+  updateOrder,
+  getExtras,
+  getSauces,
+  getFlavors,
+  getPaymentMethods,
+  getProductById
+} from '../../utils/api';
 
 // ✅ Componente interno sin ErrorBoundary
 function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
@@ -86,18 +94,20 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       );
     }
 
-    // Determinar imagen con múltiples fallbacks
-    const rawImage = orderItem?.product?.image || orderItem?.product_image;
+    // ✅ USAR DATOS DIRECTOS DEL ITEM (estructura del backend)
+    const rawImage = item.product?.image || item.product_image || orderItem?.product_image;
     const image = optimizeGoogleDriveImageUrl(rawImage, 100) ||
-                 generatePlaceholderUrl(orderItem?.product?.name || orderItem?.product_name || 'Producto', 100, theme === 'dark');
+                  generatePlaceholderUrl('Producto', 100, theme === 'dark');
 
     // Determinar nombre del producto
-    const productName = orderItem?.product?.name ||
+    const productName = item.product?.name ||
+                       item.product_name ||
                        orderItem?.product_name ||
                        'Producto Desconocido';
 
     // Determinar tamaño de variante
-    const variantSize = orderItem?.variant?.size ||
+    const variantSize = item.variant?.size ||
+                       item.variant_name ||
                        orderItem?.variant_name ||
                        'Tamaño N/A';
 
@@ -123,14 +133,12 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       errors.push('La orden no tiene productos');
     } else {
       order.items.forEach((item, index) => {
-        // ✅ CORRECTED: Validamos id_product que es lo que realmente necesitamos
         if (!item.id_product) {
           errors.push(`Producto ${index + 1}: ID de producto faltante`);
         }
         if (!item.id_variant) {
           errors.push(`Producto ${index + 1}: ID de variante faltante`);
         }
-        // id_order_detail es solo para referencia interna, no requerido para el API
       });
     }
 
@@ -150,7 +158,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     return { isValid, errors };
   };
 
-  // Cargar datos cuando se abre el modal con error handling mejorado
+  // Cargar datos cuando se abre el modal
   useEffect(() => {
     if (isOpen && order) {
       debugLog('MODAL', 'Opening OrderEditModal', { orderId: order.id_order });
@@ -173,13 +181,13 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
           await loadProductSpecificData();
           initializeEditData();
         } catch (error) {
-              debugLog('ERROR', 'Failed to initialize modal', error);
-              setMessage({
-                text: 'Error inicializando el modal de edición',
-                type: 'error'
-              });
-      }
-  };
+          debugLog('ERROR', 'Failed to initialize modal', error);
+          setMessage({
+            text: 'Error inicializando el modal de edición',
+            type: 'error'
+          });
+        }
+      };
 
       initializeModal();
     } else if (!isOpen) {
@@ -197,7 +205,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     }
   }, [isOpen, order]);
 
-  // ✅ FUNCIÓN DE CARGA DE CATÁLOGOS GENERALES
+  // ✅ FUNCIÓN DE CARGA DE CATÁLOGOS GENERALES - CORREGIDA
   const loadCatalogs = async () => {
     debugLog('CATALOG', 'Starting catalog loading...');
 
@@ -214,41 +222,63 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     });
 
     try {
-      const result = await loadMultipleCatalogs(['payments', 'extras', 'sauces']);
+      // ✅ Cargar todos los catálogos usando las funciones de API
+      const [paymentsResult, extrasResult, saucesResult] = await Promise.allSettled([
+        getPaymentMethods(),
+        getExtras(),
+        getSauces()
+      ]);
 
-      debugLog('CATALOG', 'Multiple catalogs loaded', result);
-
-      // Configurar los catálogos cargados
-      setPaymentMethods(result.data.payments || []);
-      setAvailableExtras(result.data.extras || []);
-      setAvailableSauces(result.data.sauces || []);
-
-      // Configurar errores específicos
-      setCatalogErrors(result.errors);
-
-      if (result.hasErrors) {
-        debugLog('WARNING', 'Some catalogs failed to load', result.errors);
+      // ✅ Configurar métodos de pago
+      if (paymentsResult.status === 'fulfilled') {
+        setPaymentMethods(paymentsResult.value || []);
+      } else {
+        setCatalogErrors(prev => ({ ...prev, payments: paymentsResult.reason }));
+        // Fallback para métodos de pago
+        setPaymentMethods([
+          { id_payment_method: 1, name: 'Efectivo' },
+          { id_payment_method: 2, name: 'Tarjeta' },
+          { id_payment_method: 3, name: 'Transferencia' }
+        ]);
       }
+
+      // ✅ Configurar extras
+      if (extrasResult.status === 'fulfilled') {
+        setAvailableExtras(extrasResult.value || []);
+      } else {
+        setCatalogErrors(prev => ({ ...prev, extras: extrasResult.reason }));
+        setAvailableExtras([]);
+      }
+
+      // ✅ Configurar salsas
+      if (saucesResult.status === 'fulfilled') {
+        setAvailableSauces(saucesResult.value || []);
+      } else {
+        setCatalogErrors(prev => ({ ...prev, sauces: saucesResult.reason }));
+        setAvailableSauces([]);
+      }
+
+      debugLog('CATALOG', 'Catalogs loaded', {
+        payments: paymentsResult.status,
+        extras: extrasResult.status,
+        sauces: saucesResult.status
+      });
 
     } catch (error) {
       debugLog('ERROR', 'Failed to load catalogs', error);
-      const errorInfo = handleApiError(error);
-
       setMessage({
-        text: `Error cargando catálogos: ${errorInfo.message}`,
-        type: errorInfo.type
+        text: `Error cargando catálogos: ${error.message}`,
+        type: 'error'
       });
 
       // Configurar arrays vacíos como fallback
-      setPaymentMethods([]);
+      setPaymentMethods([
+        { id_payment_method: 1, name: 'Efectivo' },
+        { id_payment_method: 2, name: 'Tarjeta' },
+        { id_payment_method: 3, name: 'Transferencia' }
+      ]);
       setAvailableExtras([]);
       setAvailableSauces([]);
-
-      setCatalogErrors({
-        payments: error,
-        extras: error,
-        sauces: error
-      });
     } finally {
       setCatalogLoading({
         payments: false,
@@ -258,7 +288,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     }
   };
 
-  // ✅ NUEVA FUNCIÓN PARA CARGAR DATOS ESPECÍFICOS POR PRODUCTO CON BETTER ERROR HANDLING
+  // ✅ NUEVA FUNCIÓN PARA CARGAR DATOS ESPECÍFICOS POR PRODUCTO
   const loadProductSpecificData = async () => {
     if (!order?.items || order.items.length === 0) return;
 
@@ -284,26 +314,15 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       setProductDataLoading(loadingState);
       setProductDataErrors(errorState);
 
-      // Cargar datos para cada producto con timeouts
-      const loadWithTimeout = async (promise, timeout = 10000) => {
-        return Promise.race([
-          promise,
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), timeout)
-          )
-        ]);
-      };
-
+      // ✅ Cargar datos para cada producto
       const variantsPromises = uniqueProductIds.map(async (productId) => {
         try {
           debugLog('PRODUCT', `Loading variants for product ${productId}`);
-          const response = await loadWithTimeout(
-            apiRequest(`/products/${productId}/variants/active`)
-          );
+          const response = await getProductById(productId);
 
-          // ✅ VALIDAR ESTRUCTURA DE VARIANTES
-          const validVariants = Array.isArray(response) ?
-            response.filter(variant =>
+          // ✅ Extraer variantes del producto
+          const validVariants = Array.isArray(response.variants) ?
+            response.variants.filter(variant =>
               variant &&
               variant.id_variant &&
               typeof variant.id_variant === 'number' &&
@@ -332,11 +351,10 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       const flavorsPromises = uniqueProductIds.map(async (productId) => {
         try {
           debugLog('PRODUCT', `Loading flavors for product ${productId}`);
-          const response = await loadWithTimeout(
-            apiRequest(`/products/${productId}/flavors/active`)
-          );
+          // ✅ Obtener sabores desde el catálogo general
+          const response = await getFlavors();
 
-          // ✅ VALIDAR ESTRUCTURA DE SABORES
+          // ✅ Filtrar sabores válidos
           const validFlavors = Array.isArray(response) ?
             response.filter(flavor =>
               flavor &&
@@ -362,7 +380,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         }
       });
 
-      // Ejecutar todas las promesas con timeout global
+      // Ejecutar todas las promesas
       const [variantsResults, flavorsResults] = await Promise.allSettled([
         Promise.all(variantsPromises),
         Promise.all(flavorsPromises)
@@ -404,30 +422,27 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     try {
       debugLog('EDIT', 'Initializing edit data', order);
 
-      // ✅ Preseleccionar método de pago con múltiples fallbacks
+      // ✅ Preseleccionar método de pago - ESTRUCTURA CORREGIDA
       const paymentMethodId = order.payment_method?.id_payment_method ||
-                             order.payment_method?.id_payment ||
-                             order.id_payment_method ||
+                             order.payment_method ||
                              null;
 
       // Validar que los items tengan datos válidos
       const validItems = (order.items || [])
         .filter(item =>
           item &&
-          item.id_product &&  // ✅ CRÍTICO: id_product es lo que se envía al backend
+          item.id_product &&
           item.id_variant &&
           item.id_product !== null &&
           item.id_variant !== null
         )
         .map((item, index) => {
-          // ✅ NOTA: id_order_detail se mantiene para referencia interna,
-          // pero id_product es lo que realmente se envía al backend
           const orderDetailId = item.id_order_detail || item.id || (index + 1);
 
           debugLog('ITEM', `Processing item ${index}`, {
-            id_order_detail: orderDetailId,  // Solo para referencia interna
-            id_product: item.id_product,     // ✅ ESTE se envía al backend
-            id_variant: item.id_variant,     // ✅ ESTE se envía al backend
+            id_order_detail: orderDetailId,
+            id_product: item.id_product,
+            id_variant: item.id_variant,
             originalItem: item
           });
 
@@ -435,8 +450,8 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
             // Campos para referencia interna
             id_order_detail: Number(orderDetailId),
             quantity: Number(item.quantity) || 1,
-            unit_price: Number(item.unit_price || item.price) || 0,
-            total_price: Number(item.total_price || item.price) || 0,
+            unit_price: Number(item.unit_price || item.product_price) || 0,
+            total_price: Number(item.total_price || item.product_price) || 0,
             comment: item.comment || '',
 
             // ✅ CAMPOS CRÍTICOS que se envían al backend
@@ -456,16 +471,17 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                 id_sauce: Number(sauce.id_sauce)
               })) : [],
 
-            // ✅ SABOR: Manejar como campo único, no array
+            // ✅ SABOR: Manejar como campo único
             flavor: (() => {
-              // Validación robusta para evitar errores de null
               try {
+                // Si viene como array (compatibilidad con estructura anterior)
                 if (Array.isArray(item.flavors) && item.flavors.length > 0 && item.flavors[0]?.id_flavor) {
                   return {
                     id_flavor: Number(item.flavors[0].id_flavor),
                     name: item.flavors[0].name || 'Sin nombre'
                   };
                 }
+                // Si viene como objeto único (estructura del backend)
                 if (item.flavor && item.flavor.id_flavor) {
                   return {
                     id_flavor: Number(item.flavor.id_flavor),
@@ -503,11 +519,10 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       debugLog('SUCCESS', 'Edit data initialized', {
         paymentMethodId: initialData.id_payment_method,
         itemsCount: validItems.length,
-        // ✅ LOGS CORREGIDOS: Mostramos id_product que es lo importante
         validItems: validItems.map(item => ({
-          id_product: item.id_product,      // ✅ Este se envía al backend
-          id_variant: item.id_variant,      // ✅ Este se envía al backend
-          id_order_detail: item.id_order_detail // Solo para referencia interna
+          id_product: item.id_product,
+          id_variant: item.id_variant,
+          id_order_detail: item.id_order_detail
         }))
       });
 
@@ -565,7 +580,6 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
   // ✅ NUEVA FUNCIÓN PARA CAMBIAR VARIANTE DE UN ITEM
   const handleVariantChangeForItem = (itemIndex, variant) => {
     try {
-      // Validar que variant tenga estructura correcta
       if (!variant || !variant.id_variant || !variant.price) {
         debugLog('WARNING', 'Invalid variant data:', variant);
         return;
@@ -676,7 +690,6 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         ...prev,
         updated_items: prev.updated_items.map((item, index) => {
           if (index === itemIndex) {
-            // Asegurar que extras sea un array válido
             const currentExtras = Array.isArray(item.extras) ? item.extras : [];
             return {
               ...item,
@@ -701,16 +714,13 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA AGREGAR/QUITAR SALSAS A UN ITEM - CORREGIDA
-  // 🔧 FIXED: Preselección de salsas con conversión de tipos y validación de arrays
+  // ✅ FUNCIÓN PARA AGREGAR/QUITAR SALSAS A UN ITEM
   const handleToggleSauceForItem = (itemIndex, sauce) => {
     setEditData(prev => ({
       ...prev,
       updated_items: prev.updated_items.map((item, index) => {
         if (index === itemIndex) {
-          // Asegurar que sauces sea un array válido
           const currentSauces = Array.isArray(item.sauces) ? item.sauces : [];
-
           const existingSauceIndex = currentSauces.findIndex(s =>
             s && s.id_sauce && Number(s.id_sauce) === Number(sauce.id_sauce)
           );
@@ -743,7 +753,6 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         ...prev,
         updated_items: prev.updated_items.map((item, index) => {
           if (index === itemIndex) {
-            // Validar que flavor tenga estructura correcta si no es null
             const newFlavor = flavor && flavor.id_flavor ? {
               id_flavor: Number(flavor.id_flavor),
               name: flavor.name || 'Sin nombre'
@@ -766,8 +775,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS CORREGIDA - FORMATO COMPLETO
-  // 🚨 IMPORTANTE: El backend espera el formato completo con extras, sauces y flavor
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS - ESTRUCTURA CORREGIDA DEL BACKEND
   const handleSaveChanges = async () => {
     try {
       debugLog('SAVE', 'Starting save process...');
@@ -797,26 +805,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         return;
       }
 
-      // Validar que todos los items tengan IDs válidos
-      const invalidItems = editData.updated_items.filter(item =>
-        !item.id_product ||
-        item.id_product === null ||
-        !item.id_variant ||
-        item.id_variant === null
-      );
-
-      if (invalidItems.length > 0) {
-        debugLog('VALIDATION', 'Invalid items found', invalidItems);
-        await Swal.fire({
-          title: 'Error de validación',
-          text: 'Algunos productos tienen datos incompletos. Intenta recargar la página.',
-          icon: 'error',
-          confirmButtonText: 'Entendido'
-        });
-        return;
-      }
-
-      // ✅ PREPARAR DATOS CON FORMATO COMPLETO
+      // ✅ PREPARAR DATOS SEGÚN LA ESTRUCTURA ESPERADA POR EL BACKEND
       const updateData = {
         comment: editData.comment || '',
         id_payment_method: Number(editData.id_payment_method),
@@ -833,7 +822,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
               id_product: Number(item.id_product),
               id_variant: Number(item.id_variant),
 
-              // ✅ EXTRAS: Incluir updated_extras si hay extras
+              // ✅ EXTRAS: Solo incluir si hay extras
               ...(item.extras && item.extras.length > 0 && {
                 updated_extras: item.extras
                   .filter(extra => extra.id_extra && extra.id_extra !== null)
@@ -843,7 +832,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                   }))
               }),
 
-              // ✅ SALSAS: Incluir updated_sauces si hay salsas
+              // ✅ SALSAS: Solo incluir si hay salsas
               ...(item.sauces && item.sauces.length > 0 && {
                 updated_sauces: item.sauces
                   .filter(sauce => sauce.id_sauce && sauce.id_sauce !== null)
@@ -852,8 +841,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                   }))
               }),
 
-              // ✅ SABOR: Incluir flavor si hay un sabor seleccionado (solo el ID)
-              // IMPORTANTE: Backend espera 'flavor: number', frontend maneja como objeto único
+              // ✅ SABOR: Solo incluir si hay sabor seleccionado
               ...(item.flavor &&
                   item.flavor.id_flavor &&
                   Number(item.flavor.id_flavor) > 0 && {
@@ -863,10 +851,8 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
 
             // ✅ ITEM EXISTENTE vs NUEVO
             if (item.id_order_detail) {
-              // Item existente: incluir id_order_detail
               itemData.id_order_detail = Number(item.id_order_detail);
             } else {
-              // Item nuevo: incluir id_order
               itemData.id_order = Number(order.id_order);
             }
 
@@ -874,24 +860,10 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
           })
       };
 
-      // Validación final del objeto de actualización
-      if (updateData.updated_items.length === 0) {
-        debugLog('VALIDATION', 'No valid items after filtering');
-        await Swal.fire({
-          title: 'Error de validación',
-          text: 'No hay productos válidos para actualizar',
-          icon: 'error',
-          confirmButtonText: 'Entendido'
-        });
-        return;
-      }
+      debugLog('SAVE', 'Sending update data', updateData);
 
-      debugLog('SAVE', 'Sending COMPLETE update data', updateData);
-
-      const response = await apiRequest(`/orders/${order.id_order}`, {
-        method: 'PUT',
-        body: JSON.stringify(updateData)
-      });
+      // ✅ USAR FUNCIÓN DE API EN LUGAR DE FETCH DIRECTO
+      const response = await updateOrder(order.id_order, updateData);
 
       debugLog('SUCCESS', 'Order updated successfully', response);
 
@@ -944,7 +916,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
   // No renderizar si no está abierto
   if (!isOpen) return null;
 
-  // ✅ VALIDACIÓN DE SEGURIDAD: Verificar que order existe y tiene estructura válida
+  // ✅ VALIDACIÓN DE SEGURIDAD
   if (!order || !order.id_order) {
     debugLog('ERROR', 'Invalid order data for modal:', order);
     return (
@@ -963,7 +935,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     );
   }
 
-return (
+  return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className={`relative w-full max-w-6xl rounded-lg shadow-xl ${
@@ -1140,7 +1112,6 @@ return (
                 <div className="space-y-6">
                   {editData.updated_items && Array.isArray(editData.updated_items) &&
                    editData.updated_items.map((item, itemIndex) => {
-                    // ✅ VALIDACIÓN ROBUSTA: Verificar que item tenga estructura mínima válida
                     if (!item || !item.id_product || !item.id_variant) {
                       debugLog('WARNING', `Skipping invalid item at index ${itemIndex}:`, item);
                       return null;
@@ -1321,7 +1292,7 @@ return (
                           </div>
                         )}
 
-                        {/* ✅ SECCIÓN DE SABOR ACTUAL (campo único) */}
+                        {/* ✅ SECCIÓN DE SABOR ACTUAL */}
                         {item.flavor && item.flavor.id_flavor && item.flavor.name && (
                           <div className="mb-4">
                             <p className={`text-sm font-medium mb-2 ${
@@ -1418,7 +1389,6 @@ return (
                                             : 'border-gray-300 bg-gray-100 hover:bg-gray-200 hover:border-gray-400 focus:ring-blue-500'
                                       }`}
                                     >
-                                      {/* Check icon para elementos seleccionados */}
                                       {isSelected && (
                                         <div
                                           className={`absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center ${
@@ -1430,7 +1400,6 @@ return (
                                         </div>
                                       )}
 
-                                      {/* Imagen de la salsa */}
                                       <img
                                         src={sauceImage}
                                         alt=""
@@ -1441,7 +1410,6 @@ return (
                                         }}
                                       />
 
-                                      {/* Nombre de la salsa */}
                                       <span className={`text-xs font-medium text-center leading-tight ${
                                         isSelected
                                           ? theme === 'dark'
@@ -1461,7 +1429,7 @@ return (
                           </div>
                         )}
 
-                        {/* ✅ SECCIÓN PARA CAMBIAR SABOR (campo único del producto) */}
+                        {/* ✅ SECCIÓN PARA CAMBIAR SABOR */}
                         {productFlavorsData && Array.isArray(productFlavorsData) && productFlavorsData.length > 0 && (
                           <div>
                             <fieldset>
@@ -1486,7 +1454,6 @@ return (
                               ) : (
                                 <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Seleccionar sabor del producto">
                                   {productFlavorsData.map(flavor => {
-                                    // ✅ VALIDACIÓN ROBUSTA: Verificar que flavor y sus propiedades existan
                                     if (!flavor || !flavor.id_flavor) {
                                       return null;
                                     }
