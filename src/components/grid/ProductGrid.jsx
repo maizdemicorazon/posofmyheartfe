@@ -45,6 +45,10 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
 
         if (response.products && response.products.length > 0) {
           console.log('✅ Products loaded:', response.products.length);
+
+          // ✅ Log para debug de estructura de productos
+          console.log('🔍 Product structure sample:', response.products[0]);
+
           setProducts(response.products);
           setExtras(response.extras || []);
           setSauces(response.sauces || []);
@@ -83,22 +87,37 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
     }
   }, [products.length, setProducts, setExtras, setSauces, setLoading, setMessage]);
 
-  // ✅ Filtrado optimizado con useMemo
+  // ✅ Filtrado optimizado con useMemo - CORREGIDO
   const filteredProducts = useMemo(() => {
     console.log('🔍 Filtering products. Selected category:', selectedCategory, 'Total products:', products.length);
 
-    if (!selectedCategory || selectedCategory === 'all' || selectedCategory === 'Todos') {
+    // Si no hay categoría seleccionada o es null/todos, mostrar todos los productos
+    if (!selectedCategory || selectedCategory === null || selectedCategory === 'all' || selectedCategory === 'Todos') {
       console.log('📦 Showing all products:', products.length);
       return products;
     }
 
+    // ✅ FILTRADO CORREGIDO: Comparar IDs numéricos
     const filtered = products.filter(product => {
-      const productCategory = product.category_name || product.category?.name || '';
-      const match = productCategory.toLowerCase().includes(selectedCategory.toLowerCase());
+      // Log para debug
+      console.log(`🔍 Product ${product.name}: id_category=${product.id_category}, category_name=${product.category_name}`);
+
+      // Obtener el ID de categoría del producto
+      const productCategoryId = product.id_category || product.category?.id || null;
+
+      // Comparar IDs numéricos
+      const match = Number(productCategoryId) === Number(selectedCategory);
+
+      if (match) {
+        console.log(`✅ Match found: Product "${product.name}" in category ${productCategoryId}`);
+      }
+
       return match;
     });
 
-    console.log(`📦 Filtered products for "${selectedCategory}":`, filtered.length);
+    console.log(`📦 Filtered products for category ID "${selectedCategory}":`, filtered.length);
+    console.log('📦 Filtered products:', filtered.map(p => ({ id: p.id_product, name: p.name, category: p.id_category })));
+
     return filtered;
   }, [products, selectedCategory]);
 
@@ -141,7 +160,19 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
     });
   };
 
+  // ✅ Mensaje cuando no hay productos en la categoría
   if (filteredProducts.length === 0 && products.length > 0) {
+    // Buscar el nombre de la categoría seleccionada
+    const categoryNames = {
+      1: 'Esquites',
+      2: 'Elotes',
+      3: 'Bebidas',
+      4: 'Especiales',
+      5: 'Antojitos'
+    };
+
+    const categoryName = categoryNames[selectedCategory] || `categoría ${selectedCategory}`;
+
     return (
       <div className={`flex flex-col items-center justify-center min-h-[50vh] p-8 ${
         theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
@@ -149,8 +180,23 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         <div className="text-6xl mb-4">🔍</div>
         <h3 className="text-xl font-semibold mb-2">No hay productos en esta categoría</h3>
         <p className="text-center max-w-md">
-          No se encontraron productos para "{selectedCategory}".
+          No se encontraron productos para "{categoryName}".
           Intenta seleccionar otra categoría.
+        </p>
+      </div>
+    );
+  }
+
+  // ✅ Mensaje cuando no hay productos cargados
+  if (products.length === 0) {
+    return (
+      <div className={`flex flex-col items-center justify-center min-h-[50vh] p-8 ${
+        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+      }`}>
+        <div className="text-6xl mb-4 animate-pulse">⏳</div>
+        <h3 className="text-xl font-semibold mb-2">Cargando productos...</h3>
+        <p className="text-center max-w-md">
+          Por favor espera mientras cargamos el catálogo de productos.
         </p>
       </div>
     );
@@ -222,6 +268,13 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
                 </span>
               )}
             </div>
+
+            {/* ✅ Badge de ID de categoría para debug (puedes quitar esto en producción) */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-1 text-xs text-gray-500">
+                Cat ID: {product.id_category || 'N/A'}
+              </div>
+            )}
           </div>
         </div>
       ))}
