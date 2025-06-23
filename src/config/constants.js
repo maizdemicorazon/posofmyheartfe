@@ -48,8 +48,7 @@ export const API_ENDPOINTS = {
   EXTRAS: `${API_CONFIG.BASE_URL}/extras`,
   SAUCES: `${API_CONFIG.BASE_URL}/sauces`,
   FLAVORS: `${API_CONFIG.BASE_URL}/flavors`,
-  // ✅ CORREGIDO: Usar API_CONFIG.BASE_URL en lugar de PRODUCTS undefined
-  FLAVOR_BY_ID: (id) => `${API_CONFIG.BASE_URL}/products/${id}/flavors`,
+  FLAVORS_BY_ID: (id) => `${API_CONFIG.BASE_URL}/products/${id}/flavors`,
   PAYMENT_METHODS: `${API_CONFIG.BASE_URL}/payments`,
 
   // Métricas y reportes

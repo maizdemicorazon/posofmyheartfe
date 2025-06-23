@@ -161,7 +161,7 @@ class ApiService {
    */
   async getFlavorsByIdProduct(id) {
     // ✅ CORREGIDO: Quitar paréntesis extra
-    const response = await this.request(API_ENDPOINTS.FLAVOR_BY_ID(id));
+    const response = await this.request(API_ENDPOINTS.FLAVORS_BY_ID(id));
     return response.json();
   }
 
