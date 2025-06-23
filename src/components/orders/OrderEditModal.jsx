@@ -31,7 +31,7 @@ import {
   updateOrder,
   getExtras,
   getSauces,
-  getFlavors,
+  getFlavorsByIdProduct,
   getPaymentMethods,
   getProductById
 } from '../../utils/api';
@@ -236,9 +236,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         setCatalogErrors(prev => ({ ...prev, payments: paymentsResult.reason }));
         // Fallback para métodos de pago
         setPaymentMethods([
-          { id_payment_method: 1, name: 'Efectivo' },
-          { id_payment_method: 2, name: 'Tarjeta' },
-          { id_payment_method: 3, name: 'Transferencia' }
+          { id_payment_method: 0, name: 'Error en la carga de datos' }
         ]);
       }
 
@@ -272,11 +270,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       });
 
       // Configurar arrays vacíos como fallback
-      setPaymentMethods([
-        { id_payment_method: 1, name: 'Efectivo' },
-        { id_payment_method: 2, name: 'Tarjeta' },
-        { id_payment_method: 3, name: 'Transferencia' }
-      ]);
+      setPaymentMethods([]);
       setAvailableExtras([]);
       setAvailableSauces([]);
     } finally {
@@ -352,7 +346,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         try {
           debugLog('PRODUCT', `Loading flavors for product ${productId}`);
           // ✅ Obtener sabores desde el catálogo general
-          const response = await getFlavors();
+          const response = await getFlavorsByIdProduct(productId);
 
           // ✅ Filtrar sabores válidos
           const validFlavors = Array.isArray(response) ?

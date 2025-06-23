@@ -67,31 +67,78 @@ function ProductOptionsModal({
   };
 
   // Resetear estados cuando se abre/cierra el modal o cambia el producto
+// ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL - CORREGIDO PARA EDICIÓN
   useEffect(() => {
     if (isOpen && product) {
+      console.log('🔄 Initializing modal with:', {
+        isEditing,
+        product,
+        initialQuantity,
+        initialOptions,
+        initialFlavors,
+        initialExtras,
+        initialSauces,
+        initialComment
+      });
+
+      // ✅ INICIALIZAR CANTIDAD
       setQuantity(initialQuantity || 1);
-      setSelectedExtras(Array.isArray(initialExtras) ? [...initialExtras] : []);
-      setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
+
+      // ✅ INICIALIZAR EXTRAS - Copiar correctamente el array
+      const extrasToSet = Array.isArray(initialExtras) ? [...initialExtras] : [];
+      setSelectedExtras(extrasToSet);
+      console.log('🔧 Set initial extras:', extrasToSet);
+
+      // ✅ INICIALIZAR SALSAS - Copiar correctamente el array
+      const saucesToSet = Array.isArray(initialSauces) ? [...initialSauces] : [];
+      setSelectedSauces(saucesToSet);
+      console.log('🌶️ Set initial sauces:', saucesToSet);
+
+      // ✅ INICIALIZAR COMENTARIO
       setComment(initialComment || '');
+
+      // ✅ LIMPIAR ERRORES
       setErrors({});
 
-      // Reset product image state
+      // ✅ RESETEAR ESTADO DE IMAGEN
       setProductImageState({ hasError: false, errorCount: 0 });
 
-      // Configurar opciones predeterminadas si existen
+      // ✅ CONFIGURAR OPCIÓN SELECCIONADA
+      let optionToSelect = null;
+
       if (Array.isArray(initialOptions) && initialOptions.length > 0) {
-        setSelectedOption(initialOptions[0]);
+        optionToSelect = initialOptions[0];
+        console.log('🎯 Using initial option:', optionToSelect);
       } else if (product.options && product.options.length > 0) {
-        setSelectedOption(product.options[0]);
+        optionToSelect = product.options[0];
+        console.log('🎯 Using first product option:', optionToSelect);
       }
 
+      setSelectedOption(optionToSelect);
+
+      // ✅ CONFIGURAR SABOR SELECCIONADO
+      let flavorToSelect = null;
+
       if (Array.isArray(initialFlavors) && initialFlavors.length > 0) {
-        setSelectedFlavor(initialFlavors[0]);
+        flavorToSelect = initialFlavors[0];
+        console.log('🍋 Using initial flavor:', flavorToSelect);
       } else if (product.flavors && product.flavors.length > 0) {
-        setSelectedFlavor(product.flavors[0]);
+        flavorToSelect = product.flavors[0];
+        console.log('🍋 Using first product flavor:', flavorToSelect);
       }
+
+      setSelectedFlavor(flavorToSelect);
+
+      console.log('✅ Modal initialization complete:', {
+        quantity: initialQuantity || 1,
+        selectedOption: optionToSelect,
+        selectedFlavor: flavorToSelect,
+        selectedExtras: extrasToSet,
+        selectedSauces: saucesToSet,
+        comment: initialComment || ''
+      });
     }
-  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment]);
+  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, isEditing]);
 
   // ✅ SCROLL LOCK - Prevenir scroll del fondo cuando el modal está abierto
   useEffect(() => {
@@ -162,18 +209,42 @@ function ProductOptionsModal({
     return Object.keys(newErrors).length === 0;
   };
 
-  // Calcular precio total
+  // ✅ CALCULAR PRECIO TOTAL - CORREGIDO PARA INCLUIR SALSAS
   const calculateTotalPrice = () => {
+    // ✅ PRECIO BASE
     let total = selectedOption ? parseFloat(selectedOption.price) : parseFloat(product.price || 0);
 
+    console.log('💰 Base price:', total);
+
+    // ✅ AGREGAR PRECIO DE EXTRAS
     selectedExtras.forEach(extra => {
-      total += parseFloat(extra.price || 0);
+      const extraPrice = parseFloat(extra.price || extra.actual_price || 0);
+      const extraQuantity = parseInt(extra.quantity || 1);
+      total += extraPrice * extraQuantity;
+      console.log(`💰 Added extra ${extra.name}: ${extraPrice} x ${extraQuantity} = ${extraPrice * extraQuantity}`);
     });
 
-    return total * quantity;
+    // ✅ AGREGAR PRECIO DE SALSAS (si tienen precio)
+    selectedSauces.forEach(sauce => {
+      const saucePrice = parseFloat(sauce.price || sauce.actual_price || 0);
+      total += saucePrice;
+      console.log(`💰 Added sauce ${sauce.name}: ${saucePrice}`);
+    });
+
+    // ✅ AGREGAR PRECIO DE SABOR (si tiene precio)
+    if (selectedFlavor && selectedFlavor.price) {
+      const flavorPrice = parseFloat(selectedFlavor.price || 0);
+      total += flavorPrice;
+      console.log(`💰 Added flavor ${selectedFlavor.name}: ${flavorPrice}`);
+    }
+
+    const finalTotal = total * quantity;
+    console.log(`💰 Final total: ${total} x ${quantity} = ${finalTotal}`);
+
+    return finalTotal;
   };
 
-  // Función para guardar
+// ✅ FUNCIÓN PARA GUARDAR - CORREGIDA PARA EDICIÓN
   const handleSave = () => {
     if (!validateForm()) {
       Swal.fire({
@@ -181,36 +252,86 @@ function ProductOptionsModal({
         text: 'Por favor, completa todos los campos obligatorios',
         icon: 'warning',
         confirmButtonText: 'Entendido',
-        confirmButtonColor: '#f59e0b'
+        confirmButtonColor: '#f59e0b',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
       return;
     }
 
+    console.log('💾 Saving product with data:', {
+      isEditing,
+      product,
+      quantity,
+      selectedOption,
+      selectedFlavor,
+      selectedExtras,
+      selectedSauces,
+      comment,
+      flavorDetails: {
+        selectedFlavorId: selectedFlavor?.id_flavor,
+        selectedFlavorName: selectedFlavor?.name,
+        hasSelectedFlavor: !!selectedFlavor
+      }
+    });
+
     if (onSave) {
-      onSave({
+      // ✅ ESTRUCTURA DE DATOS PARA EDICIÓN
+      const dataToSave = {
+        // ✅ PRODUCTO ORIGINAL (para App.jsx buscar variantes/opciones)
         product,
+
+        // ✅ VALORES SELECCIONADOS EN EL MODAL
         quantity,
         selectedOption,
         selectedFlavor,
-        selectedExtras,
-        selectedSauces,
+        selectedExtras: [...selectedExtras], // Copiar array
+        selectedSauces: [...selectedSauces], // Copiar array
         comment,
-        totalPrice: calculateTotalPrice()
-      });
+
+        // ✅ PRECIO TOTAL CALCULADO
+        totalPrice: calculateTotalPrice(),
+
+        // ✅ CAMPOS ADICIONALES PARA COMPATIBILIDAD
+        options: selectedOption ? [selectedOption] : [],
+        flavors: selectedFlavor ? [selectedFlavor] : [],
+        extras: [...selectedExtras],
+        sauces: [...selectedSauces]
+      };
+
+      console.log('📤 Sending data to onSave:', dataToSave);
+      onSave(dataToSave);
+
+      // ✅ MOSTRAR CONFIRMACIÓN PARA EDICIÓN
+      if (isEditing) {
+        Swal.fire({
+          title: '¡Producto actualizado!',
+          text: 'Los cambios se han guardado en el carrito',
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false,
+          toast: true,
+          position: 'top-end',
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+      }
+
     } else {
-      // Agregar al carrito directamente
+      // ✅ AGREGAR AL CARRITO DIRECTAMENTE (modo normal, no edición)
       const cartItem = {
         id: Date.now(),
         product,
         quantity,
         selectedOption,
         selectedFlavor,
-        selectedExtras,
-        selectedSauces,
+        selectedExtras: [...selectedExtras],
+        selectedSauces: [...selectedSauces],
         comment,
         totalPrice: calculateTotalPrice()
       };
 
+      console.log('🛒 Adding to cart:', cartItem);
       addToCart(cartItem);
 
       if (onAddedToCart) {
@@ -218,13 +339,19 @@ function ProductOptionsModal({
       }
 
       Swal.fire({
-        title: '¡Perfecto!',
-        text: `${product.name} se agregó correctamente`,
+        title: '¡Producto agregado!',
+        text: `${product.name} se ha agregado al carrito`,
         icon: 'success',
         timer: 1500,
-        showConfirmButton: false
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
     }
+
+    // ✅ CERRAR MODAL
     onClose();
   };
 
