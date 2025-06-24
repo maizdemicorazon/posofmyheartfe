@@ -198,30 +198,6 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
             }`}>
               {product.name}
             </h3>
-
-            {product.description && (
-              <p className={`text-xs mb-2 line-clamp-2 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-              }`}>
-                {product.description}
-              </p>
-            )}
-
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-green-600">
-                {product.price ? `$${product.price}` : 'Ver opciones'}
-              </span>
-
-              {product.category_name && (
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  theme === 'dark'
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {product.category_name}
-                </span>
-              )}
-            </div>
           </div>
         </div>
       ))}

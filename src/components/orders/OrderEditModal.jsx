@@ -32,8 +32,8 @@ import {
   getExtras,
   getSauces,
   getFlavorsByIdProduct,
-  getPaymentMethods,
-  getProductById
+  getVariantsByIdProduct,
+  getPaymentMethods
 } from '../../utils/api';
 
 // ✅ Componente interno sin ErrorBoundary
@@ -312,7 +312,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       const variantsPromises = uniqueProductIds.map(async (productId) => {
         try {
           debugLog('PRODUCT', `Loading variants for product ${productId}`);
-          const response = await getProductById(productId);
+          const response = await getVariantsByIdProduct(productId);
 
           // ✅ Extraer variantes del producto
           const validVariants = Array.isArray(response.variants) ?

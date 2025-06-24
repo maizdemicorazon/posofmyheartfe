@@ -160,8 +160,15 @@ class ApiService {
    * Obtener sabores por id de producto
    */
   async getFlavorsByIdProduct(id) {
-    // ✅ CORREGIDO: Quitar paréntesis extra
     const response = await this.request(API_ENDPOINTS.FLAVORS_BY_ID(id));
+    return response.json();
+  }
+
+   /**
+   * Obtener variantes por id de producto
+   */
+  async getVariantsByIdProduct(id) {
+    const response = await this.request(API_ENDPOINTS.VARIANTS_BY_ID(id));
     return response.json();
   }
 
@@ -388,6 +395,15 @@ export const getFlavorsByIdProduct = async (id) => {
     return await apiService.getFlavorsByIdProduct(id);
   } catch (error) {
     console.error('❌ Error in getFlavorsByIdProduct:', error);
+    throw error;
+  }
+};
+
+export const getVariantsByIdProduct = async (id) => {
+  try {
+    return await apiService.getVariantsByIdProduct(id);
+  } catch (error) {
+    console.error('❌ Error in getVariantsByIdProduct:', error);
     throw error;
   }
 };
