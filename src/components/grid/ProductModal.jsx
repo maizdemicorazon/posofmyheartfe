@@ -10,6 +10,8 @@ import {
   CurrencyDollarIcon,
   CreditCardIcon,
   BanknotesIcon,
+  QrCodeIcon,
+  LinkIcon,
   ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
@@ -31,8 +33,7 @@ function ProductModal({
   onSave,
   isEditing = false,
   onAddedToCart,
-  // Nueva prop para mostrar método de pago
-  showPaymentMethod = false
+  showPaymentMethod = true
 }) {
   const { theme } = useTheme();
   const { addToCart, extras, sauces } = useCart();
@@ -72,7 +73,7 @@ function ProductModal({
     try {
       const response = await getPaymentMethods();
       const validPayments = Array.isArray(response) ?
-        response.filter(pm => pm && pm.id_payment && pm.name) : [];
+        response.filter(pm => pm && pm.id_payment_method && pm.name) : [];
       setPaymentMethods(validPayments);
     } catch (error) {
       console.error('Error loading payment methods:', error);
@@ -114,6 +115,7 @@ function ProductModal({
 
       // Inicializar estados básicos
       setQuantity(initialQuantity || 1);
+      setSelectedPaymentMethod(Array.isArray(initialPaymentMethod) ? [...initialPaymentMethod] : []);
       setSelectedExtras(Array.isArray(initialExtras) ? [...initialExtras] : []);
       setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
       setComment(initialComment || '');
@@ -164,6 +166,17 @@ function ProductModal({
       };
     }
   }, [isOpen]);
+
+    const handlePaymentsClick = (extra) => {
+      setSelectedPaymentMethod(prev => {
+        const isSelected = prev.some(e => e.id_payment_method === extra.id_payment_method);
+        if (isSelected) {
+          return prev.filter(e => e.id_payment_method !== extra.id_payment_method);
+        } else {
+          return [...prev, paymentMethods];
+        }
+      });
+    };
 
   // Función para manejar extras
   const handleExtraClick = (extra) => {
@@ -265,9 +278,7 @@ function ProductModal({
         selectedSauces: [...selectedSauces],
         comment,
         totalPrice: calculateTotalPrice(),
-        // ✅ Incluir método de pago si es necesario
         ...(showPaymentMethod && { selectedPaymentMethod }),
-        // Campos adicionales para compatibilidad
         options: selectedOption ? [selectedOption] : [],
         flavors: selectedFlavor ? [selectedFlavor] : [],
         extras: [...selectedExtras],
@@ -471,8 +482,12 @@ function ProductModal({
                                 <CreditCardIcon className="w-4 h-4" />
                               ) : method.name.toLowerCase().includes('transferencia') ? (
                                 <BanknotesIcon className="w-4 h-4" />
+                              ) : method.name.toLowerCase().includes('qr') ? (
+                                <QrCodeIcon className="w-4 h-4" />
+                              ) : method.name.toLowerCase().includes('link') ? (
+                                <LinkIcon className="w-4 h-4" />
                               ) : (
-                                <CurrencyDollarIcon className="w-4 h-4" />
+                                 <CurrencyDollarIcon className="w-4 h-4" />
                               )}
                             </div>
 

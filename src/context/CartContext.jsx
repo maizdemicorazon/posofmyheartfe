@@ -1,18 +1,29 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useLoading } from './LoadingContext';
 import { useMessage } from './MessageContext';
 import Swal from 'sweetalert2';
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
 import {
-  getOrders,
-  getOrderById,
   createOrder,
-  updateOrder
+  getOrders,
+  updateOrder,
+  getOrderById
 } from '../utils/api';
 
-const CartContext = createContext();
+// Crear el contexto
+const CartContext = createContext(undefined);
 
+// Hook personalizado para usar el contexto
+export function useCart() {
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
+}
+
+// Proveedor del contexto
 export function CartProvider({ children }) {
   // Estados principales
   const [cart, setCart] = useState([]);
@@ -22,253 +33,107 @@ export function CartProvider({ children }) {
   const [extras, setExtras] = useState([]);
   const [sauces, setSauces] = useState([]);
 
-  // ✅ NUEVO: Estado para rastrear si el carrito está en modo edición de orden
-  const [editingOrderId, setEditingOrderId] = useState(null);
-  const [isCartEditMode, setIsCartEditMode] = useState(false);
-
   const { setLoading } = useLoading();
   const { setMessage } = useMessage();
 
-  // ✅ FUNCIÓN PARA TRANSFORMAR ORDEN DEL BACKEND AL FORMATO DEL CARRITO
-  const transformOrderToCart = useCallback((orderData) => {
-    if (!orderData || !orderData.items) return [];
-
-    return orderData.items.map((item, index) => ({
-      // ID único para el carrito
-      id: `order-${orderData.id_order}-item-${index}`,
-
-      // Información del producto
-      product: {
-        id_product: item.id_product,
-        name: item.product_name,
-        image: item.product_image,
-        price: item.unit_price || 0
-      },
-
-      // Información directa para compatibilidad
-      id_product: item.id_product,
-      product_name: item.product_name,
-      product_image: item.product_image,
-      price: item.unit_price || 0,
-
-      // Opción seleccionada (variante)
-      selectedOption: {
-        id_variant: item.id_variant,
-        size: item.variant_name,
-        price: item.unit_price || 0
-      },
-
-      // Información de cantidad y precios
-      quantity: item.quantity || 1,
-      totalPrice: item.total_price || (item.unit_price * item.quantity),
-
-      // Comentarios
-      comment: item.comment || '',
-
-      // Extras seleccionados
-      selectedExtras: (item.extras || []).map(extra => ({
-        id_extra: extra.id_extra,
-        name: extra.name,
-        price: extra.actual_price || extra.price || 0,
-        quantity: extra.quantity || 1
-      })),
-
-      // Salsas seleccionadas
-      selectedSauces: (item.sauces || []).map(sauce => ({
-        id_sauce: sauce.id_sauce,
-        name: sauce.name,
-        image: sauce.image
-      })),
-
-      // Sabor seleccionado (convertir de objeto a referencia)
-      selectedFlavor: item.flavor ? {
-        id_flavor: item.flavor.id_flavor,
-        name: item.flavor.name
-      } : null,
-
-      // ✅ NUEVO: Método de pago del item (si existe a nivel de orden)
-      selectedPaymentMethod: orderData.payment_method?.id_payment || orderData.payment_method || null,
-
-      // Campos adicionales para referencia
-      id_order_detail: item.id_order_detail,
-      variant_name: item.variant_name
-    }));
-  }, []);
-
-  // ✅ FUNCIÓN PARA CARGAR UNA ORDEN EXISTENTE EN EL CARRITO PARA EDICIÓN
-  const loadOrderIntoCart = useCallback(async (orderId) => {
-    setLoading(true);
-    try {
-      console.log('🔄 Cargando orden en carrito para edición:', orderId);
-
-      // Obtener datos completos de la orden
-      const orderData = await getOrderById(orderId);
-
-      // Transformar items de la orden al formato del carrito
-      const cartItems = transformOrderToCart(orderData);
-
-      // Establecer el carrito con los items de la orden
-      setCart(cartItems);
-      setEditingOrderId(orderId);
-      setIsCartEditMode(true);
-
-      console.log('✅ Orden cargada en carrito:', cartItems);
-
-      setMessage({
-        text: `Orden #${orderId} cargada para edición`,
-        type: 'success'
-      });
-
-      return orderData;
-
-    } catch (error) {
-      console.error('❌ Error al cargar orden en carrito:', error);
-      setMessage({
-        text: `Error al cargar orden: ${error.message}`,
-        type: 'error'
-      });
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setMessage, transformOrderToCart]);
-
-  // ✅ FUNCIÓN PARA SINCRONIZAR EL CARRITO CUANDO SE ACTUALIZA UNA ORDEN
-  const updateCartFromOrder = useCallback((updatedOrder) => {
-    if (!isCartEditMode || !editingOrderId || editingOrderId !== updatedOrder.id_order) {
-      return; // Solo actualizar si estamos editando esta orden específica
-    }
-
-    console.log('🔄 Sincronizando carrito con orden actualizada:', updatedOrder.id_order);
-
-    // Transformar la orden actualizada al formato del carrito
-    const updatedCartItems = transformOrderToCart(updatedOrder);
-
-    // Actualizar el carrito
-    setCart(updatedCartItems);
-
-    console.log('✅ Carrito sincronizado con orden actualizada');
-
-  }, [isCartEditMode, editingOrderId, transformOrderToCart]);
-
-  // ✅ FUNCIÓN PARA SALIR DEL MODO EDICIÓN Y LIMPIAR CARRITO
-  const exitEditMode = useCallback(() => {
-    setCart([]);
-    setEditingOrderId(null);
-    setIsCartEditMode(false);
-    setEditingProduct(null);
-
-    console.log('🔄 Saliendo del modo edición de orden');
-
-    setMessage({
-      text: 'Modo edición finalizado',
-      type: 'info'
-    });
-  }, [setMessage]);
-
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS DE ORDEN EDITADA
-  const saveEditedOrder = useCallback(async () => {
-    if (!isCartEditMode || !editingOrderId) {
-      setMessage({ text: 'No hay orden en edición', type: 'error' });
-      return;
-    }
-
-    if (cart.length === 0) {
-      setMessage({ text: 'El carrito está vacío', type: 'error' });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      console.log('💾 Guardando orden editada:', editingOrderId);
-
-      // Transformar carrito a formato de actualización
-      const updateData = {
-        updated_items: cart.map(item => ({
-          id_order_detail: item.id_order_detail,
-          id_product: item.id_product,
-          id_variant: item.selectedOption?.id_variant,
-          quantity: item.quantity,
-          comment: item.comment || '',
-
-          // Extras
-          updated_extras: (item.selectedExtras || []).map(extra => ({
-            id_extra: extra.id_extra,
-            quantity: extra.quantity || 1
-          })),
-
-          // Salsas
-          updated_sauces: (item.selectedSauces || []).map(sauce => ({
-            id_sauce: sauce.id_sauce
-          })),
-
-          // Sabor
-          ...(item.selectedFlavor && { flavor: item.selectedFlavor.id_flavor })
-        }))
-      };
-
-      console.log('📤 Datos de actualización:', updateData);
-
-      // Actualizar orden
-      const updatedOrder = await updateOrder(editingOrderId, updateData);
-
-      // Actualizar lista de órdenes
-      setOrders(prev => prev.map(order =>
-        order.id_order === editingOrderId ? updatedOrder : order
-      ));
-
-      // Salir del modo edición
-      exitEditMode();
-
-      await Swal.fire({
-        title: '¡Orden actualizada!',
-        text: `Orden #${editingOrderId} guardada exitosamente`,
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false
-      });
-
-      setMessage({ text: 'Orden actualizada exitosamente', type: 'success' });
-
-      return updatedOrder;
-
-    } catch (error) {
-      console.error('❌ Error guardando orden editada:', error);
-      setMessage({
-        text: `Error al guardar orden: ${error.message}`,
-        type: 'error'
-      });
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [isCartEditMode, editingOrderId, cart, setLoading, setMessage, exitEditMode]);
-
-  // Función para calcular precio de producto
+// ✅ FUNCIÓN PARA CALCULAR PRECIO DE PRODUCTO - VERSIÓN FINAL MEJORADA
   const calculateProductPrice = useCallback((product) => {
-    const optionsPrice = Array.isArray(product.options)
-      ? product.options.reduce((sum, option) => sum + Number(option?.price || 0), 0)
-      : 0;
+    console.log('💰 Calculating price for product:', {
+      productId: product.id,
+      productName: product.product_name || product.name,
+      hasSelectedPaymentMethod: !!product.selectedPaymentMethod,
+      hasSelectedOption: !!product.selectedOption,
+      hasOptions: !!product.options,
+      hasSelectedExtras: !!product.selectedExtras,
+      hasExtras: !!product.extras,
+      hasSelectedSauces: !!product.selectedSauces,
+      hasSauces: !!product.sauces,
+      quantity: product.quantity
+    });
 
-    const extrasPrice = Array.isArray(product.extras)
-      ? product.extras.reduce(
-          (sum, extra) => sum + Number(extra?.price || 0) * Number(extra?.quantity || 1),
-          0
-        )
-      : 0;
+    // ✅ PRECIO BASE - Buscar en múltiples ubicaciones con prioridad correcta
+    let basePrice = 0;
 
-    const saucesPrice = Array.isArray(product.sauces)
-      ? product.sauces.reduce((sum, sauce) => sum + Number(sauce?.price || 0), 0)
-      : 0;
+    if (product.selectedOption?.price) {
+      basePrice = Number(product.selectedOption.price);
+      console.log('💰 Using selectedOption price:', basePrice);
+    } else if (product.options?.[0]?.price) {
+      basePrice = Number(product.options[0].price);
+      console.log('💰 Using first option price:', basePrice);
+    } else if (product.product?.price) {
+      basePrice = Number(product.product.price);
+      console.log('💰 Using nested product price:', basePrice);
+    } else if (product.price) {
+      basePrice = Number(product.price);
+      console.log('💰 Using direct price:', basePrice);
+    } else {
+      console.warn('⚠️ No base price found, using 0');
+    }
 
-    const flavorsPrice = Array.isArray(product.flavors)
-      ? product.flavors.reduce((sum, flavor) => sum + Number(flavor?.price || 0), 0)
-      : 0;
+    // ✅ PRECIO DE EXTRAS - Buscar en selectedExtras primero, luego extras
+    let extrasPrice = 0;
+    const extrasToUse = product.selectedExtras || product.extras || [];
 
-    const basePrice = Number(product.price || 0);
+    if (Array.isArray(extrasToUse) && extrasToUse.length > 0) {
+      extrasPrice = extrasToUse.reduce((sum, extra) => {
+        const extraPrice = Number(extra?.price || extra?.actual_price || 0);
+        const extraQuantity = Number(extra?.quantity || 1);
+        const extraTotal = extraPrice * extraQuantity;
+        console.log(`💰 Extra "${extra.name}": ${extraPrice} x ${extraQuantity} = ${extraTotal}`);
+        return sum + extraTotal;
+      }, 0);
+      console.log('💰 Total extras price:', extrasPrice);
+    }
+
+    // ✅ PRECIO DE SALSAS - Buscar en selectedSauces primero, luego sauces
+    let saucesPrice = 0;
+    const saucesToUse = product.selectedSauces || product.sauces || [];
+
+    if (Array.isArray(saucesToUse) && saucesToUse.length > 0) {
+      saucesPrice = saucesToUse.reduce((sum, sauce) => {
+        const saucePrice = Number(sauce?.price || sauce?.actual_price || 0);
+        console.log(`💰 Sauce "${sauce.name}": ${saucePrice}`);
+        return sum + saucePrice;
+      }, 0);
+      console.log('💰 Total sauces price:', saucesPrice);
+    }
+
+    // ✅ PRECIO DE SABORES - Buscar en selectedFlavor primero, luego flavor/flavors
+    let flavorsPrice = 0;
+
+    if (product.selectedFlavor?.price) {
+      flavorsPrice = Number(product.selectedFlavor.price);
+      console.log(`💰 Selected flavor "${product.selectedFlavor.name}": ${flavorsPrice}`);
+    } else if (product.flavor?.price) {
+      flavorsPrice = Number(product.flavor.price);
+      console.log(`💰 Flavor "${product.flavor.name}": ${flavorsPrice}`);
+    } else if (Array.isArray(product.flavors)) {
+      flavorsPrice = product.flavors.reduce((sum, flavor) => {
+        const flavorPrice = Number(flavor?.price || 0);
+        console.log(`💰 Flavor "${flavor.name}": ${flavorPrice}`);
+        return sum + flavorPrice;
+      }, 0);
+    }
+
+    // ✅ CANTIDAD
     const quantity = Number(product.quantity || 1);
 
-    return (basePrice + optionsPrice + extrasPrice + saucesPrice + flavorsPrice) * quantity;
+    // ✅ CÁLCULO FINAL
+    const unitPrice = basePrice + extrasPrice + saucesPrice + flavorsPrice;
+    const totalItemPrice = unitPrice * quantity;
+
+    console.log('💰 FINAL PRICE CALCULATION:', {
+      basePrice,
+      extrasPrice,
+      saucesPrice,
+      flavorsPrice,
+      unitPrice,
+      quantity,
+      totalItemPrice,
+      productId: product.id
+    });
+
+    return totalItemPrice;
   }, []);
 
   // Calcular total del carrito
@@ -281,26 +146,66 @@ export function CartProvider({ children }) {
     }, 0);
   }, [cart, calculateProductPrice]);
 
-  // Función para agregar al carrito
+// ✅ FUNCIÓN PARA AGREGAR AL CARRITO - CORREGIDA CON MAPEO DE ESTRUCTURA
+// ✅ FUNCIÓN PARA AGREGAR AL CARRITO - CORREGIDA CON MAPEO DE ESTRUCTURA
   const addToCart = useCallback((item) => {
-    // Si estamos en modo edición, no permitir agregar nuevos items
-    if (isCartEditMode) {
-      setMessage({
-        text: 'No se pueden agregar productos mientras editas una orden',
-        type: 'warning'
-      });
-      return;
-    }
+    console.log('🔄 Adding to cart - Input item:', item);
 
+    // ✅ GENERAR ID ÚNICO MÁS ROBUSTO PARA EVITAR DUPLICADOS
+    const uniqueId = `cart-${Date.now()}-${Math.floor(Math.random() * 10000)}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // ✅ MAPEAR ESTRUCTURA PARA COMPATIBILIDAD CON Cart.jsx
     const newItem = {
-      id: Date.now() + Math.random(),
-      ...item,
-      totalPrice: item.totalPrice || calculateProductPrice(item)
+      // ✅ ID único ROBUSTO para el carrito
+      id: uniqueId,
+
+      // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR (para compatibilidad con Cart.jsx)
+      id_product: item.product?.id_product || item.id_product,
+      product_name: item.product?.name || item.product_name || item.name,
+      product_image: item.product?.image || item.product_image || item.image,
+
+      // ✅ MANTENER EL PRODUCTO ANIDADO (para App.jsx y modal de edición)
+      product: item.product,
+
+      // ✅ DATOS DE LA SELECCIÓN
+      quantity: item.quantity || 1,
+      selectedOption: item.selectedOption,
+      selectedFlavor: item.selectedFlavor,
+      selectedExtras: item.selectedExtras || [],
+      selectedSauces: item.selectedSauces || [],
+      comment: item.comment || '',
+
+      // ✅ MAPEAR VARIANTE AL NIVEL SUPERIOR (para compatibilidad)
+      id_variant: item.selectedOption?.id_variant || item.id_variant,
+      variant_name: item.selectedOption?.size || item.variant_name,
+
+      // ✅ MAPEAR SABOR AL NIVEL SUPERIOR (para compatibilidad)
+      flavor: item.selectedFlavor || item.flavor,
+
+      // ✅ MAPEAR EXTRAS Y SALSAS AL NIVEL SUPERIOR (para compatibilidad)
+      extras: item.selectedExtras || item.extras || [],
+      sauces: item.selectedSauces || item.sauces || [],
+
+      // ✅ PRECIO TOTAL
+      totalPrice: item.totalPrice || calculateProductPrice(item),
+
+      // ✅ COPIAR CUALQUIER OTRO CAMPO QUE PUEDA VENIR
+      ...item
     };
 
+    console.log('✅ Adding to cart - Mapped item:', newItem);
+    console.log('🔍 Key fields check:', {
+      uniqueId: newItem.id,
+      id_product: newItem.id_product,
+      product_name: newItem.product_name,
+      product_image: newItem.product_image,
+      variant_name: newItem.variant_name,
+      hasProduct: !!newItem.product
+    });
+
     setCart(prev => [...prev, newItem]);
-    console.log('Item added to cart:', newItem);
-  }, [calculateProductPrice, isCartEditMode, setMessage]);
+    console.log('✅ Item successfully added to cart with unique ID:', uniqueId);
+  }, [calculateProductPrice]);
 
   // Función para remover del carrito
   const removeFromCart = useCallback((itemId) => {
@@ -312,101 +217,116 @@ export function CartProvider({ children }) {
   const clearCart = useCallback(() => {
     setCart([]);
     setEditingProduct(null);
-
-    // Si estamos en modo edición, salir del modo
-    if (isCartEditMode) {
-      setEditingOrderId(null);
-      setIsCartEditMode(false);
-    }
-
     console.log('Cart cleared');
-  }, [isCartEditMode]);
-
-  // ✅ FUNCIÓN MEJORADA PARA INICIAR EDICIÓN DE PRODUCTO
-  const startEditProduct = useCallback((cartItem) => {
-    console.log('🔄 Starting edit for cart item:', cartItem);
-
-    // ✅ PREPARAR DATOS COMPLETOS PARA EL MODAL UNIFICADO
-    const editData = {
-      // Producto base
-      product: cartItem.product || {
-        id_product: cartItem.id_product,
-        name: cartItem.product_name || cartItem.name,
-        image: cartItem.product_image || cartItem.image,
-        price: cartItem.price || 0,
-        options: cartItem.options || [],
-        flavors: cartItem.flavors || []
-      },
-
-      // Valores actuales del item
-      id: cartItem.id,
-      quantity: cartItem.quantity || 1,
-      comment: cartItem.comment || '',
-      totalPrice: cartItem.totalPrice || 0,
-
-      // ✅ VALORES SELECCIONADOS PARA PRESELECCIÓN
-      selectedOption: cartItem.selectedOption || null,
-      selectedFlavor: cartItem.selectedFlavor || null,
-      selectedExtras: cartItem.selectedExtras || [],
-      selectedSauces: cartItem.selectedSauces || [],
-
-      // ✅ MÉTODO DE PAGO (si existe)
-      selectedPaymentMethod: cartItem.selectedPaymentMethod || null,
-
-      // Arrays para compatibilidad con el modal
-      options: cartItem.selectedOption ? [cartItem.selectedOption] : [],
-      flavors: cartItem.selectedFlavor ? [cartItem.selectedFlavor] : [],
-      extras: cartItem.selectedExtras || [],
-      sauces: cartItem.selectedSauces || []
-    };
-
-    setEditingProduct(editData);
-    console.log('✅ Edit data prepared:', editData);
   }, []);
 
-  // ✅ FUNCIÓN MEJORADA PARA GUARDAR EDICIÓN DE PRODUCTO
-  const saveEditProduct = useCallback((updatedData) => {
-    if (!editingProduct) return;
+  // Funciones para edición de productos
+  const startEditProduct = useCallback((cartItem) => {
+    setEditingProduct(cartItem);
+    console.log('Started editing product:', cartItem);
+  }, []);
 
-    console.log('💾 Saving edited product:', updatedData);
+// ✅ FUNCIÓN PARA GUARDAR EDICIÓN DE PRODUCTO - VERSIÓN FINAL CORREGIDA
+  const saveEditProduct = useCallback((updatedItem) => {
+    if (!editingProduct) {
+      console.error('❌ No editingProduct found in saveEditProduct');
+      return;
+    }
 
-    // ✅ ACTUALIZAR ITEM EN EL CARRITO CON TODOS LOS DATOS
-    setCart(prev => prev.map(item =>
-      item.id === editingProduct.id
-        ? {
-            ...item,
-            // Información básica
-            quantity: updatedData.quantity,
-            comment: updatedData.comment,
-            totalPrice: updatedData.totalPrice,
+    console.log('🔄 Saving edited product - FINAL VERSION:', {
+      editingProductId: editingProduct.id,
+      editingProduct,
+      updatedItem,
+      updatedItemKeys: Object.keys(updatedItem)
+    });
 
-            // ✅ OPCIONES SELECCIONADAS
-            selectedOption: updatedData.selectedOption,
-            selectedFlavor: updatedData.selectedFlavor,
-            selectedExtras: updatedData.selectedExtras || [],
-            selectedSauces: updatedData.selectedSauces || [],
+    setCart(prev => prev.map(item => {
+      // ✅ COMPARAR POR ID ÚNICO DEL CARRITO
+      if (item.id === editingProduct.id) {
+        console.log('🎯 Found item to update by unique cart ID:', item.id);
 
-            // ✅ MÉTODO DE PAGO (si se especificó)
-            ...(updatedData.selectedPaymentMethod && {
-              selectedPaymentMethod: updatedData.selectedPaymentMethod
-            }),
+        // ✅ CREAR ITEM ACTUALIZADO CON MAPEO COMPLETO
+        const updatedCartItem = {
+          // ✅ CRÍTICO: Mantener EL MISMO ID único del carrito
+          id: editingProduct.id,
 
-            // Arrays para compatibilidad
-            options: updatedData.selectedOption ? [updatedData.selectedOption] : [],
-            flavors: updatedData.selectedFlavor ? [updatedData.selectedFlavor] : [],
-            extras: updatedData.selectedExtras || [],
-            sauces: updatedData.selectedSauces || []
-          }
-        : item
-    ));
+          // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR
+          id_product: updatedItem.product?.id_product || editingProduct.id_product,
+          product_name: updatedItem.product?.name || editingProduct.product_name,
+          product_image: updatedItem.product?.image || editingProduct.product_image,
+
+          // ✅ MANTENER EL PRODUCTO ANIDADO
+          product: updatedItem.product || editingProduct.product,
+
+          // ✅ DATOS DE LA SELECCIÓN ACTUALIZADA DESDE EL MODAL
+          quantity: updatedItem.quantity || 1,
+          selectedOption: updatedItem.selectedOption,
+          selectedFlavor: updatedItem.selectedFlavor,
+          selectedExtras: updatedItem.selectedExtras || [],
+          selectedSauces: updatedItem.selectedSauces || [],
+          comment: updatedItem.comment || '',
+
+          // ✅ MAPEAR VARIANTE AL NIVEL SUPERIOR
+          id_variant: updatedItem.selectedOption?.id_variant || editingProduct.id_variant,
+          variant_name: updatedItem.selectedOption?.size || editingProduct.variant_name,
+
+          // ✅ MAPEAR SABOR AL NIVEL SUPERIOR - CRÍTICO PARA Cart.jsx
+          flavor: updatedItem.selectedFlavor || editingProduct.flavor,
+
+          // ✅ MAPEAR EXTRAS Y SALSAS AL NIVEL SUPERIOR - CRÍTICO PARA Cart.jsx
+          extras: updatedItem.selectedExtras || updatedItem.extras || [],
+          sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
+
+          // ✅ FORZAR RECÁLCULO DE PRECIO - Eliminar totalPrice para que se recalcule
+          totalPrice: null, // ← CRÍTICO: Esto fuerza el recálculo en cada render
+
+          // ✅ PRESERVAR CAMPOS ORIGINALES QUE NO SE ACTUALICEN
+          ...editingProduct,
+
+          // ✅ SOBRESCRIBIR CON NUEVOS DATOS
+          ...updatedItem,
+
+          // ✅ ASEGURAR QUE EL ID Y LOS MAPEOS CRÍTICOS NO SE SOBRESCRIBAN
+          id: editingProduct.id,
+          extras: updatedItem.selectedExtras || updatedItem.extras || [],
+          sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
+          flavor: updatedItem.selectedFlavor || editingProduct.flavor, // ✅ CRÍTICO: Preservar sabor
+          selectedFlavor: updatedItem.selectedFlavor // ✅ CRÍTICO: Preservar sabor seleccionado
+        };
+
+        console.log('✅ Updated cart item FINAL:', {
+          id: updatedCartItem.id,
+          product_name: updatedCartItem.product_name,
+          product_image: updatedCartItem.product_image,
+          selectedSauces: updatedCartItem.selectedSauces,
+          sauces: updatedCartItem.sauces,
+          selectedExtras: updatedCartItem.selectedExtras,
+          extras: updatedCartItem.extras,
+          selectedFlavor: updatedCartItem.selectedFlavor,
+          flavor: updatedCartItem.flavor,
+          flavorDetails: {
+            selectedFlavorName: updatedCartItem.selectedFlavor?.name,
+            flavorName: updatedCartItem.flavor?.name,
+            hasSelectedFlavor: !!updatedCartItem.selectedFlavor,
+            hasFlavor: !!updatedCartItem.flavor
+          },
+          totalPrice: updatedCartItem.totalPrice,
+          quantity: updatedCartItem.quantity,
+          comment: updatedCartItem.comment
+        });
+
+        return updatedCartItem;
+      }
+      return item;
+    }));
 
     setEditingProduct(null);
-    console.log('✅ Product updated in cart');
-  }, [editingProduct]);
+    console.log('✅ Product successfully updated in cart with preserved ID:', editingProduct.id);
+  }, [editingProduct, calculateProductPrice]);
 
   const cancelEditProduct = useCallback(() => {
     setEditingProduct(null);
-    console.log('❌ Product edit cancelled');
+    console.log('Product edit cancelled');
   }, []);
 
   // ✅ FUNCIÓN PARA TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND - CORREGIDA
@@ -436,7 +356,7 @@ export function CartProvider({ children }) {
           if (item.selectedExtras && item.selectedExtras.length > 0) {
             orderItem.extras = item.selectedExtras.map(extra => ({
               id_extra: extra.id_extra,
-              quantity: extra.quantity || 1
+              quantity: 1
             }));
           }
 
@@ -462,13 +382,13 @@ export function CartProvider({ children }) {
       total_amount: Number(orderData.bill || orderData.total_amount || 0),
 
       // ✅ MAPEO CORRECTO: order_date → created_at
-      created_at: orderData.order_date || orderData.created_at,
+      created_at: orderData.order_date,
       updated_at: orderData.updated_at,
 
       // ✅ MAPEO CORRECTO: payment_method del backend
       payment_method: {
-        id_payment: orderData.payment_method,
-        name: orderData.payment_name || 'Desconocido'
+        id_payment_method: orderData.id_payment_method,
+        name: orderData.id_payment_method || 'Desconocido'
       },
 
       // ✅ MAPEO CORRECTO: items → items (no order_items)
@@ -513,11 +433,6 @@ export function CartProvider({ children }) {
 
   // ✅ GUARDAR ORDEN - MIGRADO A NUEVAS UTILIDADES
   const saveOrder = useCallback(async () => {
-    // Si estamos en modo edición, usar la función específica
-    if (isCartEditMode) {
-      return await saveEditedOrder();
-    }
-
     if (cart.length === 0) {
       setMessage({ text: 'El carrito está vacío', type: 'error' });
       return;
@@ -564,55 +479,53 @@ export function CartProvider({ children }) {
         errorIcon = 'warning';
       } else if (error.message.includes('Failed to fetch')) {
         errorMessage = 'No se puede conectar al servidor. Verifica que esté corriendo.';
-      } else if (error.message.includes('HTTP')) {
+        errorIcon = 'warning';
+      } else if (error.message.includes('HTTP error')) {
         errorMessage = `Error del servidor: ${error.message}`;
       }
 
-      // ✅ SweetAlert2 para errores críticos
+      // ✅ SweetAlert2 error
       await Swal.fire({
-        title: 'Error de conexión',
+        title: 'Error al guardar',
         text: errorMessage,
-        icon: 'error',
-        confirmButtonText: 'Entendido',
+        icon: errorIcon,
+        confirmButtonText: 'Intentar de nuevo',
         confirmButtonColor: '#ef4444'
       });
 
       setMessage({ text: errorMessage, type: 'error' });
-      throw error;
     } finally {
       setLoading(false);
     }
-  }, [cart, isCartEditMode, saveEditedOrder, setLoading, setMessage, transformOrderData]);
+  }, [cart, transformOrderData, setLoading, setMessage]);
 
-  // ✅ CARGAR TODAS LAS ÓRDENES - MIGRADO A NUEVAS UTILIDADES
+  // ✅ CARGAR TODAS LAS ÓRDENES - MIGRADO CON TRANSFORMACIÓN CORRECTA
   const loadAllOrders = useCallback(async () => {
     setLoading(true);
     try {
-      console.log('🔍 Cargando todas las órdenes...');
+      console.log('📡 Cargando órdenes desde CartContext...');
 
       // ✅ USAR NUEVA FUNCIÓN DE API
       const ordersData = await getOrders();
+      console.log('📋 Raw orders data:', ordersData);
 
-      if (Array.isArray(ordersData)) {
-        const transformedOrders = ordersData.map(order => transformOrderData(order));
-        setOrders(transformedOrders);
-        console.log('✅ Órdenes cargadas:', transformedOrders.length);
-      } else {
-        setOrders([]);
-        console.log('⚠️ No se recibieron órdenes válidas');
-      }
+      // ✅ Usar la función de transformación corregida
+      const transformedOrders = ordersData.map(order => transformOrderData(order));
+
+      console.log('✅ Transformed orders:', transformedOrders);
+      setOrders(transformedOrders);
+      setMessage(null); // Limpiar mensajes de error previos
+      return transformedOrders;
 
     } catch (error) {
       console.error('❌ Error al cargar órdenes:', error);
 
-      let errorMessage = 'Error al cargar las órdenes.';
+      let errorMessage = 'Error al cargar las órdenes';
 
       if (error.name === 'TimeoutError') {
-        errorMessage = 'Tiempo de espera agotado. Verifica tu conexión.';
+        errorMessage = 'Tiempo de espera agotado al cargar órdenes';
       } else if (error.message.includes('Failed to fetch')) {
-        errorMessage = 'No se puede conectar al servidor. Verifica que esté corriendo.';
-      } else if (error.message.includes('HTTP')) {
-        errorMessage = `Error del servidor: ${error.message}`;
+        errorMessage = 'No se puede conectar al servidor para cargar órdenes';
       }
 
       // ✅ SweetAlert2 para errores críticos
@@ -712,9 +625,6 @@ export function CartProvider({ children }) {
         order.id_order === orderId ? transformedOrder : order
       ));
 
-      // ✅ SINCRONIZAR CARRITO SI ESTÁ EN MODO EDICIÓN
-      updateCartFromOrder(transformedOrder);
-
       setMessage({ text: 'Orden actualizada exitosamente', type: 'success' });
       return transformedOrder;
 
@@ -728,7 +638,7 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [setLoading, setMessage, transformOrderData, updateCartFromOrder]);
+  }, [setLoading, setMessage, transformOrderData]);
 
   // ✅ Valor del contexto OPTIMIZADO
   const contextValue = useMemo(() => ({
@@ -740,10 +650,6 @@ export function CartProvider({ children }) {
     extras,
     sauces,
     cartTotal,
-
-    // ✅ NUEVOS Estados para edición de órdenes
-    editingOrderId,
-    isCartEditMode,
 
     // Funciones del carrito
     addToCart,
@@ -765,13 +671,7 @@ export function CartProvider({ children }) {
     loadOrderForEdit,
     updateOrder: updateOrderContext, // Renombrado para evitar conflictos
     loadAllOrders,
-    transformOrderData,
-
-    // ✅ NUEVAS Funciones para edición en carrito
-    loadOrderIntoCart,
-    updateCartFromOrder,
-    exitEditMode,
-    saveEditedOrder
+    transformOrderData
   }), [
     cart,
     editingProduct,
@@ -780,8 +680,6 @@ export function CartProvider({ children }) {
     extras,
     sauces,
     cartTotal,
-    editingOrderId,
-    isCartEditMode,
     addToCart,
     removeFromCart,
     startEditProduct,
@@ -793,11 +691,7 @@ export function CartProvider({ children }) {
     loadOrderForEdit,
     updateOrderContext,
     loadAllOrders,
-    transformOrderData,
-    loadOrderIntoCart,
-    updateCartFromOrder,
-    exitEditMode,
-    saveEditedOrder
+    transformOrderData
   ]);
 
   return (
@@ -805,12 +699,4 @@ export function CartProvider({ children }) {
       {children}
     </CartContext.Provider>
   );
-}
-
-export function useCart() {
-  const context = useContext(CartContext);
-  if (!context) {
-    throw new Error('useCart must be used within a CartProvider');
-  }
-  return context;
 }

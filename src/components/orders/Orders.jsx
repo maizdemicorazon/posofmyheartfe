@@ -503,11 +503,11 @@ function Orders({ onBack }) {
                           <div className="flex items-center gap-4 text-sm">
                             <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                               <ClockIcon className="w-4 h-4" />
-                              {formatDate(order.created_at)}
+                              {formatDate(order.order_date)}
                             </span>
                             <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                               <CreditCardIcon className="w-4 h-4" />
-                              {order.payment_method?.name || 'Sin método'}
+                              {order.payment_name || 'Sin método'}
                             </span>
                           </div>
                         </div>
@@ -518,7 +518,7 @@ function Orders({ onBack }) {
                       {/* Total */}
                       <div className="text-right">
                         <div className="text-2xl font-bold text-green-600">
-                          ${formatPrice(order.total_amount)}
+                          {formatPrice(order.bill)}
                         </div>
                         <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                           {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
@@ -527,17 +527,6 @@ function Orders({ onBack }) {
 
                       {/* Acciones */}
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEditFullOrder(order)}
-                          className={`p-2 rounded-lg transition-colors ${
-                            theme === 'dark'
-                              ? 'text-orange-400 hover:bg-orange-900/20'
-                              : 'text-orange-600 hover:bg-orange-50'
-                          }`}
-                          title="Editar orden"
-                        >
-                          <Cog6ToothIcon className="w-5 h-5" />
-                        </button>
                         <button
                           onClick={() => toggleOrderExpansion(order.id_order)}
                           className={`p-2 rounded-lg transition-colors ${
@@ -612,7 +601,7 @@ function Orders({ onBack }) {
                       {/* Lista detallada de productos */}
                       <div className="p-4">
                         <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                          Productos de la orden:
+                           Producto de la orden:
                         </h4>
                         <div className="space-y-2">
                           {order.items?.map((item, index) => (
@@ -623,13 +612,8 @@ function Orders({ onBack }) {
                                 <div className="flex items-center gap-3">
                                   <div>
                                     <h5 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                                      {item.product_name || 'Producto'}
+                                      {item.product_name || 'Producto'}<span> • </span>{item.variant_name}
                                     </h5>
-                                    <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      {item.variant_size && <span>{item.variant_size} • </span>}
-                                      Cantidad: {item.quantity}
-                                      {item.comment && <span> • {item.comment}</span>}
-                                    </div>
                                     {/* Extras y salsas */}
                                     {((item.extras && item.extras.length > 0) || (item.sauces && item.sauces.length > 0)) && (
                                       <div className={`text-xs mt-1 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>
@@ -651,7 +635,7 @@ function Orders({ onBack }) {
                               <div className="flex items-center gap-3">
                                 <div className="text-right">
                                   <div className="font-semibold text-green-600">
-                                    ${formatPrice(item.total_price)}
+                                    {formatPrice(item.product_price)}
                                   </div>
                                 </div>
                                 <button
@@ -718,7 +702,7 @@ function Orders({ onBack }) {
           initialComment={editingItem.comment || ''}
           onSave={handleSaveItemChanges}
           isEditing={true}
-          showPaymentMethod={false}
+          showPaymentMethod={true}
         />
       )}
 

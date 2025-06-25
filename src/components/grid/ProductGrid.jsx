@@ -93,8 +93,8 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
     }
 
     const filtered = products.filter(product => {
-      const productCategory = product.category_name || product.category?.name || '';
-      const match = productCategory.toLowerCase().includes(selectedCategory.toLowerCase());
+      const productCategory = product.id_category || product.id_category || '';
+      const match = productCategory === selectedCategory;
       return match;
     });
 

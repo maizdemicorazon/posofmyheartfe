@@ -22,6 +22,8 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
     setCartVersion(prev => prev + 1);
   }, [cart]);
 
+  // 🚨 DEBUGGING - Mostrar estructura completa del carrito
+  console.log('🛒 CURRENT CART STRUCTURE (v' + cartVersion + '):', cart);
   console.log('🔍 Cart items count:', cart.length);
   cart.forEach((item, index) => {
     console.log(`📦 Cart Item ${index} COMPLETE STRUCTURE:`, {
@@ -285,6 +287,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                     }`}>
                       {productName}
                     </h4>
+
 
                     {/* ✅ SECCIÓN DE DETALLES MEJORADA Y ORGANIZADA */}
                     <div className="space-y-2">
