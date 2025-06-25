@@ -22,8 +22,6 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
     setCartVersion(prev => prev + 1);
   }, [cart]);
 
-  // 🚨 DEBUGGING - Mostrar estructura completa del carrito
-  console.log('🛒 CURRENT CART STRUCTURE (v' + cartVersion + '):', cart);
   console.log('🔍 Cart items count:', cart.length);
   cart.forEach((item, index) => {
     console.log(`📦 Cart Item ${index} COMPLETE STRUCTURE:`, {
@@ -170,17 +168,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
   };
 
   const handleEditProduct = (cartItem, index) => {
-    console.log('🚨🚨🚨 BOTÓN EDITAR PRESIONADO 🚨🚨🚨');
-    console.log('🔄 Index:', index);
-    console.log('🔄 Cart item:', cartItem);
-    console.log('🔄 Type of cart item:', typeof cartItem);
-    console.log('🔄 Is cart item an object?', typeof cartItem === 'object' && cartItem !== null);
-    console.log('🔄 Cart item has id?', !!cartItem?.id);
-    console.log('🔄 Cart item has product?', !!cartItem?.product);
-
-    // 🚨 CRÍTICO: Pasar el OBJETO completo, NO el índice
     startEditProduct(cartItem);
-
     console.log('🔄 startEditProduct called with:', cartItem);
   };
 

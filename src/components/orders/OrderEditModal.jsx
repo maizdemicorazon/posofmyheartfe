@@ -1,48 +1,85 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useMessage } from '../../context/MessageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useLoading } from '../../context/LoadingContext';
-import { useMessage } from '../../context/MessageContext';
+import { useCart } from '../../context/CartContext'; // ✅ NUEVO: Import del contexto del carrito
 import {
   XMarkIcon,
-  CreditCardIcon,
-  ChatBubbleLeftRightIcon,
-  ExclamationTriangleIcon,
   ArrowPathIcon,
   CheckIcon,
-  PlusIcon
+  PlusIcon,
+  MinusIcon
 } from '@heroicons/react/24/outline';
-import Swal from 'sweetalert2';
-import ErrorBoundary, { MinimalErrorFallback } from '../errors/ErrorBoundary';
-import {
-  handleApiError,
-  validateExtraQuantity,
-  validateOrderData,
-  validateCatalogData,
-  optimizeGoogleDriveImageUrl,
-  generatePlaceholderUrl,
-  debugLog,
-  debugDataStructure,
-  APIError,
-  ValidationError
-} from '../../utils/helpers';
+import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl, validateOrderData } from '../../utils/helpers';
 
-// ✅ IMPORTAR UTILIDADES DE API
+// ✅ IMPORTAR APIS NECESARIAS
 import {
-  updateOrder,
+  getPaymentMethods,
   getExtras,
   getSauces,
-  getFlavorsByIdProduct,
-  getVariantsByIdProduct,
-  getPaymentMethods
+  getFlavors,
+  getProductById,
+  updateOrder
 } from '../../utils/api';
 
-// ✅ Componente interno sin ErrorBoundary
+import Swal from 'sweetalert2';
+
+// ✅ COMPONENTES DE ERROR
+function MinimalErrorFallback({ error, resetErrorBoundary }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg max-w-md">
+        <h3 className="text-lg font-semibold text-red-600 mb-2">Error en el Modal</h3>
+        <p className="text-gray-600 mb-4">Hubo un problema cargando el modal de edición.</p>
+        <button
+          onClick={resetErrorBoundary}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Intentar de nuevo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('OrderEditModal Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || <MinimalErrorFallback resetErrorBoundary={() => this.setState({ hasError: false })} />;
+    }
+
+    return this.props.children;
+  }
+}
+
+// ✅ UTILIDADES DE DEBUG
+const debugLog = (section, message, data = null) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`🔍 [OrderEditModal:${section}]`, message, data || '');
+  }
+};
+
+// ✅ COMPONENTE PRINCIPAL DEL MODAL
 function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
+  const { setMessage } = useMessage();
   const { theme } = useTheme();
   const { setLoading } = useLoading();
-  const { setMessage } = useMessage();
+  const { updateCartFromOrder } = useCart(); // ✅ NUEVO: Acceso al contexto del carrito
 
-  // Estados principales
+  // Estados para los datos de edición
   const [editData, setEditData] = useState({
     id_payment_method: null,
     client_name: '',
@@ -55,7 +92,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
   const [availableExtras, setAvailableExtras] = useState([]);
   const [availableSauces, setAvailableSauces] = useState([]);
 
-  // ✅ NUEVOS ESTADOS PARA DATOS ESPECÍFICOS POR PRODUCTO
+  // Estados específicos por producto
   const [productVariants, setProductVariants] = useState({}); // {productId: [variants]}
   const [productFlavors, setProductFlavors] = useState({}); // {productId: [flavors]}
   const [productDataLoading, setProductDataLoading] = useState({}); // {productId: {variants: bool, flavors: bool}}
@@ -74,7 +111,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     sauces: null
   });
 
-  // ✅ FUNCIÓN HELPER MEJORADA para obtener datos del item
+  // ✅ FUNCIÓN HELPER CORREGIDA para obtener datos del item con búsqueda en variantes
   const getItemDisplayData = useCallback((item, order) => {
     if (!item || !order) {
       return {
@@ -87,11 +124,9 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     // Buscar el item original por id_order_detail principalmente
     let orderItem = order?.items?.find(oi => oi.id_order_detail === item.id_order_detail);
 
-    // Si no se encuentra, buscar por producto y variante
+    // Si no se encuentra, buscar por producto únicamente (no por variante porque puede haber cambiado)
     if (!orderItem) {
-      orderItem = order?.items?.find(oi =>
-        oi.id_product === item.id_product && oi.id_variant === item.id_variant
-      );
+      orderItem = order?.items?.find(oi => oi.id_product === item.id_product);
     }
 
     // ✅ USAR DATOS DIRECTOS DEL ITEM (estructura del backend)
@@ -105,14 +140,41 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                        orderItem?.product_name ||
                        'Producto Desconocido';
 
-    // Determinar tamaño de variante
-    const variantSize = item.variant?.size ||
-                       item.variant_name ||
-                       orderItem?.variant_name ||
-                       'Tamaño N/A';
+    // ✅ LÓGICA CORREGIDA: Determinar tamaño de variante
+    let variantSize = 'Tamaño N/A';
+
+    const productId = Number(item.id_product);
+    const currentVariantId = Number(item.id_variant);
+
+    // ✅ PRIMERO: Verificar si tenemos el variant_name actualizado en el item editado
+    if (item.variant_name && item.variant_name !== 'Tamaño N/A') {
+      variantSize = item.variant_name;
+      debugLog('VARIANT_SIZE', 'Using updated variant_name from item', item.variant_name);
+    }
+    // ✅ SEGUNDO: Buscar en productVariants usando el ID actual
+    else if (productVariants[productId] && currentVariantId) {
+      const currentVariant = productVariants[productId].find(v => v.id_variant === currentVariantId);
+      if (currentVariant && currentVariant.size) {
+        variantSize = currentVariant.size;
+        debugLog('VARIANT_SIZE', 'Found variant in productVariants', currentVariant.size);
+      }
+    }
+    // ✅ TERCERO: Usar datos originales como fallback
+    else if (item.variant?.size) {
+      variantSize = item.variant.size;
+    } else if (orderItem?.variant_name) {
+      variantSize = orderItem.variant_name;
+    }
+
+    debugLog('DISPLAY_DATA', 'Final variant size', {
+      variantSize,
+      currentVariantId,
+      hasProductVariants: !!productVariants[productId],
+      itemVariantName: item.variant_name
+    });
 
     return { image, productName, variantSize };
-  }, [theme]);
+  }, [theme, productVariants]); // ✅ Agregar productVariants como dependencia
 
   // ✅ FUNCIÓN PARA VALIDAR DATOS DE LA ORDEN AL ABRIR EL MODAL - CORREGIDA
   const validateOrderForEditing = (order) => {
@@ -207,14 +269,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
 
   // ✅ FUNCIÓN DE CARGA DE CATÁLOGOS GENERALES - CORREGIDA
   const loadCatalogs = async () => {
-    debugLog('CATALOG', 'Starting catalog loading...');
-
-    setCatalogErrors({
-      payments: null,
-      extras: null,
-      sauces: null
-    });
-
+    debugLog('CATALOGS', 'Loading catalogs...');
     setCatalogLoading({
       payments: true,
       extras: true,
@@ -222,55 +277,52 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     });
 
     try {
-      // ✅ Cargar todos los catálogos usando las funciones de API
-      const [paymentsResult, extrasResult, saucesResult] = await Promise.allSettled([
+      const [paymentsResponse, extrasResponse, saucesResponse] = await Promise.all([
         getPaymentMethods(),
         getExtras(),
         getSauces()
       ]);
 
-      // ✅ Configurar métodos de pago
-      if (paymentsResult.status === 'fulfilled') {
-        setPaymentMethods(paymentsResult.value || []);
-      } else {
-        setCatalogErrors(prev => ({ ...prev, payments: paymentsResult.reason }));
-        // Fallback para métodos de pago
-        setPaymentMethods([
-          { id_payment_method: 0, name: 'Error en la carga de datos' }
-        ]);
-      }
+      // Procesar métodos de pago
+      const validPayments = Array.isArray(paymentsResponse) ?
+        paymentsResponse.filter(pm => pm && pm.id_payment_method && pm.name) : [];
+      setPaymentMethods(validPayments);
 
-      // ✅ Configurar extras
-      if (extrasResult.status === 'fulfilled') {
-        setAvailableExtras(extrasResult.value || []);
-      } else {
-        setCatalogErrors(prev => ({ ...prev, extras: extrasResult.reason }));
-        setAvailableExtras([]);
-      }
+      // Procesar extras
+      const validExtras = Array.isArray(extrasResponse) ?
+        extrasResponse.filter(extra => extra && extra.id_extra && extra.name) : [];
+      setAvailableExtras(validExtras);
 
-      // ✅ Configurar salsas
-      if (saucesResult.status === 'fulfilled') {
-        setAvailableSauces(saucesResult.value || []);
-      } else {
-        setCatalogErrors(prev => ({ ...prev, sauces: saucesResult.reason }));
-        setAvailableSauces([]);
-      }
+      // Procesar salsas
+      const validSauces = Array.isArray(saucesResponse) ?
+        saucesResponse.filter(sauce => sauce && sauce.id_sauce && sauce.name) : [];
+      setAvailableSauces(validSauces);
 
-      debugLog('CATALOG', 'Catalogs loaded', {
-        payments: paymentsResult.status,
-        extras: extrasResult.status,
-        sauces: saucesResult.status
+      debugLog('CATALOGS', 'Catalogs loaded successfully', {
+        payments: validPayments.length,
+        extras: validExtras.length,
+        sauces: validSauces.length
       });
 
     } catch (error) {
       debugLog('ERROR', 'Failed to load catalogs', error);
+      setCatalogErrors({
+        payments: error,
+        extras: error,
+        sauces: error
+      });
+
       setMessage({
         text: `Error cargando catálogos: ${error.message}`,
         type: 'error'
       });
 
       // Configurar arrays vacíos como fallback
-      setPaymentMethods([]);
+      setPaymentMethods([
+        { id_payment_method: 1, name: 'Efectivo' },
+        { id_payment_method: 2, name: 'Tarjeta' },
+        { id_payment_method: 3, name: 'Transferencia' }
+      ]);
       setAvailableExtras([]);
       setAvailableSauces([]);
     } finally {
@@ -312,7 +364,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
       const variantsPromises = uniqueProductIds.map(async (productId) => {
         try {
           debugLog('PRODUCT', `Loading variants for product ${productId}`);
-          const response = await getVariantsByIdProduct(productId);
+          const response = await getProductById(productId);
 
           // ✅ Extraer variantes del producto
           const validVariants = Array.isArray(response.variants) ?
@@ -346,7 +398,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         try {
           debugLog('PRODUCT', `Loading flavors for product ${productId}`);
           // ✅ Obtener sabores desde el catálogo general
-          const response = await getFlavorsByIdProduct(productId);
+          const response = await getFlavors();
 
           // ✅ Filtrar sabores válidos
           const validFlavors = Array.isArray(response) ?
@@ -464,43 +516,19 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                 ...sauce,
                 id_sauce: Number(sauce.id_sauce)
               })) : [],
+            flavors: Array.isArray(item.flavors) ?
+              item.flavors.filter(flavor => flavor && flavor.id_flavor).map(flavor => ({
+                ...flavor,
+                id_flavor: Number(flavor.id_flavor)
+              })) : [],
 
-            // ✅ SABOR: Manejar como campo único
-            flavor: (() => {
-              try {
-                // Si viene como array (compatibilidad con estructura anterior)
-                if (Array.isArray(item.flavors) && item.flavors.length > 0 && item.flavors[0]?.id_flavor) {
-                  return {
-                    id_flavor: Number(item.flavors[0].id_flavor),
-                    name: item.flavors[0].name || 'Sin nombre'
-                  };
-                }
-                // Si viene como objeto único (estructura del backend)
-                if (item.flavor && item.flavor.id_flavor) {
-                  return {
-                    id_flavor: Number(item.flavor.id_flavor),
-                    name: item.flavor.name || 'Sin nombre'
-                  };
-                }
-                return null;
-              } catch (error) {
-                debugLog('WARNING', `Error processing flavor for item ${index}:`, error);
-                return null;
-              }
-            })()
+            // ✅ CAMPOS ADICIONALES para mostrar datos en la UI
+            product_name: item.product?.name || item.product_name || 'Producto Desconocido',
+            product_image: item.product?.image || item.product_image,
+            variant_name: item.variant?.size || item.variant_name || 'Tamaño N/A'
           };
         });
 
-      if (validItems.length === 0) {
-        debugLog('WARNING', 'No valid items found in order');
-        setMessage({
-          text: 'Esta orden no tiene productos válidos para editar',
-          type: 'warning'
-        });
-        return;
-      }
-
-      // Inicializar datos principales con fallbacks seguros
       const initialData = {
         id_payment_method: paymentMethodId ? Number(paymentMethodId) : null,
         client_name: order.client_name || '',
@@ -571,7 +599,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     }));
   };
 
-  // ✅ NUEVA FUNCIÓN PARA CAMBIAR VARIANTE DE UN ITEM
+  // ✅ FUNCIÓN CORREGIDA PARA CAMBIAR VARIANTE DE UN ITEM
   const handleVariantChangeForItem = (itemIndex, variant) => {
     try {
       if (!variant || !variant.id_variant || !variant.price) {
@@ -579,20 +607,48 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
         return;
       }
 
-      setEditData(prev => ({
-        ...prev,
-        updated_items: prev.updated_items.map((item, index) => {
+      debugLog('VARIANT_CHANGE', 'Changing variant', {
+        itemIndex,
+        newVariantId: variant.id_variant,
+        newSize: variant.size,
+        newPrice: variant.price
+      });
+
+      setEditData(prev => {
+        const updatedItems = prev.updated_items.map((item, index) => {
           if (index === itemIndex) {
-            return {
+            const updatedItem = {
               ...item,
               id_variant: Number(variant.id_variant),
               unit_price: Number(variant.price),
-              total_price: Number(variant.price) * (Number(item.quantity) || 1)
+              total_price: Number(variant.price) * (Number(item.quantity) || 1),
+              // ✅ CRÍTICO: Actualizar el nombre de la variante para la UI
+              variant_name: variant.size || 'Tamaño N/A'
             };
+
+            debugLog('VARIANT_CHANGE', 'Updated item', {
+              id_variant: updatedItem.id_variant,
+              variant_name: updatedItem.variant_name,
+              oldVariant: item.id_variant
+            });
+
+            return updatedItem;
           }
           return item;
-        })
-      }));
+        });
+
+        return {
+          ...prev,
+          updated_items: updatedItems
+        };
+      });
+
+      debugLog('SUCCESS', 'Variant changed successfully', {
+        itemIndex,
+        newVariantId: variant.id_variant,
+        newSize: variant.size,
+        newPrice: variant.price
+      });
     } catch (error) {
       debugLog('ERROR', 'Failed to change variant:', error);
       setMessage({
@@ -607,461 +663,210 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     const result = await Swal.fire({
       title: '¿Qué cantidad de extra quieres agregar?',
       input: 'number',
-      inputLabel: extra.name,
-      inputPlaceholder: 'Cantidad',
-      inputValue: 1,
       inputAttributes: {
         min: 1,
         max: 10,
         step: 1
       },
+      inputValue: 1,
       showCancelButton: true,
       confirmButtonText: 'Agregar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#10b981',
-      cancelButtonColor: '#6b7280',
       inputValidator: (value) => {
-        const validation = validateExtraQuantity(value);
-        if (!validation.isValid) {
-          return validation.message;
+        const num = parseInt(value);
+        if (!value || isNaN(num) || num < 1) {
+          return 'Ingresa una cantidad válida (mínimo 1)';
+        }
+        if (num > 10) {
+          return 'Máximo 10 extras por producto';
         }
       }
     });
 
     if (result.isConfirmed) {
       const quantity = parseInt(result.value);
-
       setEditData(prev => ({
         ...prev,
         updated_items: prev.updated_items.map((item, index) => {
           if (index === itemIndex) {
-            const existingExtraIndex = item.extras.findIndex(e => e.id_extra === extra.id_extra);
+            const existingExtra = item.extras.find(e => e.id_extra === extra.id_extra);
+            let newExtras;
 
-            if (existingExtraIndex >= 0) {
+            if (existingExtra) {
               // Actualizar cantidad si ya existe
-              const updatedExtras = [...item.extras];
-              updatedExtras[existingExtraIndex] = { ...extra, quantity };
-              return { ...item, extras: updatedExtras };
+              newExtras = item.extras.map(e =>
+                e.id_extra === extra.id_extra
+                  ? { ...e, quantity: e.quantity + quantity }
+                  : e
+              );
             } else {
               // Agregar nuevo extra
-              return {
-                ...item,
-                extras: [...item.extras, { ...extra, quantity }]
-              };
+              newExtras = [...item.extras, {
+                id_extra: extra.id_extra,
+                name: extra.name,
+                price: extra.price,
+                quantity: quantity
+              }];
             }
+
+            return { ...item, extras: newExtras };
           }
           return item;
         })
       }));
 
-      await Swal.fire({
-        title: '¡Extra agregado!',
-        text: `${quantity} ${extra.name} agregado al producto`,
-        icon: 'success',
-        timer: 1500,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end'
-      });
-    }
-  };
-
-  // ✅ FUNCIÓN PARA REMOVER EXTRAS DE UN ITEM
-  const handleRemoveExtraFromItem = async (itemIndex, extraId, extraName) => {
-    const result = await Swal.fire({
-      title: '¿Estás seguro?',
-      text: `¿Quieres quitar ${extraName} del producto?`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, quitar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#6b7280'
-    });
-
-    if (result.isConfirmed) {
-      setEditData(prev => ({
-        ...prev,
-        updated_items: prev.updated_items.map((item, index) => {
-          if (index === itemIndex) {
-            const currentExtras = Array.isArray(item.extras) ? item.extras : [];
-            return {
-              ...item,
-              extras: currentExtras.filter(e =>
-                e && e.id_extra && Number(e.id_extra) !== Number(extraId)
-              )
-            };
-          }
-          return item;
-        })
-      }));
-
-      await Swal.fire({
-        title: '¡Extra removido!',
-        text: `${extraName} quitado del producto`,
-        icon: 'success',
-        timer: 1500,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end'
-      });
-    }
-  };
-
-  // ✅ FUNCIÓN PARA AGREGAR/QUITAR SALSAS A UN ITEM
-  const handleToggleSauceForItem = (itemIndex, sauce) => {
-    setEditData(prev => ({
-      ...prev,
-      updated_items: prev.updated_items.map((item, index) => {
-        if (index === itemIndex) {
-          const currentSauces = Array.isArray(item.sauces) ? item.sauces : [];
-          const existingSauceIndex = currentSauces.findIndex(s =>
-            s && s.id_sauce && Number(s.id_sauce) === Number(sauce.id_sauce)
-          );
-
-          if (existingSauceIndex >= 0) {
-            // Remover salsa si ya existe
-            return {
-              ...item,
-              sauces: currentSauces.filter(s =>
-                s && s.id_sauce && Number(s.id_sauce) !== Number(sauce.id_sauce)
-              )
-            };
-          } else {
-            // Agregar nueva salsa
-            return {
-              ...item,
-              sauces: [...currentSauces, sauce]
-            };
-          }
-        }
-        return item;
-      })
-    }));
-  };
-
-  // ✅ FUNCIÓN PARA CAMBIAR SABOR DE UN ITEM (campo único)
-  const handleFlavorChangeForItem = (itemIndex, flavor) => {
-    try {
-      setEditData(prev => ({
-        ...prev,
-        updated_items: prev.updated_items.map((item, index) => {
-          if (index === itemIndex) {
-            const newFlavor = flavor && flavor.id_flavor ? {
-              id_flavor: Number(flavor.id_flavor),
-              name: flavor.name || 'Sin nombre'
-            } : null;
-
-            return {
-              ...item,
-              flavor: newFlavor
-            };
-          }
-          return item;
-        })
-      }));
-    } catch (error) {
-      debugLog('ERROR', 'Failed to change flavor:', error);
       setMessage({
-        text: 'Error al cambiar el sabor',
-        type: 'error'
+        text: `${extra.name} agregado (${quantity})`,
+        type: 'success'
       });
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS - ESTRUCTURA CORREGIDA DEL BACKEND
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS CON SINCRONIZACIÓN DEL CARRITO
   const handleSaveChanges = async () => {
     try {
-      debugLog('SAVE', 'Starting save process...');
+      debugLog('SAVE', 'Starting save process', editData);
+
+      // Validar datos antes del envío
+      const validation = validateOrderData(editData);
+      if (!validation.isValid) {
+        debugLog('ERROR', 'Validation failed', validation.errors);
+        setMessage({
+          text: `Error de validación: ${Object.values(validation.errors).join(', ')}`,
+          type: 'error'
+        });
+        return;
+      }
+
       setLoading(true);
 
-      // Validación de método de pago
-      if (!editData.id_payment_method || editData.id_payment_method === null) {
-        debugLog('VALIDATION', 'Payment method missing');
-        await Swal.fire({
-          title: 'Error de validación',
-          text: 'Debes seleccionar un método de pago',
-          icon: 'warning',
-          confirmButtonText: 'Entendido'
-        });
-        return;
-      }
-
-      // Validación de items
-      if (!editData.updated_items || editData.updated_items.length === 0) {
-        debugLog('VALIDATION', 'No items to update');
-        await Swal.fire({
-          title: 'Error de validación',
-          text: 'No hay productos para actualizar',
-          icon: 'warning',
-          confirmButtonText: 'Entendido'
-        });
-        return;
-      }
-
-      // ✅ PREPARAR DATOS SEGÚN LA ESTRUCTURA ESPERADA POR EL BACKEND
+      // Preparar datos para el API
       const updateData = {
+        id_payment_method: editData.id_payment_method,
+        client_name: editData.client_name || '',
         comment: editData.comment || '',
-        id_payment_method: Number(editData.id_payment_method),
-        ...(editData.client_name && { client_name: editData.client_name }),
-        updated_items: editData.updated_items
-          .filter(item =>
-            item.id_product &&
-            item.id_variant &&
-            item.id_product !== null &&
-            item.id_variant !== null
-          )
-          .map(item => {
-            const itemData = {
-              id_product: Number(item.id_product),
-              id_variant: Number(item.id_variant),
-
-              // ✅ EXTRAS: Solo incluir si hay extras
-              ...(item.extras && item.extras.length > 0 && {
-                updated_extras: item.extras
-                  .filter(extra => extra.id_extra && extra.id_extra !== null)
-                  .map(extra => ({
-                    id_extra: Number(extra.id_extra),
-                    quantity: Number(extra.quantity) || 1
-                  }))
-              }),
-
-              // ✅ SALSAS: Solo incluir si hay salsas
-              ...(item.sauces && item.sauces.length > 0 && {
-                updated_sauces: item.sauces
-                  .filter(sauce => sauce.id_sauce && sauce.id_sauce !== null)
-                  .map(sauce => ({
-                    id_sauce: Number(sauce.id_sauce)
-                  }))
-              }),
-
-              // ✅ SABOR: Solo incluir si hay sabor seleccionado
-              ...(item.flavor &&
-                  item.flavor.id_flavor &&
-                  Number(item.flavor.id_flavor) > 0 && {
-                flavor: Number(item.flavor.id_flavor)
-              })
-            };
-
-            // ✅ ITEM EXISTENTE vs NUEVO
-            if (item.id_order_detail) {
-              itemData.id_order_detail = Number(item.id_order_detail);
-            } else {
-              itemData.id_order = Number(order.id_order);
-            }
-
-            return itemData;
-          })
+        updated_items: editData.updated_items.map(item => ({
+          id_order_detail: item.id_order_detail,
+          id_product: item.id_product,
+          id_variant: item.id_variant,
+          quantity: item.quantity,
+          comment: item.comment || '',
+          extras: item.extras || [],
+          sauces: item.sauces || [],
+          flavors: item.flavors || []
+        }))
       };
 
-      debugLog('SAVE', 'Sending update data', updateData);
+      debugLog('API', 'Sending update request', updateData);
 
-      // ✅ USAR FUNCIÓN DE API EN LUGAR DE FETCH DIRECTO
       const response = await updateOrder(order.id_order, updateData);
 
       debugLog('SUCCESS', 'Order updated successfully', response);
 
-      await Swal.fire({
-        title: '¡Orden actualizada!',
-        text: 'Los cambios se han guardado correctamente',
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end'
+      setMessage({
+        text: 'Orden actualizada exitosamente',
+        type: 'success'
       });
 
-      if (onOrderUpdated && typeof onOrderUpdated === 'function') {
+      // ✅ SINCRONIZACIÓN: Notificar al contexto del carrito sobre la actualización
+      if (updateCartFromOrder && response) {
+        updateCartFromOrder(response);
+        debugLog('CART_SYNC', 'Cart synchronized with updated order');
+      }
+
+      // Notificar al componente padre y cerrar modal
+      if (onOrderUpdated) {
         onOrderUpdated(response);
       }
       onClose();
 
     } catch (error) {
-      debugLog('ERROR', 'Failed to save order changes', error);
-
-      let errorMessage = 'Error desconocido al actualizar la orden';
-
-      if (error?.message) {
-        if (error.message.includes('must not be null')) {
-          errorMessage = 'Algunos datos requeridos están vacíos. Intenta recargar la página.';
-        } else if (error.message.includes('400')) {
-          errorMessage = 'Error de validación de datos. Verifica que todos los campos estén completos.';
-        } else {
-          errorMessage = error.message;
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-
-      await Swal.fire({
-        title: 'Error al actualizar',
-        text: errorMessage,
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        footer: 'Si el problema persiste, intenta recargar la página'
+      debugLog('ERROR', 'Failed to save changes', error);
+      setMessage({
+        text: `Error actualizando la orden: ${error.message}`,
+        type: 'error'
       });
-
     } finally {
       setLoading(false);
-      debugLog('SAVE', 'Save process completed');
     }
   };
 
-  // No renderizar si no está abierto
+  // Si el modal no está abierto, no renderizar nada
   if (!isOpen) return null;
 
-  // ✅ VALIDACIÓN DE SEGURIDAD
-  if (!order || !order.id_order) {
-    debugLog('ERROR', 'Invalid order data for modal:', order);
-    return (
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
-        <div className={`p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}>
-          <h3 className="text-lg font-semibold mb-2">Error</h3>
-          <p>No se puede cargar la información de la orden.</p>
-          <button
-            onClick={onClose}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Cerrar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className={`relative w-full max-w-6xl rounded-lg shadow-xl ${
-          theme === 'dark' ? 'bg-gray-800' : 'bg-white'
-        }`}>
-          {/* Header */}
-          <div className={`flex items-center justify-between border-b p-6 ${
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className={`w-full max-w-4xl max-h-[90vh] rounded-lg shadow-xl overflow-hidden ${
+        theme === 'dark' ? 'bg-gray-800' : 'bg-white'
+      }`}>
+        <div className="flex flex-col h-full">
+          {/* Header del modal */}
+          <div className={`flex items-center justify-between p-6 border-b ${
             theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
           }`}>
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${
-                theme === 'dark' ? 'bg-blue-900' : 'bg-blue-100'
-              }`}>
-                <CreditCardIcon className={`w-6 h-6 ${
-                  theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
-                }`} />
-              </div>
-              <div>
-                <h2
-                  id="modal-title"
-                  className={`text-xl font-bold ${
-                    theme === 'dark' ? 'text-white' : 'text-gray-900'
-                  }`}
-                >
-                  Editar Orden #{order?.id_order}
-                </h2>
-                <p className={`text-sm ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  Modifica los detalles de la orden
-                </p>
-              </div>
-            </div>
+            <h2 className={`text-xl font-semibold ${
+              theme === 'dark' ? 'text-white' : 'text-gray-900'
+            }`}>
+              Editar Orden #{order?.id_order}
+            </h2>
             <button
-              id="close-modal-header"
-              type="button"
+              id="close-order-edit"
               onClick={onClose}
-              aria-label="Cerrar modal de edición"
-              className={`p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 ${
+              aria-label="Cerrar modal"
+              className={`p-2 rounded-lg transition-colors hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-500 ${
                 theme === 'dark'
-                  ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700'
-                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                  ? 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
               }`}
             >
-              <XMarkIcon className="w-6 h-6" />
+              <XMarkIcon className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Contenido principal */}
-          <div className="p-6 max-h-[75vh] overflow-y-auto">
-            <div className="space-y-6">
+          {/* Contenido scrolleable */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-6 space-y-6">
 
-              {/* Información básica */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Información general */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Método de pago */}
                 <div>
-                  <label
-                    htmlFor="payment-method-select"
-                    className={`block text-sm font-medium mb-2 ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  <label className={`block text-sm font-medium mb-2 ${
+                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  }`}>
+                    Método de pago
+                  </label>
+                  <select
+                    value={editData.id_payment_method || ''}
+                    onChange={(e) => handlePaymentMethodChange(Number(e.target.value))}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      theme === 'dark'
+                        ? 'border-gray-600 bg-gray-700 text-white'
+                        : 'border-gray-300 bg-white text-gray-900'
                     }`}
                   >
-                    Método de Pago
-                  </label>
-                  {catalogLoading.payments ? (
-                    <div className={`flex items-center gap-2 p-3 border rounded-lg ${
-                      theme === 'dark'
-                        ? 'border-gray-600 bg-gray-700'
-                        : 'border-gray-300 bg-gray-50'
-                    }`}>
-                      <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                      <span className={`text-sm ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                      }`}>
-                        Cargando métodos...
-                      </span>
-                    </div>
-                  ) : catalogErrors.payments ? (
-                    <div className={`flex items-center gap-2 p-3 border rounded-lg ${
-                      theme === 'dark'
-                        ? 'border-red-600 bg-red-900/20'
-                        : 'border-red-300 bg-red-50'
-                    }`}>
-                      <ExclamationTriangleIcon className="w-4 h-4 text-red-500" />
-                      <span className={`text-sm ${
-                        theme === 'dark' ? 'text-red-400' : 'text-red-600'
-                      }`}>
-                        Error cargando métodos
-                      </span>
-                    </div>
-                  ) : (
-                    <select
-                      id="payment-method-select"
-                      name="paymentMethod"
-                      value={editData.id_payment_method || ''}
-                      onChange={(e) => handlePaymentMethodChange(Number(e.target.value))}
-                      aria-label="Seleccionar método de pago"
-                      className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        theme === 'dark'
-                          ? 'border-gray-600 bg-gray-700 text-white'
-                          : 'border-gray-300 bg-white text-gray-900'
-                      }`}
-                    >
-                      <option value="">Selecciona un método de pago</option>
-                      {paymentMethods.map(method => (
-                        <option key={method.id_payment || method.id_payment_method} value={method.id_payment || method.id_payment_method}>
-                          {method.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                    <option value="">Seleccionar método de pago</option>
+                    {paymentMethods.map(method => (
+                      <option key={method.id_payment_method} value={method.id_payment_method}>
+                        {method.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Nombre del cliente */}
                 <div>
-                  <label
-                    htmlFor="client-name-input"
-                    className={`block text-sm font-medium mb-2 ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                    }`}
-                  >
-                    Nombre del Cliente
+                  <label className={`block text-sm font-medium mb-2 ${
+                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  }`}>
+                    Nombre del cliente
                   </label>
                   <input
-                    id="client-name-input"
-                    name="clientName"
                     type="text"
-                    value={editData.client_name}
+                    value={editData.client_name || ''}
                     onChange={(e) => handleClientNameChange(e.target.value)}
-                    placeholder="Nombre del cliente"
-                    aria-label="Nombre del cliente"
-                    className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    placeholder="Ingresa el nombre del cliente"
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       theme === 'dark'
                         ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
                         : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
@@ -1072,23 +877,17 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
 
               {/* Comentario general */}
               <div>
-                <label
-                  htmlFor="general-comment-textarea"
-                  className={`block text-sm font-medium mb-2 ${
-                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                  }`}
-                >
-                  Comentario General
+                <label className={`block text-sm font-medium mb-2 ${
+                  theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                }`}>
+                  Comentarios de la orden
                 </label>
                 <textarea
-                  id="general-comment-textarea"
-                  name="generalComment"
-                  value={editData.comment}
+                  value={editData.comment || ''}
                   onChange={(e) => handleCommentChange(e.target.value)}
-                  placeholder="Comentarios adicionales..."
-                  rows="3"
-                  aria-label="Comentario general de la orden"
-                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${
+                  placeholder="Comentarios adicionales sobre la orden"
+                  rows={3}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
                     theme === 'dark'
                       ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
                       : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
@@ -1198,7 +997,7 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                                         }`}
                                       >
                                         {isSelected && <CheckIcon className="w-3 h-3" />}
-                                        {variant.size} (${variant.price})
+                                        {variant.size} - ${variant.price}
                                       </button>
                                     );
                                   })}
@@ -1208,229 +1007,72 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                           </div>
                         )}
 
-                        {/* ✅ SECCIÓN DE EXTRAS ACTUAL */}
-                        {item.extras && Array.isArray(item.extras) && item.extras.length > 0 && (
-                          <div className="mb-4">
-                            <p className={`text-sm font-medium mb-2 ${
-                              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                            }`}>
-                              Extras actuales:
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {item.extras.map((extra, extraIndex) => (
-                                <span
-                                  key={`extra-${extra.id_extra}-${extraIndex}`}
-                                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
-                                    theme === 'dark'
-                                      ? 'bg-orange-900/30 text-orange-300'
-                                      : 'bg-orange-100 text-orange-800'
-                                  }`}
-                                >
-                                  {extra.name} ({extra.quantity || 1})
-                                  <button
-                                    id={`remove-extra-${itemIndex}-${extra.id_extra}`}
-                                    name={`remove-extra-${itemIndex}`}
-                                    type="button"
-                                    onClick={() => handleRemoveExtraFromItem(itemIndex, extra.id_extra, extra.name)}
-                                    aria-label={`Quitar extra ${extra.name}`}
-                                    className={`ml-1 hover:scale-110 transition-transform focus:outline-none focus:ring-1 focus:ring-orange-500 rounded ${
-                                      theme === 'dark'
-                                        ? 'text-orange-400 hover:text-orange-200'
-                                        : 'text-orange-600 hover:text-orange-800'
-                                    }`}
-                                  >
-                                    <XMarkIcon className="w-3 h-3" />
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ✅ SECCIÓN DE SALSAS ACTUAL */}
-                        {item.sauces && Array.isArray(item.sauces) && item.sauces.length > 0 && (
-                          <div className="mb-4">
-                            <p className={`text-sm font-medium mb-2 ${
-                              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                            }`}>
-                              Salsas actuales:
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {item.sauces.map((sauce, sauceIndex) => (
-                                <span
-                                  key={`sauce-${sauce.id_sauce}-${sauceIndex}`}
-                                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
-                                    theme === 'dark'
-                                      ? 'bg-red-900/30 text-red-300'
-                                      : 'bg-red-100 text-red-800'
-                                  }`}
-                                >
-                                  {sauce.name}
-                                  <button
-                                    id={`remove-sauce-${itemIndex}-${sauce.id_sauce}`}
-                                    name={`remove-sauce-${itemIndex}`}
-                                    type="button"
-                                    onClick={() => handleToggleSauceForItem(itemIndex, sauce)}
-                                    aria-label={`Quitar salsa ${sauce.name}`}
-                                    className={`ml-1 hover:scale-110 transition-transform focus:outline-none focus:ring-1 focus:ring-red-500 rounded ${
-                                      theme === 'dark'
-                                        ? 'text-red-400 hover:text-red-200'
-                                        : 'text-red-600 hover:text-red-800'
-                                    }`}
-                                  >
-                                    <XMarkIcon className="w-3 h-3" />
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ✅ SECCIÓN DE SABOR ACTUAL */}
-                        {item.flavor && item.flavor.id_flavor && item.flavor.name && (
-                          <div className="mb-4">
-                            <p className={`text-sm font-medium mb-2 ${
-                              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                            }`}>
-                              Sabor actual:
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              <span
-                                className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
-                                  theme === 'dark'
-                                    ? 'bg-green-900/30 text-green-300'
-                                    : 'bg-green-100 text-green-800'
-                                }`}
-                              >
-                                {item.flavor.name}
-                                <button
-                                  id={`remove-flavor-${itemIndex}-${item.flavor.id_flavor}`}
-                                  name={`remove-flavor-${itemIndex}`}
-                                  type="button"
-                                  onClick={() => handleFlavorChangeForItem(itemIndex, null)}
-                                  aria-label={`Quitar sabor ${item.flavor.name}`}
-                                  className={`ml-1 hover:scale-110 transition-transform focus:outline-none focus:ring-1 focus:ring-green-500 rounded ${
-                                    theme === 'dark'
-                                      ? 'text-green-400 hover:text-green-200'
-                                      : 'text-green-600 hover:text-green-800'
-                                  }`}
-                                >
-                                  <XMarkIcon className="w-3 h-3" />
-                                </button>
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ✅ SECCIÓN PARA AGREGAR EXTRAS */}
-                        {availableExtras && Array.isArray(availableExtras) && availableExtras.length > 0 && (
-                          <div className="mb-4">
-                            <p className={`text-sm font-medium mb-2 ${
-                              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                            }`}>
-                              Agregar extras:
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {availableExtras.map(extra => (
-                                <button
-                                  key={extra.id_extra}
-                                  type="button"
-                                  onClick={() => handleAddExtraToItem(itemIndex, extra)}
-                                  aria-label={`Agregar extra ${extra.name} por ${extra.actual_price || extra.price || '0.00'}`}
-                                  className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                    theme === 'dark'
-                                      ? 'border-gray-500 bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                      : 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                  }`}
-                                >
-                                  <PlusIcon className="w-3 h-3" />
-                                  {extra.name} (+${extra.actual_price || extra.price || '0.00'})
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ✅ SECCIÓN PARA CAMBIAR SALSAS */}
-                        {availableSauces && Array.isArray(availableSauces) && availableSauces.length > 0 && (
+                        {/* Sección de extras disponibles */}
+                        {availableExtras && availableExtras.length > 0 && (
                           <div className="mb-4">
                             <fieldset>
                               <legend className={`text-sm font-medium mb-2 ${
                                 theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
                               }`}>
-                                Salsas disponibles:
+                                Agregar extras:
                               </legend>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" role="group" aria-label="Seleccionar salsas">
-                                {availableSauces.map(sauce => {
-                                  const isSelected = item.sauces.some(s => s.id_sauce === sauce.id_sauce);
-                                  const sauceImage = optimizeGoogleDriveImageUrl(sauce.image, 60) ||
-                                                    generatePlaceholderUrl(sauce.name, 60, theme === 'dark');
-
-                                  return (
-                                    <button
-                                      key={sauce.id_sauce}
-                                      type="button"
-                                      aria-pressed={isSelected}
-                                      aria-label={`${sauce.name}${isSelected ? ', seleccionada' : ', no seleccionada'}`}
-                                      onClick={() => handleToggleSauceForItem(itemIndex, sauce)}
-                                      className={`relative flex flex-col items-center p-3 rounded-lg border transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                                        isSelected
-                                          ? theme === 'dark'
-                                            ? 'border-red-500 bg-red-900/30 shadow-red-500/25 shadow-lg focus:ring-red-500'
-                                            : 'border-red-500 bg-red-100 shadow-red-500/25 shadow-lg focus:ring-red-500'
-                                          : theme === 'dark'
-                                            ? 'border-gray-500 bg-gray-600 hover:bg-gray-500 hover:border-gray-400 focus:ring-blue-500'
-                                            : 'border-gray-300 bg-gray-100 hover:bg-gray-200 hover:border-gray-400 focus:ring-blue-500'
-                                      }`}
-                                    >
-                                      {isSelected && (
-                                        <div
-                                          className={`absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center ${
-                                            theme === 'dark' ? 'bg-red-600' : 'bg-red-500'
-                                          }`}
-                                          aria-hidden="true"
-                                        >
-                                          <CheckIcon className="w-3 h-3 text-white" />
-                                        </div>
-                                      )}
-
-                                      <img
-                                        src={sauceImage}
-                                        alt=""
-                                        aria-hidden="true"
-                                        className="w-12 h-12 object-cover rounded-lg mb-2 border"
-                                        onError={(e) => {
-                                          e.target.src = generatePlaceholderUrl(sauce.name, 60, theme === 'dark');
-                                        }}
-                                      />
-
-                                      <span className={`text-xs font-medium text-center leading-tight ${
-                                        isSelected
-                                          ? theme === 'dark'
-                                            ? 'text-red-300'
-                                            : 'text-red-700'
-                                          : theme === 'dark'
-                                            ? 'text-gray-300'
-                                            : 'text-gray-700'
-                                      }`}>
-                                        {sauce.name}
-                                      </span>
-                                    </button>
-                                  );
-                                })}
+                              <div className="flex flex-wrap gap-2">
+                                {availableExtras.map(extra => (
+                                  <button
+                                    key={extra.id_extra}
+                                    type="button"
+                                    onClick={() => handleAddExtraToItem(itemIndex, extra)}
+                                    className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                                      theme === 'dark'
+                                        ? 'border-gray-500 bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                        : 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                  >
+                                    <PlusIcon className="w-3 h-3" />
+                                    {extra.name} (+${extra.price})
+                                  </button>
+                                ))}
                               </div>
                             </fieldset>
                           </div>
                         )}
 
-                        {/* ✅ SECCIÓN PARA CAMBIAR SABOR */}
-                        {productFlavorsData && Array.isArray(productFlavorsData) && productFlavorsData.length > 0 && (
-                          <div>
+                        {/* Mostrar extras actuales del item */}
+                        {item.extras && item.extras.length > 0 && (
+                          <div className="mb-4">
                             <fieldset>
                               <legend className={`text-sm font-medium mb-2 ${
                                 theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
                               }`}>
-                                Cambiar sabor:
+                                Extras actuales:
+                              </legend>
+                              <div className="flex flex-wrap gap-2">
+                                {item.extras.map((extra, extraIndex) => (
+                                  <div
+                                    key={`${extra.id_extra}-${extraIndex}`}
+                                    className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full border ${
+                                      theme === 'dark'
+                                        ? 'border-green-500 bg-green-900/30 text-green-300'
+                                        : 'border-green-500 bg-green-100 text-green-700'
+                                    }`}
+                                  >
+                                    <CheckIcon className="w-3 h-3" />
+                                    {extra.name} x{extra.quantity}
+                                  </div>
+                                ))}
+                              </div>
+                            </fieldset>
+                          </div>
+                        )}
+
+                        {/* Sección de sabores disponibles */}
+                        {productFlavorsData && Array.isArray(productFlavorsData) && productFlavorsData.length > 0 && (
+                          <div className="mb-4">
+                            <fieldset>
+                              <legend className={`text-sm font-medium mb-2 ${
+                                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                              }`}>
+                                Sabores disponibles:
                               </legend>
                               {isFlavorsLoading ? (
                                 <div className={`flex items-center gap-2 p-2 border rounded-lg ${
@@ -1446,25 +1088,20 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
                                   </span>
                                 </div>
                               ) : (
-                                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Seleccionar sabor del producto">
+                                <div className="flex flex-wrap gap-2">
                                   {productFlavorsData.map(flavor => {
-                                    if (!flavor || !flavor.id_flavor) {
-                                      return null;
-                                    }
-
-                                    const isSelected = item.flavor &&
-                                                      item.flavor.id_flavor &&
-                                                      Number(item.flavor.id_flavor) === Number(flavor.id_flavor);
+                                    const isSelected = item.flavors?.some(f => f.id_flavor === flavor.id_flavor);
                                     return (
                                       <button
                                         key={flavor.id_flavor}
-                                        id={`flavor-${itemIndex}-${flavor.id_flavor}`}
-                                        name={`flavor-item-${itemIndex}`}
                                         type="button"
-                                        role="radio"
-                                        aria-checked={isSelected}
-                                        aria-label={`Sabor ${flavor.name || 'Sin nombre'}`}
-                                        onClick={() => handleFlavorChangeForItem(itemIndex, flavor)}
+                                        onClick={() => {
+                                          // Toggle flavor selection
+                                          const newFlavors = isSelected
+                                            ? item.flavors.filter(f => f.id_flavor !== flavor.id_flavor)
+                                            : [...(item.flavors || []), { id_flavor: flavor.id_flavor, name: flavor.name }];
+                                          handleItemChange(itemIndex, 'flavors', newFlavors);
+                                        }}
                                         className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                           isSelected
                                             ? theme === 'dark'

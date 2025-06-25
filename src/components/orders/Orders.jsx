@@ -10,10 +10,13 @@ import {
   ShoppingBagIcon,
   ArrowPathIcon,
   PencilIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  ShoppingCartIcon,
+  EllipsisVerticalIcon
 } from '@heroicons/react/24/outline';
 import BusinessHeader from '../menu/BusinessHeader';
 import OrderEditModal from './OrderEditModal';
+import Swal from 'sweetalert2';
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
 import { getOrders } from '../../utils/api';
@@ -25,6 +28,9 @@ function Orders({ onBack }) {
   const { setMessage } = useMessage();
   const { theme } = useTheme();
 
+  // ✅ NUEVO: Acceso al contexto del carrito para edición
+  const { loadOrderIntoCart, isCartEditMode, editingOrderId } = useCart();
+
   // Estados existentes
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('today');
@@ -34,6 +40,9 @@ function Orders({ onBack }) {
   // Nuevos estados para edición
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [orderToEdit, setOrderToEdit] = useState(null);
+
+  // ✅ NUEVO: Estado para menús desplegables de acciones
+  const [openActionMenus, setOpenActionMenus] = useState({});
 
   console.log('📊 Current state - orders:', orders?.length || 0, 'loading:', isLoadingOrders, 'filter:', filter);
 
@@ -189,10 +198,12 @@ function Orders({ onBack }) {
       return [];
     }
 
-    console.log('🔍 Filtrando órdenes. Filter:', filter, 'Total orders:', orders.length);
+    console.log('🔍 Filtrando órdenes con filtro:', filter);
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
     let filtered = orders.filter(order => {
       if (!order.created_at) return false;
@@ -203,34 +214,35 @@ function Orders({ onBack }) {
       switch (filter) {
         case 'today':
           return orderDay.getTime() === today.getTime();
-        case 'week':
-          const weekAgo = new Date(today);
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          return orderDate >= weekAgo;
-        case 'month':
-          const monthAgo = new Date(today);
-          monthAgo.setMonth(monthAgo.getMonth() - 1);
-          return orderDate >= monthAgo;
+        case 'yesterday':
+          return orderDay.getTime() === yesterday.getTime();
+        case 'this-week':
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          return orderDate >= weekStart;
         case 'all':
+          return true;
         default:
           return true;
       }
     });
 
-    // ✅ Ordenar por fecha
+    console.log(`📊 Órdenes filtradas (${filter}):`, filtered.length);
+
+    // Ordenar por fecha si está habilitado
     if (sortByDate) {
       filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }
 
-    console.log(`📋 Filtered orders for "${filter}":`, filtered.length);
     return filtered;
   }, [orders, filter, sortByDate]);
 
-  // ✅ Funciones para edición de órdenes
+  // ✅ Funciones para manejar edición
   const handleEditOrder = (order) => {
-    console.log('✏️ Editando orden:', order);
+    console.log('✏️ Editando orden:', order.id_order);
     setOrderToEdit(order);
     setIsEditModalOpen(true);
+    setOpenActionMenus({}); // Cerrar menús abiertos
   };
 
   const handleCloseEditModal = () => {
@@ -238,15 +250,91 @@ function Orders({ onBack }) {
     setOrderToEdit(null);
   };
 
-  const handleOrderUpdated = async (updatedOrder) => {
-    console.log('✅ Orden actualizada, refrescando lista...');
-    setIsEditModalOpen(false);
-    setOrderToEdit(null);
-    await refreshOrders();
+  const handleOrderUpdated = (updatedOrder) => {
+    console.log('🔄 Orden actualizada:', updatedOrder);
+
+    // Actualizar la orden en la lista local
+    setOrders(prevOrders =>
+      prevOrders.map(order =>
+        order.id_order === updatedOrder.id_order ? updatedOrder : order
+      )
+    );
+
+    // Cerrar modal
+    handleCloseEditModal();
   };
 
-  // ✅ Formatear fecha
+  // ✅ NUEVA FUNCIÓN: Cargar orden en carrito para edición
+  const handleLoadOrderInCart = async (order) => {
+    try {
+      // Verificar si ya hay otra orden en edición
+      if (isCartEditMode && editingOrderId !== order.id_order) {
+        const result = await Swal.fire({
+          title: 'Orden en edición',
+          text: `Ya tienes la orden #${editingOrderId} en edición. ¿Quieres cambiar a la orden #${order.id_order}?`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonColor: '#3b82f6',
+          cancelButtonColor: '#6b7280',
+          confirmButtonText: 'Sí, cambiar orden',
+          cancelButtonText: 'Cancelar'
+        });
+
+        if (!result.isConfirmed) {
+          return;
+        }
+      }
+
+      setOpenActionMenus({}); // Cerrar menús
+
+      // Cargar orden en carrito
+      await loadOrderIntoCart(order.id_order);
+
+      await Swal.fire({
+        title: '¡Orden cargada!',
+        text: `La orden #${order.id_order} está ahora en el carrito para edición`,
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+      });
+
+      // Navegar al carrito o mostrar carrito si existe una función para eso
+      if (onBack) {
+        onBack(); // Esto típicamente lleva al menú principal donde está el carrito
+      }
+
+    } catch (error) {
+      await Swal.fire({
+        title: 'Error',
+        text: `No se pudo cargar la orden en el carrito: ${error.message}`,
+        icon: 'error',
+        confirmButtonText: 'Entendido'
+      });
+    }
+  };
+
+  // ✅ FUNCIÓN para manejar menús de acciones
+  const toggleActionMenu = (orderId) => {
+    setOpenActionMenus(prev => ({
+      ...prev,
+      [orderId]: !prev[orderId]
+    }));
+  };
+
+  // ✅ Cerrar menús cuando se hace clic fuera
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenActionMenus({});
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Funciones de utilidad para formateo
   const formatDate = (dateString) => {
+    if (!dateString) return 'Fecha inválida';
+
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString('es-ES', {
@@ -257,239 +345,151 @@ function Orders({ onBack }) {
         minute: '2-digit'
       });
     } catch (error) {
+      console.error('Error formateando fecha:', error);
       return 'Fecha inválida';
     }
   };
 
-  // ✅ Formatear precio
-  const formatPrice = (price) => {
-    try {
-      const numPrice = Number(price);
-      return isNaN(numPrice) ? '$0.00' : `$${numPrice.toFixed(2)}`;
-    } catch (error) {
-      return '$0.00';
-    }
+  const formatPrice = (amount) => {
+    const numericAmount = Number(amount) || 0;
+    return `$${numericAmount.toFixed(2)}`;
   };
 
-  // ✅ Renderizar loading
-  if (isLoadingOrders) {
-    return (
-      <div className={`min-h-screen transition-colors duration-300 ${
-        theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'
-      }`}>
-        <BusinessHeader />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <ArrowPathIcon className="w-12 h-12 mx-auto mb-4 animate-spin text-green-600" />
-            <p className={`text-lg ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-              Cargando órdenes...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${
-      theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'
+    <div className={`min-h-screen ${
+      theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'
     }`}>
       <BusinessHeader />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className={`rounded-xl shadow-sm border mb-6 p-6 ${
-          theme === 'dark'
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
-        }`}>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={onBack}
-                className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${
-                  theme === 'dark'
-                    ? 'text-gray-300 hover:bg-gray-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <ArrowLeftIcon className="w-6 h-6" />
-              </button>
-              <div>
-                <h1 className={`text-2xl font-bold ${
-                  theme === 'dark' ? 'text-white' : 'text-gray-900'
-                }`}>
-                  Órdenes
-                </h1>
-                <p className={`text-sm ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  Gestiona todas las órdenes del sistema
-                </p>
-              </div>
-            </div>
-
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
             <button
-              onClick={refreshOrders}
-              disabled={isLoadingOrders}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={onBack}
+              className={`p-2 rounded-lg transition-colors ${
+                theme === 'dark'
+                  ? 'hover:bg-gray-700 text-gray-300'
+                  : 'hover:bg-gray-200 text-gray-600'
+              }`}
             >
-              <ArrowPathIcon className={`w-5 h-5 ${isLoadingOrders ? 'animate-spin' : ''}`} />
-              Refrescar
+              <ArrowLeftIcon className="w-6 h-6" />
+            </button>
+
+            <div>
+              <h1 className={`text-3xl font-bold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-900'
+              }`}>
+                Órdenes
+              </h1>
+              <p className={`text-sm ${
+                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              }`}>
+                Gestiona y revisa todas las órdenes
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={refreshOrders}
+            disabled={isLoadingOrders}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              isLoadingOrders
+                ? 'opacity-50 cursor-not-allowed'
+                : theme === 'dark'
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            <ArrowPathIcon className={`w-4 h-4 ${isLoadingOrders ? 'animate-spin' : ''}`} />
+            {isLoadingOrders ? 'Cargando...' : 'Actualizar'}
+          </button>
+        </div>
+
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {[
+            { key: 'today', label: 'Hoy', icon: CalendarIcon },
+            { key: 'yesterday', label: 'Ayer', icon: CalendarIcon },
+            { key: 'this-week', label: 'Esta semana', icon: CalendarIcon },
+            { key: 'all', label: 'Todas', icon: ShoppingBagIcon }
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                filter === key
+                  ? theme === 'dark'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-blue-600 text-white'
+                  : theme === 'dark'
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                    : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Controles adicionales */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSortByDate(!sortByDate)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                sortByDate
+                  ? theme === 'dark'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-green-600 text-white'
+                  : theme === 'dark'
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+              }`}
+            >
+              <ClockIcon className="w-4 h-4" />
+              {sortByDate ? 'Ordenado por fecha' : 'Ordenar por fecha'}
             </button>
           </div>
 
-          {/* Filtros */}
-          <div className="flex flex-wrap gap-4">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className={`w-5 h-5 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-              }`} />
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-green-500 ${
-                  theme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300 text-gray-900'
-                }`}
-              >
-                <option value="today">Hoy</option>
-                <option value="week">Esta semana</option>
-                <option value="month">Este mes</option>
-                <option value="all">Todas</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="sortByDate"
-                checked={sortByDate}
-                onChange={(e) => setSortByDate(e.target.checked)}
-                className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
-              />
-              <label
-                htmlFor="sortByDate"
-                className={`text-sm ${
-                  theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                }`}
-              >
-                Ordenar por fecha
-              </label>
-            </div>
+          <div className={`text-sm ${
+            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+          }`}>
+            {filteredOrders.length} orden{filteredOrders.length !== 1 ? 'es' : ''} encontrada{filteredOrders.length !== 1 ? 's' : ''}
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className={`p-6 rounded-xl shadow-sm border ${
-            theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
-              : 'bg-white border-gray-200'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm font-medium ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  Total Órdenes
-                </p>
-                <p className={`text-3xl font-bold ${
-                  theme === 'dark' ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {filteredOrders.length}
-                </p>
-              </div>
-              <ShoppingBagIcon className="w-12 h-12 text-green-600" />
-            </div>
-          </div>
-
-          <div className={`p-6 rounded-xl shadow-sm border ${
-            theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
-              : 'bg-white border-gray-200'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm font-medium ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  Ventas Totales
-                </p>
-                <p className={`text-3xl font-bold text-green-600`}>
-                  {formatPrice(filteredOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0))}
-                </p>
-              </div>
-              <CurrencyDollarIcon className="w-12 h-12 text-green-600" />
-            </div>
-          </div>
-
-          <div className={`p-6 rounded-xl shadow-sm border ${
-            theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
-              : 'bg-white border-gray-200'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm font-medium ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  Promedio por Orden
-                </p>
-                <p className={`text-3xl font-bold text-blue-600`}>
-                  {filteredOrders.length > 0
-                    ? formatPrice(filteredOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0) / filteredOrders.length)
-                    : '$0.00'
-                  }
-                </p>
-              </div>
-              <ClockIcon className="w-12 h-12 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de Órdenes */}
-        <div className={`rounded-xl shadow-sm border overflow-hidden ${
-          theme === 'dark'
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+        {/* Lista de órdenes */}
+        <div className={`rounded-lg shadow overflow-hidden ${
+          theme === 'dark' ? 'bg-gray-800' : 'bg-white'
         }`}>
-          {filteredOrders.length > 0 ? (
+          {isLoadingOrders ? (
+            <div className="flex items-center justify-center py-12">
+              <ArrowPathIcon className="w-8 h-8 animate-spin text-blue-600" />
+              <span className="ml-2">Cargando órdenes...</span>
+            </div>
+          ) : filteredOrders.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className={`${
-                  theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                }`}>
+                <thead className={theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'}>
                   <tr>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
-                    }`}>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                       Orden
                     </th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
-                    }`}>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                       Cliente
                     </th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
-                    }`}>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                       Fecha
                     </th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
-                    }`}>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                       Total
                     </th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
-                    }`}>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                       Items
                     </th>
-                    <th className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
-                    }`}>
+                    <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider">
                       Acciones
                     </th>
                   </tr>
@@ -498,10 +498,33 @@ function Orders({ onBack }) {
                   theme === 'dark' ? 'divide-gray-700' : 'divide-gray-200'
                 }`}>
                   {filteredOrders.map((order) => (
-                    <tr key={order.id_order} className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors`}>
+                    <tr
+                      key={order.id_order}
+                      className={`transition-colors ${
+                        theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                      }`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-green-600">
-                          #{order.id_order}
+                        <div className="flex items-center">
+                          <div className={`p-2 rounded-lg mr-3 ${
+                            theme === 'dark' ? 'bg-blue-900' : 'bg-blue-100'
+                          }`}>
+                            <CurrencyDollarIcon className={`w-5 h-5 ${
+                              theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                            }`} />
+                          </div>
+                          <div>
+                            <div className={`text-sm font-bold ${
+                              theme === 'dark' ? 'text-white' : 'text-gray-900'
+                            }`}>
+                              #{order.id_order}
+                            </div>
+                            <div className={`text-xs ${
+                              theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              {order.payment_method?.name || 'Método desconocido'}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -531,13 +554,76 @@ function Orders({ onBack }) {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleEditOrder(order)}
-                          className="text-blue-600 hover:text-blue-800 transition-colors"
-                          title="Editar orden"
-                        >
-                          <PencilIcon className="w-5 h-5" />
-                        </button>
+                        {/* ✅ NUEVO: Menú de acciones con múltiples opciones */}
+                        <div className="relative inline-block text-left">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleActionMenu(order.id_order);
+                            }}
+                            className={`p-2 rounded-lg transition-colors ${
+                              theme === 'dark'
+                                ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-300'
+                                : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'
+                            }`}
+                            title="Más opciones"
+                          >
+                            <EllipsisVerticalIcon className="w-5 h-5" />
+                          </button>
+
+                          {/* Menú desplegable */}
+                          {openActionMenus[order.id_order] && (
+                            <div className={`
+                              absolute right-0 mt-2 w-56 rounded-lg shadow-lg z-10 border
+                              ${theme === 'dark'
+                                ? 'bg-gray-800 border-gray-700'
+                                : 'bg-white border-gray-200'
+                              }
+                            `}>
+                              <div className="py-1">
+                                {/* Editar en Modal */}
+                                <button
+                                  onClick={() => handleEditOrder(order)}
+                                  className={`
+                                    flex items-center gap-3 w-full px-4 py-2 text-sm text-left transition-colors
+                                    ${theme === 'dark'
+                                      ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                                    }
+                                  `}
+                                >
+                                  <PencilIcon className="w-4 h-4 text-blue-500" />
+                                  <div>
+                                    <div className="font-medium">Editar en Modal</div>
+                                    <div className="text-xs text-gray-500">
+                                      Edición rápida en ventana emergente
+                                    </div>
+                                  </div>
+                                </button>
+
+                                {/* ✅ NUEVO: Editar en Carrito */}
+                                <button
+                                  onClick={() => handleLoadOrderInCart(order)}
+                                  className={`
+                                    flex items-center gap-3 w-full px-4 py-2 text-sm text-left transition-colors
+                                    ${theme === 'dark'
+                                      ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                                    }
+                                  `}
+                                >
+                                  <ShoppingCartIcon className="w-4 h-4 text-green-500" />
+                                  <div>
+                                    <div className="font-medium">Editar en Carrito</div>
+                                    <div className="text-xs text-gray-500">
+                                      Cargar orden en carrito para edición completa
+                                    </div>
+                                  </div>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -565,6 +651,33 @@ function Orders({ onBack }) {
             </div>
           )}
         </div>
+
+        {/* ✅ NUEVO: Indicator si hay orden en edición en carrito */}
+        {isCartEditMode && (
+          <div className={`
+            mt-6 p-4 rounded-lg border-l-4 border-blue-500
+            ${theme === 'dark'
+              ? 'bg-blue-900/20 border-blue-400'
+              : 'bg-blue-50 border-blue-500'
+            }
+          `}>
+            <div className="flex items-center gap-3">
+              <ShoppingCartIcon className="w-5 h-5 text-blue-500" />
+              <div>
+                <h4 className={`font-medium ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-blue-800'
+                }`}>
+                  Orden #{editingOrderId} en edición
+                </h4>
+                <p className={`text-sm ${
+                  theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                }`}>
+                  Esta orden está actualmente cargada en el carrito para edición
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal de Edición */}
