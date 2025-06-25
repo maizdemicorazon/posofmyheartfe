@@ -702,7 +702,6 @@ function Orders({ onBack }) {
           initialComment={editingItem.comment || ''}
           onSave={handleSaveItemChanges}
           isEditing={true}
-          showPaymentMethod={true}
         />
       )}
 

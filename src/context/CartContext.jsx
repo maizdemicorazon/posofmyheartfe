@@ -226,19 +226,19 @@ export function CartProvider({ children }) {
     console.log('Started editing product:', cartItem);
   }, []);
 
-// ✅ FUNCIÓN PARA GUARDAR EDICIÓN DE PRODUCTO - VERSIÓN FINAL CORREGIDA
-  const saveEditProduct = useCallback((updatedItem) => {
-    if (!editingProduct) {
-      console.error('❌ No editingProduct found in saveEditProduct');
-      return;
-    }
+// ✅ FUNCIÓN PARA GUARDAR EDICIÓN DE PRODUCTO
+const saveEditProduct = useCallback((updatedItem) => {
+  if (!editingProduct) {
+    console.error('❌ No editingProduct found in saveEditProduct');
+    return;
+  }
 
-    console.log('🔄 Saving edited product - FINAL VERSION:', {
-      editingProductId: editingProduct.id,
-      editingProduct,
-      updatedItem,
-      updatedItemKeys: Object.keys(updatedItem)
-    });
+  console.log('🔄 Saving edited product with payment method:', {
+    editingProductId: editingProduct.id,
+    updatedPaymentMethod: updatedItem.selectedPaymentMethod,
+    originalPaymentMethod: editingProduct.selectedPaymentMethod
+  });
+
 
     setCart(prev => prev.map(item => {
       // ✅ COMPARAR POR ID ÚNICO DEL CARRITO
@@ -266,6 +266,10 @@ export function CartProvider({ children }) {
           selectedSauces: updatedItem.selectedSauces || [],
           comment: updatedItem.comment || '',
 
+            // ✅ NUEVO: PRESERVAR MÉTODO DE PAGO
+        selectedPaymentMethod: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod,
+        payment_method_id: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod,
+
           // ✅ MAPEAR VARIANTE AL NIVEL SUPERIOR
           id_variant: updatedItem.selectedOption?.id_variant || editingProduct.id_variant,
           variant_name: updatedItem.selectedOption?.size || editingProduct.variant_name,
@@ -291,7 +295,8 @@ export function CartProvider({ children }) {
           extras: updatedItem.selectedExtras || updatedItem.extras || [],
           sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
           flavor: updatedItem.selectedFlavor || editingProduct.flavor, // ✅ CRÍTICO: Preservar sabor
-          selectedFlavor: updatedItem.selectedFlavor // ✅ CRÍTICO: Preservar sabor seleccionado
+          selectedFlavor: updatedItem.selectedFlavor, // ✅ CRÍTICO: Preservar sabor seleccionado
+          selectedPaymentMethod: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod
         };
 
         console.log('✅ Updated cart item FINAL:', {
@@ -314,6 +319,12 @@ export function CartProvider({ children }) {
           quantity: updatedCartItem.quantity,
           comment: updatedCartItem.comment
         });
+
+        console.log('✅ Updated cart item with preserved payment method:', {
+        id: updatedCartItem.id,
+        selectedPaymentMethod: updatedCartItem.selectedPaymentMethod,
+        payment_method_id: updatedCartItem.payment_method_id
+      });
 
         return updatedCartItem;
       }

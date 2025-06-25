@@ -32,8 +32,7 @@ function ProductModal({
   initialPaymentMethod = null,
   onSave,
   isEditing = false,
-  onAddedToCart,
-  showPaymentMethod = true
+  onAddedToCart
 }) {
   const { theme } = useTheme();
   const { addToCart, extras, sauces } = useCart();
@@ -61,27 +60,34 @@ function ProductModal({
 
   // ✅ CARGAR MÉTODOS DE PAGO al abrir el modal
   useEffect(() => {
-    if (isOpen && showPaymentMethod) {
+    if (isOpen) {
       loadPaymentMethods();
     }
-  }, [isOpen, showPaymentMethod]);
+  }, [isOpen]);
 
-  const loadPaymentMethods = async () => {
-    setIsLoadingPayments(true);
-    setPaymentError(null);
+// En ProductModal.jsx, dentro del useEffect que carga métodos de pago
+// Reemplazar la función loadPaymentMethods con esta versión corregida:
 
-    try {
-      const response = await getPaymentMethods();
-      const validPayments = Array.isArray(response) ?
-        response.filter(pm => pm && pm.id_payment_method && pm.name) : [];
-      setPaymentMethods(validPayments);
-    } catch (error) {
-      console.error('Error loading payment methods:', error);
-      setPaymentError(error);
-    } finally {
-      setIsLoadingPayments(false);
-    }
-  };
+const loadPaymentMethods = async () => {
+  setIsLoadingPayments(true);
+  setPaymentError(null);
+
+  try {
+    const response = await getPaymentMethods();
+    const validPayments = Array.isArray(response) ?
+      response.filter(pm => pm && pm.id_payment_method && pm.name) : [];
+
+    setPaymentMethods(validPayments);
+    // ✅ PRESELECCIONAR EFECTIVO (id=1)
+    setSelectedPaymentMethod(validPayments[0].id_payment_method);
+  } catch (error) {
+    console.error('Error loading payment methods:', error);
+    setPaymentError(error);
+  } finally {
+    setIsLoadingPayments(false);
+  }
+
+};
 
   // ✅ FUNCIÓN PARA OPTIMIZAR IMAGEN DEL PRODUCTO
   const getOptimizedProductImage = () => {
@@ -111,7 +117,7 @@ function ProductModal({
   // ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL
   useEffect(() => {
     if (isOpen && product) {
-      console.log('🔄 Initializing ProductModal:', { isEditing, showPaymentMethod });
+      console.log('🔄 Initializing ProductModal:', { isEditing });
 
       // Inicializar estados básicos
       setQuantity(initialQuantity || 1);
@@ -123,7 +129,7 @@ function ProductModal({
       setProductImageState({ hasError: false, errorCount: 0 });
 
       // ✅ Inicializar método de pago si es necesario
-      if (showPaymentMethod && initialPaymentMethod) {
+      if (initialPaymentMethod) {
         setSelectedPaymentMethod(initialPaymentMethod);
       }
 
@@ -146,7 +152,7 @@ function ProductModal({
       setSelectedFlavor(flavorToSelect);
 
     }
-  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, initialPaymentMethod, isEditing, showPaymentMethod]);
+  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, initialPaymentMethod, isEditing]);
 
   // ✅ SCROLL LOCK
   useEffect(() => {
@@ -219,7 +225,7 @@ function ProductModal({
     }
 
     // ✅ Validar método de pago si es requerido
-    if (showPaymentMethod && !selectedPaymentMethod) {
+    if (!selectedPaymentMethod) {
       newErrors.paymentMethod = 'Por favor, selecciona un método de pago';
     }
 
@@ -278,7 +284,7 @@ function ProductModal({
         selectedSauces: [...selectedSauces],
         comment,
         totalPrice: calculateTotalPrice(),
-        ...(showPaymentMethod && { selectedPaymentMethod }),
+        ... { selectedPaymentMethod },
         options: selectedOption ? [selectedOption] : [],
         flavors: selectedFlavor ? [selectedFlavor] : [],
         extras: [...selectedExtras],
@@ -312,7 +318,7 @@ function ProductModal({
         selectedSauces: [...selectedSauces],
         comment,
         totalPrice: calculateTotalPrice(),
-        ...(showPaymentMethod && { selectedPaymentMethod })
+        ...{ selectedPaymentMethod }
       };
 
       addToCart(cartItem);
@@ -420,7 +426,6 @@ function ProductModal({
             <div className="space-y-4">
 
               {/* ✅ SECCIÓN DE MÉTODOS DE PAGO (si se muestra) */}
-              {showPaymentMethod && (
                 <div>
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
@@ -507,7 +512,7 @@ function ProductModal({
                     <p className="text-red-500 text-sm mt-2">{errors.paymentMethod}</p>
                   )}
                 </div>
-              )}
+              
 
               {/* TAMAÑOS/OPCIONES */}
               {product.options && product.options.length > 0 && (
