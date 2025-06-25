@@ -86,6 +86,9 @@ export function CartProvider({ children }) {
         name: item.flavor.name
       } : null,
 
+      // ✅ NUEVO: Método de pago del item (si existe a nivel de orden)
+      selectedPaymentMethod: orderData.payment_method?.id_payment || orderData.payment_method || null,
+
       // Campos adicionales para referencia
       id_order_detail: item.id_order_detail,
       variant_name: item.variant_name
@@ -319,28 +322,91 @@ export function CartProvider({ children }) {
     console.log('Cart cleared');
   }, [isCartEditMode]);
 
-  // Funciones para edición de productos
+  // ✅ FUNCIÓN MEJORADA PARA INICIAR EDICIÓN DE PRODUCTO
   const startEditProduct = useCallback((cartItem) => {
-    setEditingProduct(cartItem);
-    console.log('Started editing product:', cartItem);
+    console.log('🔄 Starting edit for cart item:', cartItem);
+
+    // ✅ PREPARAR DATOS COMPLETOS PARA EL MODAL UNIFICADO
+    const editData = {
+      // Producto base
+      product: cartItem.product || {
+        id_product: cartItem.id_product,
+        name: cartItem.product_name || cartItem.name,
+        image: cartItem.product_image || cartItem.image,
+        price: cartItem.price || 0,
+        options: cartItem.options || [],
+        flavors: cartItem.flavors || []
+      },
+
+      // Valores actuales del item
+      id: cartItem.id,
+      quantity: cartItem.quantity || 1,
+      comment: cartItem.comment || '',
+      totalPrice: cartItem.totalPrice || 0,
+
+      // ✅ VALORES SELECCIONADOS PARA PRESELECCIÓN
+      selectedOption: cartItem.selectedOption || null,
+      selectedFlavor: cartItem.selectedFlavor || null,
+      selectedExtras: cartItem.selectedExtras || [],
+      selectedSauces: cartItem.selectedSauces || [],
+
+      // ✅ MÉTODO DE PAGO (si existe)
+      selectedPaymentMethod: cartItem.selectedPaymentMethod || null,
+
+      // Arrays para compatibilidad con el modal
+      options: cartItem.selectedOption ? [cartItem.selectedOption] : [],
+      flavors: cartItem.selectedFlavor ? [cartItem.selectedFlavor] : [],
+      extras: cartItem.selectedExtras || [],
+      sauces: cartItem.selectedSauces || []
+    };
+
+    setEditingProduct(editData);
+    console.log('✅ Edit data prepared:', editData);
   }, []);
 
-  const saveEditProduct = useCallback((updatedItem) => {
+  // ✅ FUNCIÓN MEJORADA PARA GUARDAR EDICIÓN DE PRODUCTO
+  const saveEditProduct = useCallback((updatedData) => {
     if (!editingProduct) return;
 
+    console.log('💾 Saving edited product:', updatedData);
+
+    // ✅ ACTUALIZAR ITEM EN EL CARRITO CON TODOS LOS DATOS
     setCart(prev => prev.map(item =>
       item.id === editingProduct.id
-        ? { ...updatedItem, id: editingProduct.id, totalPrice: updatedItem.totalPrice || calculateProductPrice(updatedItem) }
+        ? {
+            ...item,
+            // Información básica
+            quantity: updatedData.quantity,
+            comment: updatedData.comment,
+            totalPrice: updatedData.totalPrice,
+
+            // ✅ OPCIONES SELECCIONADAS
+            selectedOption: updatedData.selectedOption,
+            selectedFlavor: updatedData.selectedFlavor,
+            selectedExtras: updatedData.selectedExtras || [],
+            selectedSauces: updatedData.selectedSauces || [],
+
+            // ✅ MÉTODO DE PAGO (si se especificó)
+            ...(updatedData.selectedPaymentMethod && {
+              selectedPaymentMethod: updatedData.selectedPaymentMethod
+            }),
+
+            // Arrays para compatibilidad
+            options: updatedData.selectedOption ? [updatedData.selectedOption] : [],
+            flavors: updatedData.selectedFlavor ? [updatedData.selectedFlavor] : [],
+            extras: updatedData.selectedExtras || [],
+            sauces: updatedData.selectedSauces || []
+          }
         : item
     ));
 
     setEditingProduct(null);
-    console.log('Product updated:', updatedItem);
-  }, [editingProduct, calculateProductPrice]);
+    console.log('✅ Product updated in cart');
+  }, [editingProduct]);
 
   const cancelEditProduct = useCallback(() => {
     setEditingProduct(null);
-    console.log('Product edit cancelled');
+    console.log('❌ Product edit cancelled');
   }, []);
 
   // ✅ FUNCIÓN PARA TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND - CORREGIDA
@@ -370,7 +436,7 @@ export function CartProvider({ children }) {
           if (item.selectedExtras && item.selectedExtras.length > 0) {
             orderItem.extras = item.selectedExtras.map(extra => ({
               id_extra: extra.id_extra,
-              quantity: 1
+              quantity: extra.quantity || 1
             }));
           }
 
@@ -401,7 +467,7 @@ export function CartProvider({ children }) {
 
       // ✅ MAPEO CORRECTO: payment_method del backend
       payment_method: {
-        id_payment_method: orderData.payment_method,
+        id_payment: orderData.payment_method,
         name: orderData.payment_name || 'Desconocido'
       },
 

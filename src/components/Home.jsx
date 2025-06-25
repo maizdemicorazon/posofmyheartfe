@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import ProductGrid from './grid/ProductGrid';
-import ProductOptionsModal from './grid/ProductOptionsModal';
+import ProductModal from './grid/ProductModal';
 import Cart from './cart/Cart';
 import CartBadge from './cart/CartBadge';
 
@@ -69,69 +69,37 @@ function Home({ selectedCategory }) {
             </div>
           )}
 
-          {/* Botón flotante del carrito */}
-          <div className="fixed bottom-0 right-0 p-4 z-40">
-            <button
-              onClick={() => setCartDrawerOpen(true)}
-              className="w-14 h-14 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-full shadow-xl hover:shadow-2xl transform hover:scale-110 transition-all duration-200 flex items-center justify-center border-2 border-white relative"
-            >
-              <ShoppingCartIcon className="w-6 h-6" />
-              {cart.length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-yellow-300 text-gray-800 text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
-                  {cart.length > 99 ? '99+' : cart.length}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Modal del carrito móvil */}
-        {cartDrawerOpen && (
-          <>
-            {/* Overlay */}
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300 z-40"
-              onClick={() => setCartDrawerOpen(false)}
-            />
-
-            {/* Panel del carrito */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-sm sm:max-w-md bg-white shadow-xl transform transition-transform duration-300 flex flex-col z-50">
-              {/* Header del carrito móvil */}
-              <div className="bg-red-600 text-white p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <ShoppingCartIcon className="w-6 h-6" />
-                  <h2 className="text-lg font-bold">Carrito</h2>
-                  <div className="relative">
-                    <CartBadge count={cart.length} variant="yellow" size="sm" className="relative top-0 right-0" />
+          {/* Cart Drawer para móvil */}
+          {cartDrawerOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden">
+              <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setCartDrawerOpen(false)}></div>
+              <div className="absolute right-0 top-0 h-full w-full max-w-sm bg-white shadow-xl">
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <h2 className="text-lg font-medium">Carrito</h2>
+                    <button
+                      onClick={() => setCartDrawerOpen(false)}
+                      className="p-2 text-gray-400 hover:text-gray-600"
+                    >
+                      <XMarkIcon className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    <Cart isMobile={true} onCloseCart={() => setCartDrawerOpen(false)} />
                   </div>
                 </div>
-                <button
-                  onClick={() => setCartDrawerOpen(false)}
-                  className="p-1 hover:bg-red-700 rounded-full transition-colors"
-                >
-                  <XMarkIcon className="w-6 h-6" />
-                </button>
-              </div>
-
-              {/* Contenido del carrito móvil */}
-              <div className="flex-1 overflow-y-auto">
-                <Cart
-                  isMobile={true}
-                  onCloseCart={() => setCartDrawerOpen(false)}
-                />
               </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
 
-        {/* Modal de opciones - CORREGIDO */}
+        {/* Modal de opciones - ACTUALIZADO */}
         {selectedProduct && (
-          <ProductOptionsModal
+          <ProductModal
             isOpen={!!selectedProduct}
             onClose={handleClosePanel}
             product={selectedProduct}
             onAddedToCart={handleAddedToCart}
-            // Props requeridas
             initialQuantity={1}
             initialOptions={[]}
             initialFlavors={[]}
@@ -179,14 +147,13 @@ function Home({ selectedCategory }) {
         </div>
       </div>
 
-      {/* Modal de opciones - CORREGIDO */}
+      {/* Modal de opciones - ACTUALIZADO */}
       {selectedProduct && (
-        <ProductOptionsModal
+        <ProductModal
           isOpen={!!selectedProduct}
           onClose={handleClosePanel}
           product={selectedProduct}
           onAddedToCart={handleAddedToCart}
-          // Props requeridas
           initialQuantity={1}
           initialOptions={[]}
           initialFlavors={[]}
@@ -194,6 +161,7 @@ function Home({ selectedCategory }) {
           initialSauces={[]}
           initialComment=""
           isEditing={false}
+          showPaymentMethod={true}
         />
       )}
     </div>

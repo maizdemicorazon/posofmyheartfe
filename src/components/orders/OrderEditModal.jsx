@@ -8,7 +8,12 @@ import {
   ArrowPathIcon,
   CheckIcon,
   PlusIcon,
-  MinusIcon
+  MinusIcon,
+  CurrencyDollarIcon,
+  CreditCardIcon,
+  BanknotesIcon,
+  CalendarIcon,
+  UserIcon
 } from '@heroicons/react/24/outline';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl, validateOrderData } from '../../utils/helpers';
 
@@ -581,12 +586,15 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
     }));
   };
 
-  // ✅ FUNCIÓN PARA MANEJAR CAMBIOS EN EL COMENTARIO GENERAL
+  // ✅ FUNCIÓN PARA MANEJAR CAMBIOS EN EL COMENTARIO GENERAL CON VALIDACIÓN
   const handleCommentChange = (comment) => {
-    setEditData(prev => ({
-      ...prev,
-      comment: comment
-    }));
+    // Limitar a 500 caracteres
+    if (comment.length <= 500) {
+      setEditData(prev => ({
+        ...prev,
+        comment: comment
+      }));
+    }
   };
 
   // ✅ FUNCIÓN PARA MANEJAR CAMBIOS EN ITEMS
@@ -827,72 +835,300 @@ function OrderEditModalContent({ isOpen, onClose, order, onOrderUpdated }) {
           <div className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-6">
 
-              {/* Información general */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Método de pago */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${
-                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                  }`}>
-                    Método de pago
-                  </label>
-                  <select
-                    value={editData.id_payment_method || ''}
-                    onChange={(e) => handlePaymentMethodChange(Number(e.target.value))}
-                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      theme === 'dark'
-                        ? 'border-gray-600 bg-gray-700 text-white'
-                        : 'border-gray-300 bg-white text-gray-900'
-                    }`}
-                  >
-                    <option value="">Seleccionar método de pago</option>
-                    {paymentMethods.map(method => (
-                      <option key={method.id_payment_method} value={method.id_payment_method}>
-                        {method.name}
-                      </option>
-                    ))}
-                  </select>
+              {/* ✅ NUEVA SECCIÓN: Resumen visual de la orden */}
+              <div className={`p-4 rounded-lg border-l-4 border-blue-500 ${
+                theme === 'dark'
+                  ? 'bg-blue-900/20 border-blue-400'
+                  : 'bg-blue-50 border-blue-500'
+              }`}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold ${
+                      theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+                    }`}>
+                      #{order?.id_order}
+                    </div>
+                    <div className={`text-sm ${
+                      theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                    }`}>
+                      Número de Orden
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold text-green-600`}>
+                      ${order?.total_amount?.toFixed(2) || '0.00'}
+                    </div>
+                    <div className={`text-sm ${
+                      theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                    }`}>
+                      Total de la Orden
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold ${
+                      theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+                    }`}>
+                      {order?.items?.length || 0}
+                    </div>
+                    <div className={`text-sm ${
+                      theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                    }`}>
+                      Productos
+                    </div>
+                  </div>
                 </div>
 
-                {/* Nombre del cliente */}
+                {/* Información adicional */}
+                <div className={`mt-3 pt-3 border-t ${
+                  theme === 'dark' ? 'border-blue-700' : 'border-blue-200'
+                }`}>
+                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                    <div className={`flex items-center gap-2 ${
+                      theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+                    }`}>
+                      <CalendarIcon className="w-4 h-4" />
+                      <span>
+                        {order?.created_at ? new Date(order.created_at).toLocaleDateString('es-ES', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : 'Fecha no disponible'}
+                      </span>
+                    </div>
+
+                    <div className={`flex items-center gap-2 ${
+                      theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+                    }`}>
+                      <CreditCardIcon className="w-4 h-4" />
+                      <span>{order?.payment_method?.name || 'Método no especificado'}</span>
+                    </div>
+
+                    {order?.client_name && (
+                      <div className={`flex items-center gap-2 ${
+                        theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+                      }`}>
+                        <UserIcon className="w-4 h-4" />
+                        <span>{order.client_name}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Información general */}
+              <div className="space-y-6">
+                {/* ✅ NUEVA SECCIÓN: Métodos de pago como lista visual */}
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${
-                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  <h3 className={`text-lg font-semibold mb-4 ${
+                    theme === 'dark' ? 'text-white' : 'text-gray-900'
                   }`}>
-                    Nombre del cliente
-                  </label>
-                  <input
-                    type="text"
-                    value={editData.client_name || ''}
-                    onChange={(e) => handleClientNameChange(e.target.value)}
-                    placeholder="Ingresa el nombre del cliente"
-                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    Método de Pago
+                  </h3>
+
+                  {catalogLoading.payments ? (
+                    <div className={`flex items-center gap-2 p-4 border rounded-lg ${
                       theme === 'dark'
-                        ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
-                        : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
-                    }`}
-                  />
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-300 bg-gray-100'
+                    }`}>
+                      <ArrowPathIcon className="w-5 h-5 animate-spin text-blue-500" />
+                      <span className={`text-sm ${
+                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                      }`}>
+                        Cargando métodos de pago...
+                      </span>
+                    </div>
+                  ) : catalogErrors.payments ? (
+                    <div className={`p-4 border rounded-lg border-red-300 ${
+                      theme === 'dark' ? 'bg-red-900/20' : 'bg-red-50'
+                    }`}>
+                      <p className={`text-sm ${
+                        theme === 'dark' ? 'text-red-400' : 'text-red-600'
+                      }`}>
+                        Error cargando métodos de pago: {catalogErrors.payments.message}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {paymentMethods && paymentMethods.length > 0 ? (
+                        paymentMethods.map(method => {
+                          const isSelected = editData.id_payment_method === method.id_payment_method;
+                          return (
+                            <button
+                              key={method.id_payment_method}
+                              type="button"
+                              onClick={() => handlePaymentMethodChange(method.id_payment_method)}
+                              className={`
+                                relative flex items-center gap-3 p-4 border-2 rounded-lg transition-all
+                                focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                                ${isSelected
+                                  ? theme === 'dark'
+                                    ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                    : 'border-blue-500 bg-blue-50 text-blue-700'
+                                  : theme === 'dark'
+                                    ? 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500 hover:bg-gray-600'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
+                                }
+                              `}
+                            >
+                              {/* Ícono del método de pago */}
+                              <div className={`
+                                flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
+                                ${isSelected
+                                  ? theme === 'dark'
+                                    ? 'bg-blue-800 text-blue-300'
+                                    : 'bg-blue-500 text-white'
+                                  : theme === 'dark'
+                                    ? 'bg-gray-600 text-gray-400'
+                                    : 'bg-gray-200 text-gray-500'
+                                }
+                              `}>
+                                {/* Ícono basado en el nombre del método de pago */}
+                                {method.name.toLowerCase().includes('efectivo') ? (
+                                  <CurrencyDollarIcon className="w-5 h-5" />
+                                ) : method.name.toLowerCase().includes('tarjeta') ? (
+                                  <CreditCardIcon className="w-5 h-5" />
+                                ) : method.name.toLowerCase().includes('transferencia') ? (
+                                  <BanknotesIcon className="w-5 h-5" />
+                                ) : (
+                                  <CurrencyDollarIcon className="w-5 h-5" />
+                                )}
+                              </div>
+
+                              {/* Información del método */}
+                              <div className="flex-1 text-left">
+                                <div className={`font-medium text-sm ${
+                                  isSelected
+                                    ? theme === 'dark' ? 'text-blue-300' : 'text-blue-700'
+                                    : theme === 'dark' ? 'text-white' : 'text-gray-900'
+                                }`}>
+                                  {method.name}
+                                </div>
+                                <div className={`text-xs ${
+                                  isSelected
+                                    ? theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                                    : theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                                }`}>
+                                  ID: {method.id_payment_method}
+                                </div>
+                              </div>
+
+                              {/* Checkmark si está seleccionado */}
+                              {isSelected && (
+                                <div className="flex-shrink-0">
+                                  <CheckIcon className={`w-5 h-5 ${
+                                    theme === 'dark' ? 'text-blue-300' : 'text-blue-600'
+                                  }`} />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className={`col-span-full p-4 text-center border rounded-lg ${
+                          theme === 'dark'
+                            ? 'border-gray-600 bg-gray-700 text-gray-400'
+                            : 'border-gray-300 bg-gray-100 text-gray-600'
+                        }`}>
+                          <CurrencyDollarIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No hay métodos de pago disponibles</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Información adicional de la orden */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Nombre del cliente */}
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      Nombre del cliente
+                    </label>
+                    <input
+                      type="text"
+                      value={editData.client_name || ''}
+                      onChange={(e) => handleClientNameChange(e.target.value)}
+                      placeholder="Ingresa el nombre del cliente"
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        theme === 'dark'
+                          ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
+                          : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Información de la orden (solo lectura) */}
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      Información de la orden
+                    </label>
+                    <div className={`p-3 rounded-lg border ${
+                      theme === 'dark'
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-300 bg-gray-100'
+                    }`}>
+                      <div className={`text-sm ${
+                        theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      }`}>
+                        <div className="flex justify-between">
+                          <span>Orden:</span>
+                          <span className="font-medium">#{order?.id_order}</span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span>Total:</span>
+                          <span className="font-medium text-green-600">
+                            ${order?.total_amount?.toFixed(2) || '0.00'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span>Productos:</span>
+                          <span className="font-medium">
+                            {editData.updated_items?.length || 0} items
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Comentario general */}
               <div>
-                <label className={`block text-sm font-medium mb-2 ${
-                  theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                <h3 className={`text-lg font-semibold mb-4 ${
+                  theme === 'dark' ? 'text-white' : 'text-gray-900'
                 }`}>
-                  Comentarios de la orden
-                </label>
-                <textarea
-                  value={editData.comment || ''}
-                  onChange={(e) => handleCommentChange(e.target.value)}
-                  placeholder="Comentarios adicionales sobre la orden"
-                  rows={3}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
-                    theme === 'dark'
-                      ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
-                      : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
-                  }`}
-                />
+                  Comentarios de la Orden
+                </h3>
+                <div className={`border rounded-lg p-1 ${
+                  theme === 'dark' ? 'border-gray-600' : 'border-gray-300'
+                }`}>
+                  <textarea
+                    value={editData.comment || ''}
+                    onChange={(e) => handleCommentChange(e.target.value)}
+                    placeholder="Agregar comentarios adicionales sobre la orden..."
+                    rows={4}
+                    className={`w-full px-3 py-2 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 text-white placeholder-gray-400'
+                        : 'bg-white text-gray-900 placeholder-gray-500'
+                    }`}
+                  />
+                  <div className={`flex items-center justify-between px-3 py-2 text-xs ${
+                    theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                  }`}>
+                    <span>💬 Comentarios visibles para el cliente</span>
+                    <span>{(editData.comment || '').length}/500</span>
+                  </div>
+                </div>
               </div>
 
               {/* Items de la orden */}
