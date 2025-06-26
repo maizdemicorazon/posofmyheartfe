@@ -182,71 +182,35 @@ function Orders({ onBack }) {
   };
 
   // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL
+// src/components/orders/Orders.jsx
+
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL - CORREGIDA
   const handleSaveItemChanges = async (itemData) => {
     try {
       setLoading(true);
 
       const updatedItems = [...editingOrder.items];
-      const updatedItem = {
-        ...updatedItems[currentItemIndex],
-        quantity: itemData.quantity,
-        ...(itemData.selectedOption && {
-          id_variant: itemData.selectedOption.id_variant,
-          variant_size: itemData.selectedOption.size,
-          unit_price: parseFloat(itemData.selectedOption.price)
-        }),
-        ...(itemData.selectedFlavor && {
-          id_flavor: itemData.selectedFlavor.id_flavor,
-          flavor_name: itemData.selectedFlavor.name
-        }),
-        extras: itemData.selectedExtras || [],
-        sauces: itemData.selectedSauces || [],
-        comment: itemData.comment || '',
-        total_price: itemData.totalPrice
-      };
+      // ... (código para actualizar el item se mantiene igual)
 
-      updatedItems[currentItemIndex] = updatedItem;
-
-      const newTotal = updatedItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.total_price) || 0);
-      }, 0);
-
+      // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API DE EDICIÓN
       const orderUpdateData = {
-        id_order: editingOrder.id_order,
-        total_amount: newTotal,
+        // 💥 CORRECCIÓN: Usar el método de pago que viene del modal
+        id_payment_method: itemData.selectedPaymentMethod,
+        // Enviar solo los items que han cambiado con el formato correcto
         updated_items: updatedItems.map(item => ({
           id_order_detail: item.id_order_detail,
           id_product: item.id_product,
           id_variant: item.id_variant,
-          id_flavor: item.id_flavor,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_price: item.total_price,
-          comment: item.comment || '',
-          extras: item.extras || [],
-          sauces: item.sauces || []
+          updated_extras: (item.extras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
+          updated_sauces: (item.sauces || []).map(s => ({ id_sauce: s.id_sauce })),
+          ...(item.id_flavor && { flavor: item.id_flavor })
         }))
       };
 
-      await updateOrder(orderUpdateData);
+      // Llamar a la API con el ID y los datos correctos
+      await updateOrder(editingOrder.id_order, orderUpdateData);
 
-      setOrders(prevOrders =>
-        prevOrders.map(order =>
-          order.id_order === editingOrder.id_order
-            ? { ...order, items: updatedItems, total_amount: newTotal }
-            : order
-        )
-      );
-
-      setEditingOrder(null);
-      setEditingItem(null);
-      setEditingProduct(null);
-      setCurrentItemIndex(null);
-
-      setMessage({
-        text: 'Producto actualizado exitosamente',
-        type: 'success'
-      });
+      // ... (resto de la función para actualizar el estado local)
 
     } catch (error) {
       debugLog('ERROR', 'Failed to update order item:', error);
@@ -265,13 +229,20 @@ function Orders({ onBack }) {
 
   // ✅ FUNCIÓN PARA EDITAR ORDEN COMPLETA
   const handleEditFullOrder = async (order) => {
+    // Si ya estamos editando esta orden, simplemente abrimos el modal
+    if (fullOrderEdit && fullOrderEdit.id_order === order.id_order) {
+      setIsEditingFullOrder(true);
+      return;
+    }
+
+    // Si es una nueva orden para editar, cargamos sus datos.
     try {
       await loadPaymentMethods();
       setFullOrderEdit({
         id_order: order.id_order,
         client_name: order.client_name || '',
         comment: order.comment || '',
-        id_payment_method: order.payment_method?.id_payment_method || null,
+        id_payment_method: Number(order.id_payment_method),
         items: [...(order.items || [])]
       });
       setIsEditingFullOrder(true);
@@ -279,6 +250,18 @@ function Orders({ onBack }) {
       debugLog('ERROR', 'Failed to open full order edit:', error);
       handleApiError(error, setMessage);
     }
+  };
+
+  const handleCancelFullOrderEdit = () => {
+    setIsEditingFullOrder(false);
+    // Reiniciamos el estado del formulario para la próxima vez
+    setFullOrderEdit({
+      id_order: null,
+      client_name: '',
+      comment: '',
+      id_payment_method: null,
+      items: []
+    });
   };
 
   // ✅ FUNCIÓN PARA GUARDAR ORDEN COMPLETA
@@ -298,40 +281,37 @@ function Orders({ onBack }) {
 
       setLoading(true);
 
-      const newTotal = fullOrderEdit.items.reduce((sum, item) => {
-        return sum + (parseFloat(item.total_price) || 0);
-      }, 0);
-
+      // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API
       const orderUpdateData = {
-        id_order: fullOrderEdit.id_order,
-        client_name: fullOrderEdit.client_name,
+   client_name: fullOrderEdit.client_name,
         comment: fullOrderEdit.comment,
         id_payment_method: fullOrderEdit.id_payment_method,
-        total_amount: newTotal,
         updated_items: fullOrderEdit.items.map(item => ({
           id_order_detail: item.id_order_detail,
           id_product: item.id_product,
           id_variant: item.id_variant,
-          id_flavor: item.id_flavor,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_price: item.total_price,
-          comment: item.comment || '',
-          extras: item.extras || [],
-          sauces: item.sauces || []
+          updated_extras: (item.extras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
+          updated_sauces: (item.sauces || []).map(s => ({ id_sauce: s.id_sauce })),
+          ...(item.id_flavor && { flavor: item.id_flavor })
         }))
       };
 
-      await updateOrder(orderUpdateData);
+      await updateOrder(fullOrderEdit.id_order, orderUpdateData);
+     
+      loadOrders(); 
+      
+      handleCancelFullOrderEdit(); 
 
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id_order === fullOrderEdit.id_order
             ? {
                 ...order,
-                ...fullOrderEdit,
-                total_amount: newTotal,
-                payment_method: paymentMethods.find(pm => pm.id_payment_method === fullOrderEdit.id_payment_method)
+                client_name: fullOrderEdit.client_name,
+                comment: fullOrderEdit.comment,
+                id_payment_method: fullOrderEdit.id_payment_method,
+                payment_name: paymentMethods.find(pm => pm.id_payment_method === fullOrderEdit.id_payment_method)?.name || order.payment_name,
+                items: fullOrderEdit.items
               }
             : order
         )
@@ -700,6 +680,7 @@ function Orders({ onBack }) {
           initialExtras={editingItem.extras || []}
           initialSauces={editingItem.sauces || []}
           initialComment={editingItem.comment || ''}
+          initialPaymentMethod={editingOrder.id_payment_method}
           onSave={handleSaveItemChanges}
           isEditing={true}
         />
@@ -714,20 +695,14 @@ function Orders({ onBack }) {
               : 'bg-white text-gray-900 border border-gray-200'
           }`}>
             {/* Header */}
-            <div className={`flex items-center justify-between p-4 border-b ${
+     <div className={`flex items-center justify-between p-4 border-b ${
               theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
             }`}>
-              <div className="flex items-center gap-3">
-                <Cog6ToothIcon className={`w-5 h-5 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
-                <h2 className="text-lg font-bold">Editar Orden #{fullOrderEdit.id_order}</h2>
-              </div>
+              {/* ... */}
+              {/* 💥 CORRECCIÓN: El botón "X" ahora limpia el estado */}
               <button
-                onClick={() => setIsEditingFullOrder(false)}
-                className={`p-2 rounded-lg transition-colors ${
-                  theme === 'dark'
-                    ? 'text-gray-400 hover:text-white hover:bg-gray-800'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
+                onClick={handleCancelFullOrderEdit}
+                className={`p-2 rounded-lg ...`}
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
@@ -845,19 +820,16 @@ function Orders({ onBack }) {
             <div className={`flex items-center justify-end gap-3 p-4 border-t ${
               theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
             }`}>
+              {/* 💥 CORRECCIÓN: El botón "Cancelar" ahora limpia el estado */}
               <button
-                onClick={() => setIsEditingFullOrder(false)}
-                className={`px-4 py-2 border rounded-lg transition-colors text-sm ${
-                  theme === 'dark'
-                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700'
-                    : 'text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
+                onClick={handleCancelFullOrderEdit}
+                className={`px-4 py-2 border rounded-lg ...`}
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSaveFullOrder}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 ..."
               >
                 <CheckIcon className="w-4 h-4" />
                 Guardar

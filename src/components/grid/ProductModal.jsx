@@ -115,44 +115,39 @@ const loadPaymentMethods = async () => {
   };
 
   // ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL
+// src/components/grid/ProductModal.jsx
+
+  // ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL - CORREGIDO
   useEffect(() => {
     if (isOpen && product) {
-      console.log('🔄 Initializing ProductModal:', { isEditing });
+      console.log('🔄 Initializing ProductModal:', { isEditing, initialPaymentMethod });
 
-      // Inicializar estados básicos
+      // 1. Restablecer estados básicos
       setQuantity(initialQuantity || 1);
-      setSelectedPaymentMethod(Array.isArray(initialPaymentMethod) ? [...initialPaymentMethod] : []);
       setSelectedExtras(Array.isArray(initialExtras) ? [...initialExtras] : []);
       setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
       setComment(initialComment || '');
       setErrors({});
       setProductImageState({ hasError: false, errorCount: 0 });
 
-      // ✅ Inicializar método de pago si es necesario
-      if (initialPaymentMethod) {
+      if (isEditing && initialPaymentMethod) {
         setSelectedPaymentMethod(initialPaymentMethod);
+      } else {
+        setSelectedPaymentMethod(paymentMethods.length > 0 ? paymentMethods[0].id_payment_method : null);
       }
-
-      // Configurar opción seleccionada
-      let optionToSelect = null;
-      if (Array.isArray(initialOptions) && initialOptions.length > 0) {
-        optionToSelect = initialOptions[0];
-      } else if (product.options && product.options.length > 0) {
-        optionToSelect = product.options[0];
-      }
+      
+      // 3. Configurar opción y sabor seleccionados
+      let optionToSelect = (initialOptions && initialOptions.length > 0) ? initialOptions[0] : (product.options && product.options.length > 0) ? product.options[0] : null;
       setSelectedOption(optionToSelect);
 
-      // Configurar sabor seleccionado
-      let flavorToSelect = null;
-      if (Array.isArray(initialFlavors) && initialFlavors.length > 0) {
-        flavorToSelect = initialFlavors[0];
-      } else if (product.flavors && product.flavors.length > 0) {
-        flavorToSelect = product.flavors[0];
-      }
+      let flavorToSelect = (initialFlavors && initialFlavors.length > 0) ? initialFlavors[0] : (product.flavors && product.flavors.length > 0) ? product.flavors[0] : null;
       setSelectedFlavor(flavorToSelect);
-
     }
-  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, initialPaymentMethod, isEditing]);
+  }, [
+    isOpen, product, initialQuantity, initialOptions, initialFlavors, 
+    initialExtras, initialSauces, initialComment, initialPaymentMethod, 
+    isEditing, paymentMethods
+  ]);
 
   // ✅ SCROLL LOCK
   useEffect(() => {
@@ -284,7 +279,7 @@ const loadPaymentMethods = async () => {
         selectedSauces: [...selectedSauces],
         comment,
         totalPrice: calculateTotalPrice(),
-        ... { selectedPaymentMethod },
+        selectedPaymentMethod,
         options: selectedOption ? [selectedOption] : [],
         flavors: selectedFlavor ? [selectedFlavor] : [],
         extras: [...selectedExtras],
