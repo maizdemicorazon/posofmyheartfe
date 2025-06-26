@@ -229,114 +229,46 @@ export function CartProvider({ children }) {
     console.log('Started editing product:', cartItem);
   }, []);
 
-// ✅ FUNCIÓN PARA GUARDAR EDICIÓN DE PRODUCTO
-const saveEditProduct = useCallback((updatedItem) => {
-  if (!editingProduct) {
-    console.error('❌ No editingProduct found in saveEditProduct');
-    return;
-  }
+    // ✅ FUNCIÓN PARA GUARDAR EDICIÓN DE PRODUCTO
+    const saveEditProduct = useCallback((updatedItem) => {
+      if (!editingProduct) {
+        console.error('❌ No editingProduct found in saveEditProduct');
+        return;
+      }
 
-  console.log('🔄 Saving edited product with payment method:', {
-    editingProductId: editingProduct.id,
-    updatedPaymentMethod: updatedItem.selectedPaymentMethod,
-    originalPaymentMethod: editingProduct.selectedPaymentMethod
-  });
-
-
-    setCart(prev => prev.map(item => {
-      // ✅ COMPARAR POR ID ÚNICO DEL CARRITO
-      if (item.id === editingProduct.id) {
-        console.log('🎯 Found item to update by unique cart ID:', item.id);
-
-        // ✅ CREAR ITEM ACTUALIZADO CON MAPEO COMPLETO
-        const updatedCartItem = {
-          // ✅ CRÍTICO: Mantener EL MISMO ID único del carrito
-          id: editingProduct.id,
-
-          // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR
-          id_product: updatedItem.product?.id_product || editingProduct.id_product,
-          product_name: updatedItem.product?.name || editingProduct.product_name,
-          product_image: updatedItem.product?.image || editingProduct.product_image,
-
-          // ✅ MANTENER EL PRODUCTO ANIDADO
-          product: updatedItem.product || editingProduct.product,
-
-          // ✅ DATOS DE LA SELECCIÓN ACTUALIZADA DESDE EL MODAL
-          quantity: updatedItem.quantity || 1,
-          selectedOption: updatedItem.selectedOption,
-          selectedFlavor: updatedItem.selectedFlavor,
-          selectedExtras: updatedItem.selectedExtras || [],
-          selectedSauces: updatedItem.selectedSauces || [],
-          comment: updatedItem.comment || '',
-
-            // ✅ NUEVO: PRESERVAR MÉTODO DE PAGO
-        selectedPaymentMethod: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod,
-        payment_method_id: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod,
-
-          // ✅ MAPEAR VARIANTE AL NIVEL SUPERIOR
-          id_variant: updatedItem.selectedOption?.id_variant || editingProduct.id_variant,
-          variant_name: updatedItem.selectedOption?.size || editingProduct.variant_name,
-
-          // ✅ MAPEAR SABOR AL NIVEL SUPERIOR - CRÍTICO PARA Cart.jsx
-          flavor: updatedItem.selectedFlavor || editingProduct.flavor,
-
-          // ✅ MAPEAR EXTRAS Y SALSAS AL NIVEL SUPERIOR - CRÍTICO PARA Cart.jsx
-          extras: updatedItem.selectedExtras || updatedItem.extras || [],
-          sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
-
-          // ✅ Eliminar totalPrice para que se recalcule
-          totalPrice: null, // Esto fuerza el recálculo en cada render
-
-          // ✅ PRESERVAR CAMPOS ORIGINALES QUE NO SE ACTUALICEN
-          ...editingProduct,
-
-          // ✅ SOBRESCRIBIR CON NUEVOS DATOS
-          ...updatedItem,
-
-          // ✅ ASEGURAR QUE EL ID Y LOS MAPEOS CRÍTICOS NO SE SOBRESCRIBAN
-          id: editingProduct.id,
-          extras: updatedItem.selectedExtras || updatedItem.extras || [],
-          sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
-          flavor: updatedItem.selectedFlavor || editingProduct.flavor, // ✅ CRÍTICO: Preservar sabor
-          selectedFlavor: updatedItem.selectedFlavor, // ✅ CRÍTICO: Preservar sabor seleccionado
-          selectedPaymentMethod: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod
-        };
-
-        console.log('✅ Updated cart item FINAL:', {
-          id: updatedCartItem.id,
-          product_name: updatedCartItem.product_name,
-          product_image: updatedCartItem.product_image,
-          selectedSauces: updatedCartItem.selectedSauces,
-          sauces: updatedCartItem.sauces,
-          selectedExtras: updatedCartItem.selectedExtras,
-          extras: updatedCartItem.extras,
-          selectedFlavor: updatedCartItem.selectedFlavor,
-          flavor: updatedCartItem.flavor,
-          flavorDetails: {
-            selectedFlavorName: updatedCartItem.selectedFlavor?.name,
-            flavorName: updatedCartItem.flavor?.name,
-            hasSelectedFlavor: !!updatedCartItem.selectedFlavor,
-            hasFlavor: !!updatedCartItem.flavor
-          },
-          totalPrice: updatedCartItem.totalPrice,
-          quantity: updatedCartItem.quantity,
-          comment: updatedCartItem.comment
-        });
-
-        console.log('✅ Updated cart item with preserved payment method:', {
-        id: updatedCartItem.id,
-        selectedPaymentMethod: updatedCartItem.selectedPaymentMethod,
-        payment_method_id: updatedCartItem.payment_method_id
+      console.log('🔄 Guardando producto editado. Datos del modal:', {
+        editingProductId: editingProduct.id,
+        updatedPaymentMethod: updatedItem.selectedPaymentMethod,
+        originalPaymentMethod: editingProduct.selectedPaymentMethod
       });
 
-        return updatedCartItem;
-      }
-      return item;
-    }));
 
-    setEditingProduct(null);
-    console.log('✅ Product successfully updated in cart with preserved ID:', editingProduct.id);
-  }, [editingProduct, calculateProductPrice]);
+     setCart(prevCart => prevCart.map(item => {
+         // Comparar por el ID único del item en el carrito
+         if (item.id === editingProduct.id) {
+           console.log('🎯 Encontrado item a actualizar:', editingProduct.id);
+
+           // ✅ CONSTRUIR EL ITEM ACTUALIZADO DE FORMA EXPLÍCITA
+           const updatedCartItem = {
+             ...item, // Empezamos con los datos originales del item del carrito
+             ...updatedItem, // Sobrescribimos con los datos del modal
+
+             // Re-calculamos el precio total
+             totalPrice: calculateProductPrice({ ...item, ...updatedItem }),
+
+             // Aseguramos que el ID único se mantenga
+             id: editingProduct.id,
+           };
+
+           console.log('✅ Item final actualizado:', updatedCartItem);
+           return updatedCartItem;
+         }
+         return item;
+       }));
+
+       // Limpiar el estado de edición
+       setEditingProduct(null);
+     }, [editingProduct, calculateProductPrice, setCart]);
 
 
   const cancelEditProduct = useCallback(() => {

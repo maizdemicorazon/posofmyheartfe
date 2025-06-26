@@ -22,7 +22,6 @@ function ProductModal({
   isOpen,
   onClose,
   product,
-  // Propiedades para edición
   initialQuantity = 1,
   initialOptions = [],
   initialFlavors = [],
@@ -118,7 +117,7 @@ const loadPaymentMethods = async () => {
 // src/components/grid/ProductModal.jsx
 
   // ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL - CORREGIDO
-  useEffect(() => {
+ useEffect(() => {
     if (isOpen && product) {
       console.log('🔄 Initializing ProductModal:', { isEditing, initialPaymentMethod });
 
@@ -128,15 +127,17 @@ const loadPaymentMethods = async () => {
       setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
       setComment(initialComment || '');
       setErrors({});
-      setProductImageState({ hasError: false, errorCount: 0 });
 
+      // 2. Lógica de selección de método de pago MÁS CLARA
       if (isEditing && initialPaymentMethod) {
+        // Si estamos editando y tenemos un método de pago inicial, lo usamos.
         setSelectedPaymentMethod(initialPaymentMethod);
       } else {
+        // Si es un producto nuevo, seleccionamos el primero por defecto (Efectivo).
         setSelectedPaymentMethod(paymentMethods.length > 0 ? paymentMethods[0].id_payment_method : null);
       }
-      
-      // 3. Configurar opción y sabor seleccionados
+
+      // 3. Configurar opción y sabor seleccionados (lógica existente)
       let optionToSelect = (initialOptions && initialOptions.length > 0) ? initialOptions[0] : (product.options && product.options.length > 0) ? product.options[0] : null;
       setSelectedOption(optionToSelect);
 
