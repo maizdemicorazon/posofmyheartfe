@@ -105,7 +105,7 @@ export const buildApiUrl = (endpoint, params = {}) => {
 // ✅ FUNCIÓN PARA VALIDAR SI LA API ESTÁ DISPONIBLE
 export const checkApiHealth = async () => {
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}/health`, {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/ping`, {
       method: 'GET',
       headers: API_CONFIG.DEFAULT_HEADERS,
       signal: AbortSignal.timeout(5000) // 5 segundos para health check
@@ -144,7 +144,6 @@ export const DEBUG_CONFIG = {
   }
 };
 
-// ✅ EXPORTAR TODO COMO DEFAULT TAMBIÉN
 export default {
   API_CONFIG,
   API_ENDPOINTS,

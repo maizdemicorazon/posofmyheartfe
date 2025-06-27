@@ -124,7 +124,7 @@ function Home({ selectedCategory }) {
           </>
         )}
 
-        {/* Modal de opciones - CORREGIDO */}
+        {/* Modal de opciones */}
         {selectedProduct && (
           <ProductModal
             isOpen={!!selectedProduct}
@@ -137,6 +137,7 @@ function Home({ selectedCategory }) {
             initialFlavors={[]}
             initialExtras={[]}
             initialSauces={[]}
+            initialPaymentMethod={null}
             initialComment=""
             isEditing={false}
           />
@@ -192,6 +193,7 @@ function Home({ selectedCategory }) {
           initialFlavors={[]}
           initialExtras={[]}
           initialSauces={[]}
+          initialPaymentMethod={null}
           initialComment=""
           isEditing={false}
         />

@@ -7,10 +7,10 @@ import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
 import { getProducts } from '../../utils/api';
-import { API_CONFIG } from '../../config/constants';
+import { API_CONFIG } from '../../config/config.server';
 
 function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
-  const { products, setProducts, setExtras, setSauces } = useCart();
+  const { products, setProducts, setExtras, setSauces, setPaymentMethods } = useCart();
   const { setLoading } = useLoading();
   const { setMessage } = useMessage();
   const { theme } = useTheme();
@@ -48,6 +48,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
           setProducts(response.products);
           setExtras(response.extras || []);
           setSauces(response.sauces || []);
+          setPaymentMethods(response.payment_methods || []);
           setMessage(null);
           hasFetched.current = true; // ✅ Marcar como cargado exitosamente
         } else {
@@ -117,7 +118,6 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
 
   const handleImageError = (productId, productName) => {
     setImageStates(prev => {
-      // Prevenir loop infinito
       if (prev[productId]?.errorCount >= 1) {
         console.log(`❌ Product image failed multiple times for ${productName}, stopping retries`);
         return prev;

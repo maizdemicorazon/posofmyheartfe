@@ -32,7 +32,7 @@ function AppContent() {
       {view === 'earnings-chart' && <EarningsChart onBack={() => setView('home')} />}
       {view === 'sales-report' && <SalesReport onBack={() => setView('home')} />}
 
-      {/* Modal de edición de producto - ACTUALIZADO */}
+      {/* ✅ Modal de edición de producto */}
       {editingProduct && (
         <ProductModal
           isOpen={true}
@@ -41,10 +41,11 @@ function AppContent() {
           initialQuantity={editingProduct.quantity || 1}
           initialOptions={editingProduct.options || (editingProduct.selectedOption ? [editingProduct.selectedOption] : [])}
           initialFlavors={editingProduct.flavors || (editingProduct.selectedFlavor ? [editingProduct.selectedFlavor] : [])}
-          initialPaymentMethod={editingProduct.selectedPaymentMethod || editingProduct.payment_method_id}
           initialExtras={editingProduct.extras || editingProduct.selectedExtras || []}
           initialSauces={editingProduct.sauces || editingProduct.selectedSauces || []}
+           initialPaymentMethod={editingProduct.payment_methods || editingProduct.selectedPaymentMethod || []}
           initialComment={editingProduct.comment || ''}
+          initialClientName={editingProduct.clientName || ''}
           onSave={saveEditProduct}
           isEditing={true}
         />

@@ -24,7 +24,7 @@ import {
 } from '@heroicons/react/24/outline';
 import ProductModal from '../grid/ProductModal';
 import Swal from 'sweetalert2';
-import { getOrders, updateOrder, getProductById, getPaymentMethods } from '../../utils/api';
+import { getOrders, updateOrder, getOrderById } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog } from '../../utils/helpers';
 
 function Orders({ onBack }) {
@@ -103,20 +103,6 @@ function Orders({ onBack }) {
     }
   };
 
-  const loadPaymentMethods = async () => {
-    try {
-      const methods = await getPaymentMethods();
-      setPaymentMethods(Array.isArray(methods) ? methods : []);
-    } catch (error) {
-      console.error('Error loading payment methods:', error);
-      setPaymentMethods([
-        { id_payment_method: 1, name: 'Efectivo' },
-        { id_payment_method: 2, name: 'Tarjeta' },
-        { id_payment_method: 3, name: 'Transferencia' }
-      ]);
-    }
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return 'Fecha no disponible';
     try {
@@ -143,7 +129,7 @@ function Orders({ onBack }) {
     setExpandedOrders(newExpanded);
   };
 
-  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL
+  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL - CORREGIDA
   const handleEditOrderItem = async (order, itemIndex) => {
     try {
       const item = order.items[itemIndex];
@@ -156,9 +142,13 @@ function Orders({ onBack }) {
       }
 
       setLoading(true);
-      debugLog('ORDERS', 'Editing order item:', { orderId: order.id_order, itemIndex, item });
+      debugLog('ORDERS', 'Editing order item:', {
+        orderId: order.id_order,
+        itemIndex,
+        item
+      });
 
-      const productData = await getProductById(item.id_product);
+      const productData = await getOrderById(order.id_order);
 
       if (!productData) {
         setMessage({
@@ -181,53 +171,164 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL
-// src/components/orders/Orders.jsx
-
   // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL - CORREGIDA
   const handleSaveItemChanges = async (itemData) => {
     try {
       setLoading(true);
 
-      const updatedItems = [...editingOrder.items];
-      // ... (código para actualizar el item se mantiene igual)
+         debugLog('ORDERS', 'Saving item changes:', {
+            orderId: editingOrder.id_order,
+            itemIndex: currentItemIndex,
+            itemData
+          });
+
+      // Actualizar el item específico con los nuevos datos
+      updatedItems[currentItemIndex] = {
+        ...editingItem,
+        quantity: itemData.quantity,
+        selectedOption: itemData.selectedOption,
+        selectedFlavor: itemData.selectedFlavor,
+        selectedExtras: itemData.selectedExtras || [],
+        selectedSauces: itemData.selectedSauces || [],
+        comment: itemData.comment || '',
+        // ✅ PRESERVAR EL CLIENT_NAME de la orden original
+        clientName: editingOrder.client_name || '',
+        // Mapear para compatibilidad
+        id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
+        variant_name: itemData.selectedOption?.size || editingItem.variant_name,
+        flavor: itemData.selectedFlavor || editingItem.flavor,
+        extras: itemData.selectedExtras || [],
+        sauces: itemData.selectedSauces || [],
+        id_flavor: itemData.selectedFlavor?.id_flavor || editingItem.id_flavor,
+        // Recalcular precios
+        unit_price: itemData.selectedOption?.price || editingItem.unit_price,
+        total_price: (itemData.selectedOption?.price || editingItem.unit_price) * itemData.quantity
+      };
 
       // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API DE EDICIÓN
-      const orderUpdateData = {
-        // 💥 CORRECCIÓN: Usar el método de pago que viene del modal
-        id_payment_method: itemData.selectedPaymentMethod,
-        // Enviar solo los items que han cambiado con el formato correcto
-        updated_items: updatedItems.map(item => ({
-          id_order_detail: item.id_order_detail,
-          id_product: item.id_product,
-          id_variant: item.id_variant,
-          updated_extras: (item.extras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
-          updated_sauces: (item.sauces || []).map(s => ({ id_sauce: s.id_sauce })),
-          ...(item.id_flavor && { flavor: item.id_flavor })
-        }))
-      };
+ const orderUpdateData = {
+      id_payment_method: itemData.selectedPaymentMethod || editingOrder.id_payment_method,
+      client_name: itemData.clientName || editingOrder.client_name,
+      comment: itemData.comment || editingOrder.comment,
+      // ✅ Incluir items actualizados - solo el que se está editando
+      updated_items: [{
+        id_order_detail: editingItem.id_order_detail || editingItem.id_product, // Fallback si no existe
+        id_product: editingItem.id_product,
+        id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
+        quantity: itemData.quantity || 1, // ✅ USAR LA CANTIDAD DEL MODAL
+        // ✅ Mapear extras correctamente CON SUS CANTIDADES
+        updated_extras: (itemData.selectedExtras || []).map(extra => ({
+          id_extra: extra.id_extra,
+          quantity: extra.quantity || 1 // ✅ USAR LA CANTIDAD DEL EXTRA
+        })),
+        // ✅ Mapear salsas correctamente
+        updated_sauces: (itemData.selectedSauces || []).map(sauce => ({
+          id_sauce: sauce.id_sauce
+        })),
+        // ✅ Incluir sabor si existe
+        ...(itemData.selectedFlavor && {
+          id_flavor: itemData.selectedFlavor.id_flavor
+        }),
+        comment: itemData.comment || ''
+      }]
+    };
+
+      console.log('📤 Enviando datos de actualización:', orderUpdateData);
 
       // Llamar a la API con el ID y los datos correctos
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
-      // ... (resto de la función para actualizar el estado local)
+      // Actualizar el estado local de las órdenes
+    // ✅ Actualizar el estado local de las órdenes
+    setOrders(prevOrders =>
+      prevOrders.map(order =>
+        order.id_order === editingOrder.id_order
+          ? {
+              ...order,
+              client_name: itemData.clientName || order.client_name,
+              comment: itemData.comment || order.comment,
+              id_payment_method: itemData.selectedPaymentMethod || order.id_payment_method,
+              // ✅ Actualizar el item específico
+              items: order.items.map((item, index) =>
+                index === currentItemIndex
+                  ? {
+                      ...item,
+                      // ✅ Actualizar campos del item
+                      id_variant: itemData.selectedOption?.id_variant || item.id_variant,
+                      variant_name: itemData.selectedOption?.size || item.variant_name,
+                      product_price: itemData.selectedOption?.price || item.product_price,
+                      flavor: itemData.selectedFlavor || item.flavor,
+                      // ✅ Actualizar extras CON CANTIDADES
+                      extras: itemData.selectedExtras ? itemData.selectedExtras.map(extra => ({
+                        id_extra: extra.id_extra,
+                        name: extra.name,
+                        actual_price: extra.price,
+                        quantity: extra.quantity || 1 // ✅ PRESERVAR CANTIDAD
+                      })) : item.extras,
+                      sauces: itemData.selectedSauces ? itemData.selectedSauces.map(sauce => ({
+                        id_sauce: sauce.id_sauce,
+                        name: sauce.name,
+                        image: sauce.image
+                      })) : item.sauces
+                    }
+                  : item
+              )
+            }
+          : order
+      )
+    );
+
+    // Recargar las órdenes para asegurar consistencia
+    await loadOrders();
+
+    // Cerrar el modal
+    handleCloseEditModal();
+
+    setMessage({
+        text: 'Producto actualizado exitosamente',
+        type: 'success'
+    });
+
+       // Mostrar confirmación
+    await Swal.fire({
+      title: '¡Producto actualizado!',
+      text: 'Los cambios se han guardado correctamente',
+      icon: 'success',
+      timer: 2000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end',
+      background: theme === 'dark' ? '#1f2937' : '#ffffff',
+      color: theme === 'dark' ? '#f9fafb' : '#111827'
+    });
 
     } catch (error) {
       debugLog('ERROR', 'Failed to update order item:', error);
       handleApiError(error, setMessage);
+
+      Swal.fire({
+        title: 'Error al actualizar',
+        text: 'No se pudo actualizar el producto. Inténtalo de nuevo.',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCloseEditModal = () => {
-    setEditingOrder(null);
-    setEditingItem(null);
-    setEditingProduct(null);
-    setCurrentItemIndex(null);
-  };
+  // ✅ FUNCIÓN PARA CERRAR MODAL DE EDICIÓN
+    const handleCloseEditModal = () => {
+      setEditingProduct(null);
+      setEditingItem(null);
+      setEditingOrder(null);
+      setCurrentItemIndex(null);
+      debugLog('ORDERS', 'Edit modal closed');
+    };
 
-  // ✅ FUNCIÓN PARA EDITAR ORDEN COMPLETA
+  // ✅ FUNCIÓN PARA EDITAR ORDEN COMPLETA - CORREGIDA
   const handleEditFullOrder = async (order) => {
     // Si ya estamos editando esta orden, simplemente abrimos el modal
     if (fullOrderEdit && fullOrderEdit.id_order === order.id_order) {
@@ -237,7 +338,6 @@ function Orders({ onBack }) {
 
     // Si es una nueva orden para editar, cargamos sus datos.
     try {
-      await loadPaymentMethods();
       setFullOrderEdit({
         id_order: order.id_order,
         client_name: order.client_name || '',
@@ -252,9 +352,9 @@ function Orders({ onBack }) {
     }
   };
 
+  // ✅ FUNCIÓN PARA CANCELAR EDICIÓN COMPLETA - CORREGIDA
   const handleCancelFullOrderEdit = () => {
     setIsEditingFullOrder(false);
-    // Reiniciamos el estado del formulario para la próxima vez
     setFullOrderEdit({
       id_order: null,
       client_name: '',
@@ -264,7 +364,7 @@ function Orders({ onBack }) {
     });
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR ORDEN COMPLETA
+  // ✅ FUNCIÓN PARA GUARDAR ORDEN COMPLETA - CORREGIDA
   const handleSaveFullOrder = async () => {
     try {
       if (!fullOrderEdit.id_payment_method) {
@@ -283,25 +383,26 @@ function Orders({ onBack }) {
 
       // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API
       const orderUpdateData = {
-   client_name: fullOrderEdit.client_name,
-        comment: fullOrderEdit.comment,
+        client_name: fullOrderEdit.client_name || '',
+        comment: fullOrderEdit.comment || '',
         id_payment_method: fullOrderEdit.id_payment_method,
         updated_items: fullOrderEdit.items.map(item => ({
           id_order_detail: item.id_order_detail,
           id_product: item.id_product,
           id_variant: item.id_variant,
+          quantity: item.quantity,
           updated_extras: (item.extras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
           updated_sauces: (item.sauces || []).map(s => ({ id_sauce: s.id_sauce })),
-          ...(item.id_flavor && { flavor: item.id_flavor })
+          ...(item.id_flavor && { flavor: item.id_flavor }),
+          comment: item.comment || ''
         }))
       };
 
-      await updateOrder(fullOrderEdit.id_order, orderUpdateData);
-     
-      loadOrders(); 
-      
-      handleCancelFullOrderEdit(); 
+      console.log('📤 Enviando actualización completa de orden:', orderUpdateData);
 
+      await updateOrder(fullOrderEdit.id_order, orderUpdateData);
+
+      // Actualizar el estado local
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id_order === fullOrderEdit.id_order
@@ -310,22 +411,51 @@ function Orders({ onBack }) {
                 client_name: fullOrderEdit.client_name,
                 comment: fullOrderEdit.comment,
                 id_payment_method: fullOrderEdit.id_payment_method,
-                payment_name: paymentMethods.find(pm => pm.id_payment_method === fullOrderEdit.id_payment_method)?.name || order.payment_name,
+                payment_name: paymentMethods.find(pm =>
+                    pm.id_payment_method === fullOrderEdit.id_payment_method)
+                    ?.name || order.payment_name,
                 items: fullOrderEdit.items
               }
             : order
         )
       );
 
-      setIsEditingFullOrder(false);
+      // Recargar órdenes para consistencia
+      await loadOrders();
+
+      // Cerrar modal y limpiar estado
+      handleCancelFullOrderEdit();
+
       setMessage({
         text: 'Orden actualizada exitosamente',
         type: 'success'
       });
 
+      // Mostrar confirmación
+      Swal.fire({
+        title: '¡Orden actualizada!',
+        text: `La orden #${fullOrderEdit.id_order} se ha actualizado correctamente`,
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+
     } catch (error) {
       debugLog('ERROR', 'Failed to update full order:', error);
       handleApiError(error, setMessage);
+
+      Swal.fire({
+        title: 'Error al actualizar',
+        text: 'No se pudo actualizar la orden. Inténtalo de nuevo.',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
     } finally {
       setLoading(false);
     }
@@ -581,7 +711,7 @@ function Orders({ onBack }) {
                       {/* Lista detallada de productos */}
                       <div className="p-4">
                         <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                           Producto de la orden:
+                          Productos de la orden:
                         </h4>
                         <div className="space-y-2">
                           {order.items?.map((item, index) => (
@@ -664,27 +794,45 @@ function Orders({ onBack }) {
         )}
       </div>
 
-      {/* Modal de edición de producto individual usando ProductModal */}
-      {editingProduct && editingItem && editingOrder && (
-        <ProductModal
-          isOpen={true}
-          onClose={handleCloseEditModal}
-          product={editingProduct}
-          initialQuantity={editingItem.quantity || 1}
-          initialOptions={editingItem.id_variant ?
-            editingProduct.options?.filter(opt => opt.id_variant === editingItem.id_variant) || [] : []
-          }
-          initialFlavors={editingItem.id_flavor ?
-            editingProduct.flavors?.filter(flavor => flavor.id_flavor === editingItem.id_flavor) || [] : []
-          }
-          initialExtras={editingItem.extras || []}
-          initialSauces={editingItem.sauces || []}
-          initialComment={editingItem.comment || ''}
-          initialPaymentMethod={editingOrder.id_payment_method}
-          onSave={handleSaveItemChanges}
-          isEditing={true}
-        />
-      )}
+      {/* ✅ Modal de edición de producto individual usando ProductModal - CORREGIDO */}
+        {editingProduct && editingItem && editingOrder && (
+          <ProductModal
+            isOpen={true}
+            onClose={handleCloseEditModal}
+            product={editingProduct}
+            // ✅ CANTIDAD: Calcular desde extras o usar 1 por defecto
+            initialQuantity={
+              editingItem.quantity ||
+              (editingItem.extras && editingItem.extras.length > 0 ?
+                Math.max(...editingItem.extras.map(e => e.quantity || 1)) : 1)
+            }
+            // ✅ OPCIONES: Usar las opciones ya mapeadas del producto
+            initialOptions={editingProduct.options || []}
+            // ✅ SABORES: Usar los sabores ya mapeados del producto
+            initialFlavors={editingProduct.flavors || []}
+            // ✅ EXTRAS: Mapear extras del item con sus cantidades
+            initialExtras={editingItem.extras ? editingItem.extras.map(extra => ({
+              id_extra: extra.id_extra,
+              name: extra.name,
+              price: extra.actual_price,
+              quantity: extra.quantity || 1 // ✅ INCLUIR CANTIDAD DEL EXTRA
+            })) : []}
+            // ✅ SALSAS: Mapear salsas del item de la orden
+            initialSauces={editingItem.sauces ? editingItem.sauces.map(sauce => ({
+              id_sauce: sauce.id_sauce,
+              name: sauce.name,
+              image: sauce.image
+            })) : []}
+            // ✅ COMENTARIO: Usar el comentario de la ORDEN (no del item)
+            initialComment={editingOrder.comment || ''}
+            // ✅ CLIENTE: Usar el client_name de la ORDEN
+            initialClientName={editingOrder.client_name || ''}
+            // ✅ MÉTODO DE PAGO: Usar el de la ORDEN
+            initialPaymentMethod={editingOrder.id_payment_method}
+            onSave={handleSaveItemChanges}
+            isEditing={true}
+          />
+        )}
 
       {/* Modal de edición completa de orden - Versión compacta */}
       {isEditingFullOrder && (
@@ -695,14 +843,25 @@ function Orders({ onBack }) {
               : 'bg-white text-gray-900 border border-gray-200'
           }`}>
             {/* Header */}
-     <div className={`flex items-center justify-between p-4 border-b ${
+            <div className={`flex items-center justify-between p-4 border-b ${
               theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
             }`}>
-              {/* ... */}
-              {/* 💥 CORRECCIÓN: El botón "X" ahora limpia el estado */}
+              <div className="flex items-center gap-3">
+                <Cog6ToothIcon className={`w-6 h-6 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
+                <div>
+                  <h2 className="text-lg font-bold">Editar Orden #{fullOrderEdit.id_order}</h2>
+                  <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Modificar información y productos
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={handleCancelFullOrderEdit}
-                className={`p-2 rounded-lg ...`}
+                className={`p-2 rounded-lg transition-colors ${
+                  theme === 'dark'
+                    ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
@@ -820,16 +979,19 @@ function Orders({ onBack }) {
             <div className={`flex items-center justify-end gap-3 p-4 border-t ${
               theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
             }`}>
-              {/* 💥 CORRECCIÓN: El botón "Cancelar" ahora limpia el estado */}
               <button
                 onClick={handleCancelFullOrderEdit}
-                className={`px-4 py-2 border rounded-lg ...`}
+                className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                  theme === 'dark'
+                    ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSaveFullOrder}
-                className="px-4 py-2 bg-blue-600 ..."
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
                 <CheckIcon className="w-4 h-4" />
                 Guardar

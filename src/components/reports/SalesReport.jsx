@@ -35,7 +35,7 @@ import {
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
 import { getSalesReport } from '../../utils/api';
-import { API_CONFIG } from '../../config/constants';
+import { API_CONFIG } from '../../config/config.server';
 
 function SalesReport({ onBack }) {
   const [reportData, setReportData] = useState(null);

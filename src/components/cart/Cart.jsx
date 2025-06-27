@@ -34,6 +34,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
       name: item.name,
       product_image: item.product_image,
       image: item.image,
+      clientName: item.clientName,
       totalPrice: item.totalPrice,
       selectedSauces: item.selectedSauces,
       sauces: item.sauces,
@@ -245,6 +246,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                 cartItemId: cartItem.id,
                 idProduct: cartItem.id_product,
                 productName,
+                clientName: cartItem.clientName,
                 hasProductImage: !!cartItem.product_image,
                 hasImage: !!cartItem.image,
                 hasNestedImage: !!cartItem.product?.image
@@ -288,47 +290,63 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                       {productName}
                     </h4>
 
-                                        {/* Método de Pago */}
-                    {(cartItem.selectedPaymentMethod || cartItem.payment_method_id) && (
-                      <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                        <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-cyan-400' : 'bg-cyan-500'}`}></div>
-                        <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                          Pago:
-                        </span>
-                        <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
-                          theme === 'dark'
-                            ? 'bg-cyan-900/30 text-cyan-300 border border-cyan-700/50'
-                            : 'bg-cyan-100 text-cyan-700 border border-cyan-200'
-                        }`}>
-                          {/* Ícono del método de pago */}
-                          {(() => {
-                            const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
-                            if (paymentId === 1) return '💵'; // Efectivo
-                            if (paymentId === 2) return '💳'; // Tarjeta
-                            if (paymentId === 3) return '🏦'; // Transferencia
-                            if (paymentId === 4) return '📱'; // QR
-                            if (paymentId === 5) return '🔗'; // Link
-                            return '💰'; // Genérico
-                          })()}
-                          {(() => {
-                            // Mapear ID a nombre
-                            const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
-                            const paymentNames = {
-                              1: 'Efectivo',
-                              2: 'Tarjeta',
-                              3: 'Transferencia',
-                              4: 'QR',
-                              5: 'Link de Pago'
-                            };
-                            return paymentNames[paymentId] || `Método ${paymentId}`;
-                          })()}
-                        </span>
-                      </div>
-                    )}
-
-
-                    {/* ✅ SECCIÓN DE DETALLES MEJORADA Y ORGANIZADA */}
+                    {/* ✅ SECCIÓN DE DETALLES MEJORADA Y ORGANIZADA - INCLUYE CLIENTE */}
                     <div className="space-y-2">
+
+                      {/* ✅ NOMBRE DEL CLIENTE */}
+                      {cartItem.clientName && (
+                        <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                          <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-cyan-400' : 'bg-cyan-500'}`}></div>
+                          <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Cliente:
+                          </span>
+                          <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
+                            theme === 'dark'
+                              ? 'bg-cyan-900/30 text-cyan-300 border border-cyan-700/50'
+                              : 'bg-cyan-100 text-cyan-700 border border-cyan-200'
+                          }`}>
+                            👤 {cartItem.clientName}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Método de Pago */}
+                      {(cartItem.selectedPaymentMethod || cartItem.payment_method_id) && (
+                        <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                          <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
+                          <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Pago:
+                          </span>
+                          <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
+                            theme === 'dark'
+                              ? 'bg-green-900/30 text-green-300 border border-green-700/50'
+                              : 'bg-green-100 text-green-700 border border-green-200'
+                          }`}>
+                            {/* Ícono del método de pago */}
+                            {(() => {
+                              const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
+                              if (paymentId === 1) return '💵'; // Efectivo
+                              if (paymentId === 2) return '💳'; // Tarjeta
+                              if (paymentId === 3) return '🏦'; // Transferencia
+                              if (paymentId === 4) return '📱'; // QR
+                              if (paymentId === 5) return '🔗'; // Link
+                              return '💰'; // Genérico
+                            })()}
+                            {(() => {
+                              // Mapear ID a nombre
+                              const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
+                              const paymentNames = {
+                                1: 'Efectivo',
+                                2: 'Tarjeta',
+                                3: 'Transferencia',
+                                4: 'QR',
+                                5: 'Link de Pago'
+                              };
+                              return paymentNames[paymentId] || `Método ${paymentId}`;
+                            })()}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Variante/Tamaño */}
                       {(cartItem.variant_name || cartItem.selectedOption?.size) && (
@@ -378,7 +396,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                       {cartItem.extras && cartItem.extras.length > 0 && (
                         <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
                           <div className="flex items-center gap-2 mb-1">
-                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
+                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-orange-400' : 'bg-orange-500'}`}></div>
                             <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
                               Extras:
                             </span>
@@ -389,16 +407,16 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                                 key={`extra-${extraIdx}`}
                                 className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
                                   theme === 'dark'
-                                    ? 'bg-green-900/30 text-green-300 border border-green-700/50'
-                                    : 'bg-green-100 text-green-700 border border-green-200'
+                                    ? 'bg-orange-900/30 text-orange-300 border border-orange-700/50'
+                                    : 'bg-orange-100 text-orange-700 border border-orange-200'
                                 }`}
                               >
                                 <span>{extra.name}</span>
                                 {extra.quantity && extra.quantity > 1 && (
                                   <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
                                     theme === 'dark'
-                                      ? 'bg-green-700 text-green-200'
-                                      : 'bg-green-600 text-white'
+                                      ? 'bg-orange-700 text-orange-200'
+                                      : 'bg-orange-600 text-white'
                                   }`}>
                                     ×{extra.quantity}
                                   </span>
@@ -516,6 +534,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                         console.log(`💰 Price for item ${idx}:`, {
                           cartItemId: cartItem.id,
                           productName: cartItem.product_name || cartItem.name,
+                          clientName: cartItem.clientName,
                           totalPrice: cartItem.totalPrice,
                           calculatedPrice,
                           usingCalculated: !cartItem.totalPrice || cartItem.totalPrice === 0

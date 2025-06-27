@@ -2,7 +2,7 @@
 // 🚀 UTILIDADES DE API - CENTRALIZADAS
 // ===============================================
 
-import { API_CONFIG, API_ENDPOINTS, DEBUG_CONFIG } from '../config/constants.js';
+import { API_CONFIG, API_ENDPOINTS, DEBUG_CONFIG } from '../config/config.server.js';
 
 /**
  * Clase para manejar todas las operaciones de API de manera centralizada
