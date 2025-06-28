@@ -8,6 +8,12 @@
  */
 
 // ✅ HOST BASE - Se puede cambiar según el entorno
+const getApiContextUrl = () => {
+  // Prioridad: Variable de entorno -> localhost por defecto
+  return import.meta.env.VITE_API_BASE_URL_ROOT;
+};
+
+// ✅ HOST BASE - Se puede cambiar según el entorno
 const getApiBaseUrl = () => {
   // Prioridad: Variable de entorno -> localhost por defecto
   return import.meta.env.VITE_API_BASE_URL;
@@ -17,6 +23,7 @@ const getApiBaseUrl = () => {
 export const API_CONFIG = {
   // URL base de la API
   BASE_URL: getApiBaseUrl(),
+  BASE_URL_ROOT: getApiContextUrl(),
 
   // Timeout por defecto para todas las requests (15 segundos)
   DEFAULT_TIMEOUT: 15000,
@@ -43,6 +50,8 @@ export const API_ENDPOINTS = {
   // Órdenes
   ORDERS: `${API_CONFIG.BASE_URL}/orders`,
   ORDER_BY_ID: (id) => `${API_CONFIG.BASE_URL}/orders/${id}`,
+  ORDERS_BY_DATE: (date) => `${API_CONFIG.BASE_URL}/orders/by-date/${date}`,
+  ORDERS_BY_PERIOD: (start, end) => `${API_CONFIG.BASE_URL}/orders/since/${start}/until/${end}`,
 
   // Catálogos
   EXTRAS: `${API_CONFIG.BASE_URL}/extras`,
@@ -105,7 +114,7 @@ export const buildApiUrl = (endpoint, params = {}) => {
 // ✅ FUNCIÓN PARA VALIDAR SI LA API ESTÁ DISPONIBLE
 export const checkApiHealth = async () => {
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}/ping`, {
+    const response = await fetch(`${API_CONFIG.BASE_URL_ROOT}/ping`, {
       method: 'GET',
       headers: API_CONFIG.DEFAULT_HEADERS,
       signal: AbortSignal.timeout(5000) // 5 segundos para health check

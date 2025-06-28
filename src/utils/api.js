@@ -104,6 +104,22 @@ class ApiService {
     return response.json();
   }
 
+    /**
+     * Obtener ordenes por fecha
+     */
+    async getOrdersByDate(date) {
+      const response = await this.request(API_ENDPOINTS.ORDERS_BY_DATE(date));
+      return response.json();
+    }
+
+    /**
+     * Obtener ordenes por periodo de días
+     */
+    async getOrdersByPeriod(start, end) {
+      const response = await this.request(API_ENDPOINTS.ORDERS_BY_PERIOD(start, end));
+      return response.json();
+    }
+
   /**
    * Crear nueva orden
    */
@@ -340,6 +356,24 @@ export const getOrderById = async (id) => {
     return await apiService.getOrderById(id);
   } catch (error) {
     console.error('❌ Error in getOrderById:', error);
+    throw error;
+  }
+};
+
+export const getOrdersByDate = async (date) => {
+  try {
+    return await apiService.getOrdersByDate(date);
+  } catch (error) {
+    console.error('❌ Error in getOrdersByDate:', error);
+    throw error;
+  }
+};
+
+export const getOrdersByPeriod = async (start, end) => {
+  try {
+    return await apiService.getOrdersByPeriod(start, end);
+  } catch (error) {
+    console.error('❌ Error in getOrdersByPeriod:', error);
     throw error;
   }
 };

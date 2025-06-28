@@ -172,9 +172,6 @@ const calculateProductPrice = useCallback((product) => {
       // ✅ PRECIO TOTAL
       totalPrice: item.totalPrice || calculateProductPrice(item),
 
-//       // ✅ MÉTODO DE PAGO
-//       selectedPaymentMethod: item.selectedPaymentMethod,
-
       // ✅ COPIAR CUALQUIER OTRO CAMPO QUE PUEDA VENIR
       ...item
     };
@@ -517,7 +514,6 @@ const calculateProductPrice = useCallback((product) => {
 
       setCart([]);
       setEditingProduct(null);
-//       await loadAllOrders();
 
       await Swal.fire({
         title: '¡Pedido guardado!',
@@ -549,7 +545,7 @@ const calculateProductPrice = useCallback((product) => {
     } finally {
       setLoading(false);
     }
-  }, [cart, setLoading, setMessage, loadAllOrders]);
+  }, [cart, setLoading, setMessage]);
 
   // ✅ CARGAR ORDEN PARA EDICIÓN
   const loadOrderForEdit = useCallback(async (orderId) => {

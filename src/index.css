@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
-/** ********************************************
+/* ✅ PASO 2: Usa las directivas estándar de Tailwind. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ...El resto de tus estilos personalizados, como :root, pueden ir aquí... */
+
+:root {
+  --bg-color: white;
+  --text-color: black;
+  /* ... */
+}**********************************
 **             THEMES DARK AND LIGHT
 ** ****************************************** **/
 
@@ -263,4 +274,10 @@
 .dark select:focus {
   border-color: #63b3ed;
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.cinzel-decorative-regular {
+  font-family: "Cinzel Decorative", serif;
+  font-weight: 400;
+  font-style: normal;
 }

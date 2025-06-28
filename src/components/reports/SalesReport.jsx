@@ -15,7 +15,6 @@ import {
   FunnelIcon,
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
-import BusinessHeader from '../menu/BusinessHeader';
 import Swal from 'sweetalert2';
 import {
   LineChart,
@@ -302,7 +301,6 @@ function SalesReport({ onBack }) {
   if (loading) {
     return (
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <BusinessHeader />
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <ChartBarIcon className="w-12 h-12 mx-auto mb-4 animate-pulse text-green-600" />
@@ -319,7 +317,6 @@ function SalesReport({ onBack }) {
     <div className={`min-h-screen transition-colors duration-300 ${
       theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      <BusinessHeader />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}

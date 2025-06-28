@@ -5,6 +5,7 @@ import ProductGrid from './grid/ProductGrid';
 import ProductModal from './grid/ProductModal';
 import Cart from './cart/Cart';
 import CartBadge from './cart/CartBadge';
+import { BREAKPOINTS } from '../utils/constants';
 
 function Home({ selectedCategory }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -12,9 +13,9 @@ function Home({ selectedCategory }) {
   const [showAddedNotification, setShowAddedNotification] = useState(false);
 
   // Responsivo: detecta móvil
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.SM);
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    const handleResize = () => setIsMobile(window.innerWidth < BREAKPOINTS.SM);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -160,25 +161,149 @@ function Home({ selectedCategory }) {
         </div>
       </div>
 
-      {/* Área del carrito - lado derecho, ancho responsivo */}
-      <div className="w-[min(420px,40vw)] min-w-[320px] max-w-[480px] bg-white border-l border-gray-300 flex flex-col shadow-lg">
-        {/* Header del carrito desktop responsivo */}
-        <div className="bg-red-600 text-white p-3 lg:p-4 text-center shadow-md">
-          <div className="flex items-center justify-center gap-2 lg:gap-3 relative">
-            <ShoppingCartIcon className="w-5 h-5 lg:w-6 lg:h-6" />
-            <h2 className="text-lg lg:text-xl font-bold uppercase tracking-wide">Carrito</h2>
+      {/* ✅ CARRITO ÚNICO - Sin duplicados */}
+      <div className="
+        /* Responsivo por breakpoints */
+        w-full
+        sm:w-[min(350px,45vw)]
+        md:w-[min(380px,42vw)]
+        lg:w-[min(420px,40vw)]
+        xl:w-[min(450px,38vw)]
+
+        /* Límites de ancho */
+        min-w-[280px]
+        sm:min-w-[320px]
+        max-w-[280px]
+        sm:max-w-[350px]
+        md:max-w-[420px]
+        lg:max-w-[480px]
+
+        /* Styling base */
+        bg-white
+        border-l-0
+        sm:border-l
+        border-gray-300
+        flex
+        flex-col
+        shadow-none
+        sm:shadow-lg
+
+        /* Mobile: pantalla completa, Desktop: panel lateral */
+        h-screen
+        sm:h-auto
+        sm:max-h-screen
+      ">
+        {/* Header del carrito responsivo */}
+        <div className="
+          bg-red-600
+          text-white
+          p-2
+          sm:p-3
+          md:p-4
+          text-center
+          shadow-md
+          /* Mobile: header más compacto */
+          sticky
+          top-0
+          z-10
+        ">
+          <div className="
+            flex
+            items-center
+            justify-center
+            gap-1
+            sm:gap-2
+            lg:gap-3
+            relative
+          ">
+            <ShoppingCartIcon className="
+              w-4 h-4
+              sm:w-5 sm:h-5
+              lg:w-6 lg:h-6
+            " />
+            <h2 className="
+              text-base
+              sm:text-lg
+              lg:text-xl
+              font-bold
+              uppercase
+              tracking-wide
+              /* Ajuste de texto para pantallas pequeñas */
+              leading-tight
+            ">
+              Carrito
+            </h2>
             <div className="relative">
-              <CartBadge count={cart.length} variant="yellow" size="sm" className="relative top-0 right-0" />
+              <CartBadge
+                count={cart.length}
+                variant="yellow"
+                size="sm"
+                className="relative top-0 right-0"
+              />
             </div>
           </div>
-          <div className="text-xs lg:text-sm opacity-90 mt-1">Tu selección actual</div>
+          <div className="
+            text-xs
+            sm:text-sm
+            opacity-90
+            mt-0.5
+            sm:mt-1
+            /* Ocultar en móviles muy pequeños si es necesario */
+            hidden
+            xs:block
+          ">
+            Tu selección actual
+          </div>
         </div>
 
-        {/* Contenido del carrito desktop */}
-        <div className="flex-1 overflow-y-auto relative">
-          <Cart isMobile={false} onCloseCart={() => {}} />
+        {/* Contenido del carrito responsivo */}
+        <div className="
+          flex-1
+          overflow-y-auto
+          relative
+          /* Padding interno adaptativo */
+          bg-white
+          /* Mobile: sin scroll visible, Desktop: scroll personalizado */
+          scrollbar-thin
+          scrollbar-thumb-gray-300
+          scrollbar-track-gray-100
+          /* Altura dinámica */
+          max-h-[calc(100vh-80px)]
+          sm:max-h-[calc(100vh-120px)]
+        ">
+          <Cart
+            isMobile={false}
+            onCloseCart={() => {}}
+          />
+        </div>
+
+        {/* Footer opcional para mobile */}
+        <div className="
+          sm:hidden
+          bg-gray-50
+          border-t
+          border-gray-200
+          p-3
+          /* Solo visible en mobile para acciones rápidas */
+          flex
+          justify-center
+        ">
+          <button
+            onClick={() => {}}
+            className="
+              text-sm
+              text-gray-600
+              hover:text-gray-800
+              transition-colors
+            "
+          >
+            Cerrar Carrito
+          </button>
         </div>
       </div>
+
+      {/* ❌ CARRITO DUPLICADO ELIMINADO */}
+      {/* Ya no hay segundo contenedor de carrito aquí */}
 
       {/* Modal de opciones - CORREGIDO */}
       {selectedProduct && (

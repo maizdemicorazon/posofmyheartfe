@@ -176,7 +176,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
   };
 
   return (
-    <div className={`${isMobile ? 'p-3' : 'max-w-2xl mx-auto p-2 lg:p-4'} ${
+   <div className={`max-w-2xl mx-auto p-3 sm:p-2 lg:p-4 ${
       theme === 'dark' ? 'text-white' : 'text-black'
     }`}>
       {/* Header con botón de regresar si se necesita */}
@@ -203,21 +203,27 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
       )}
 
       {cart.length === 0 ? (
-        <div className="text-center py-8 lg:py-12">
-          <div className="mb-4 flex justify-center">
-            <div className={`${isMobile ? 'w-24 h-24' : 'w-32 h-32 lg:w-36 lg:h-36'} rounded-full ${
-              theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
-            } flex items-center justify-center mx-auto`}>
-              <ShoppingCartIcon className={`w-16 h-16 ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} />
-            </div>
-          </div>
-          <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} ${isMobile ? 'text-base' : 'text-lg'}`}>
-            Tu carrito está vacío
-          </p>
-          <p className={`${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2 ${isMobile ? 'text-sm' : 'text-sm'}`}>
-            Agrega algunos productos para comenzar
-          </p>
-
+           <div className="flex-grow flex flex-col items-center justify-center text-center p-4 overflow-hidden">
+                <div className="text-center py-8 lg:py-12">
+                  <div className="mb-4 flex justify-center">
+                    <div className={`${isMobile ? 'w-24 h-24' : 'w-32 h-32 lg:w-36 lg:h-36'} rounded-full ${
+                      theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+                    } flex items-center justify-center mx-auto`}>
+                    <ShoppingCartIcon className={`w-16 h-16 ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} />
+                  </div>
+                </div>
+               <p className={`font-semibold text-gray-700 dark:text-gray-200 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} ${isMobile ? 'text-base' : 'text-lg'}`}>
+                 Tu carrito está vacío
+               </p>
+               <p className={`mt-1 text-gray-500 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2 ${isMobile ? 'text-sm' : 'text-sm'}`}>
+                 Agrega algunos productos para comenzar
+               </p>
+               <img
+                   src="/images/maizmicorazon.png"
+                   alt="Marca de agua"
+                   className="h-250 object-contain opacity-20 -mt-50"
+                 />
+           </div>
           {isMobile && (
             <button
               onClick={onCloseCart}

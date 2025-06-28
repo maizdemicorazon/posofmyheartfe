@@ -20,12 +20,15 @@ import {
   ChatBubbleLeftRightIcon,
   MagnifyingGlassIcon,
   ChevronDownIcon,
-  ChevronUpIcon
+  ChevronUpIcon,
+  AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline';
+import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../grid/ProductModal';
 import Swal from 'sweetalert2';
-import { getOrders, updateOrder, getOrderById } from '../../utils/api';
+import { getOrders, getOrdersByPeriod, updateOrder, getOrderById } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog } from '../../utils/helpers';
+import { startOfToday, subDays, subMonths } from 'date-fns';
 
 function Orders({ onBack }) {
   const { theme } = useTheme();
@@ -35,10 +38,24 @@ function Orders({ onBack }) {
   // Estados principales
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
-  const [filter, setFilter] = useState('today');
-  const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
+
+  // Estados de filtros mejorados
+  const [filters, setFilters] = useState({
+    period: 'today',
+    search: '',
+    clientName: '',
+    paymentMethod: '',
+    minAmount: '',
+    maxAmount: '',
+    sortBy: 'newest',
+    showFilters: false
+  });
+
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   // Estados para edición de productos individuales
   const [editingProduct, setEditingProduct] = useState(null);
@@ -55,41 +72,64 @@ function Orders({ onBack }) {
     id_payment_method: null,
     items: []
   });
-  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([
+    { id_payment_method: 1, name: 'Efectivo' },
+    { id_payment_method: 2, name: 'Tarjeta' },
+    { id_payment_method: 3, name: 'Transferencia' },
+    { id_payment_method: 4, name: 'QR' },
+    { id_payment_method: 5, name: 'Link de Pago' }
+  ]);
+
+  const subtractDays = (dias) => {
+    const resultado = new Date();
+    resultado.setDate(resultado.getDate() - dias);
+    return resultado;
+  };
 
   // Cargar órdenes al montar el componente
   useEffect(() => {
     loadOrders();
-  }, [filter]);
+  }, [filters.period]);
 
-  // Filtrar órdenes por búsqueda
+  // Aplicar filtros a las órdenes
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredOrders(orders);
-    } else {
-      const filtered = orders.filter(order =>
-        order.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.id_order.toString().includes(searchTerm) ||
-        order.items?.some(item =>
-          item.product_name?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      );
-      setFilteredOrders(filtered);
-    }
-  }, [orders, searchTerm]);
+    applyFilters();
+  }, [orders, filters]);
+
+  function getStartDateForPeriod(period) {
+      const today = startOfToday(); // Pone la hora a 00:00:00
+
+      const periodMap = {
+          today: () => today,
+          week: () => subDays(today, 7),
+          month: () => subMonths(today, 1),
+          all: () => new Date("2025-05-01"),//fecha de inauguración
+      };
+
+      // Llama a la función del mapa o a la de 'today' por defecto
+      const getStartDate = periodMap[period] || periodMap.today;
+      return getStartDate();
+  }
 
   const loadOrders = async () => {
     try {
       setLoading(true);
       setIsLoading(true);
-      debugLog('ORDERS', 'Loading orders with filter:', filter);
+      debugLog('ORDERS', 'Loading orders with period:', filters.period);
 
-      const response = await getOrders(filter);
+     const start = queryFormatDate(
+            getStartDateForPeriod(filters.period)
+         );
+     const end = queryFormatDate(new Date());
+
+      const response = await getOrdersByPeriod(start, end);
       const ordersData = Array.isArray(response) ? response : response?.data || [];
 
       debugLog('ORDERS', 'Orders loaded successfully:', {
         count: ordersData.length,
-        filter
+        period: filters.period,
+        start: start,
+        end: end
       });
 
       setOrders(ordersData);
@@ -102,6 +142,108 @@ function Orders({ onBack }) {
       setIsLoading(false);
     }
   };
+
+  // ✅ FUNCIÓN MEJORADA PARA APLICAR FILTROS
+  const applyFilters = () => {
+    let filtered = [...orders];
+
+    // Filtro por búsqueda general
+    if (filters.search.trim()) {
+      const searchTerm = filters.search.toLowerCase();
+      filtered = filtered.filter(order =>
+        order.client_name?.toLowerCase().includes(searchTerm) ||
+        order.id_order.toString().includes(searchTerm) ||
+        order.items?.some(item =>
+          item.product_name?.toLowerCase().includes(searchTerm)
+        ) ||
+        order.comment?.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    // Filtro por nombre de cliente
+    if (filters.clientName.trim()) {
+      filtered = filtered.filter(order =>
+        order.client_name?.toLowerCase().includes(filters.clientName.toLowerCase())
+      );
+    }
+
+    // Filtro por método de pago
+    if (filters.paymentMethod) {
+      filtered = filtered.filter(order =>
+        order.id_payment_method?.toString() === filters.paymentMethod
+      );
+    }
+
+    // Filtro por rango de montos
+    if (filters.minAmount) {
+      filtered = filtered.filter(order =>
+        parseFloat(order.total_amount || order.bill || 0) >= parseFloat(filters.minAmount)
+      );
+    }
+    if (filters.maxAmount) {
+      filtered = filtered.filter(order =>
+        parseFloat(order.total_amount || order.bill || 0) <= parseFloat(filters.maxAmount)
+      );
+    }
+
+    // Ordenamiento
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case 'newest':
+          return new Date(b.order_date) - new Date(a.order_date);
+        case 'oldest':
+          return new Date(a.order_date) - new Date(b.order_date);
+        case 'highest':
+          return parseFloat(b.total_amount || b.bill || 0) - parseFloat(a.total_amount || a.bill || 0);
+        case 'lowest':
+          return parseFloat(a.total_amount || a.bill || 0) - parseFloat(b.total_amount || b.bill || 0);
+        case 'client':
+          return (a.client_name || '').localeCompare(b.client_name || '');
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredOrders(filtered);
+    setCurrentPage(1); // Reset a primera página cuando se aplican filtros
+  };
+
+  // ✅ FUNCIÓN PARA LIMPIAR FILTROS
+  const clearFilters = () => {
+    setFilters({
+      period: 'today',
+      search: '',
+      clientName: '',
+      paymentMethod: '',
+      minAmount: '',
+      maxAmount: '',
+      sortBy: 'newest',
+      showFilters: false
+    });
+  };
+
+  // ✅ FUNCIÓN PARA MANEJAR CAMBIOS EN FILTROS
+  const handleFilterChange = (key, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+    const queryFormatDate = (dateString) => {
+      if (!dateString) return 'Fecha no disponible';
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-CA', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+      } catch (error) {
+        return 'Fecha inválida';
+      }
+    };
+
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Fecha no disponible';
@@ -129,7 +271,7 @@ function Orders({ onBack }) {
     setExpandedOrders(newExpanded);
   };
 
-  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL - CORREGIDA
+  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL - MEJORADA
   const handleEditOrderItem = async (order, itemIndex) => {
     try {
       const item = order.items[itemIndex];
@@ -148,6 +290,7 @@ function Orders({ onBack }) {
         item
       });
 
+      // ✅ CARGAR DATOS COMPLETOS DEL PRODUCTO PARA EL MODAL
       const productData = await getOrderById(order.id_order);
 
       if (!productData) {
@@ -158,10 +301,24 @@ function Orders({ onBack }) {
         return;
       }
 
+      // ✅ ENCONTRAR EL PRODUCTO ESPECÍFICO EN LA RESPUESTA
+      const productInfo = productData.items?.[itemIndex] || productData;
+
+      // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL
+      const completeProduct = {
+        id_product: item.id_product,
+        name: item.product_name,
+        image: item.product_image,
+        options: productInfo.options || [],
+        flavors: productInfo.flavors || [],
+        // ✅ MAPEAR CORRECTAMENTE LAS OPCIONES DISPONIBLES
+        ...(productData.product || {})
+      };
+
       setEditingOrder(order);
       setCurrentItemIndex(itemIndex);
       setEditingItem(item);
-      setEditingProduct(productData);
+      setEditingProduct(completeProduct);
 
     } catch (error) {
       debugLog('ERROR', 'Failed to load product for editing:', error);
@@ -171,136 +328,101 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL - CORREGIDA
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL - MEJORADA
   const handleSaveItemChanges = async (itemData) => {
     try {
       setLoading(true);
 
-         debugLog('ORDERS', 'Saving item changes:', {
-            orderId: editingOrder.id_order,
-            itemIndex: currentItemIndex,
-            itemData
-          });
+      debugLog('ORDERS', 'Saving item changes:', {
+        orderId: editingOrder.id_order,
+        itemIndex: currentItemIndex,
+        itemData
+      });
 
-      // Actualizar el item específico con los nuevos datos
-      updatedItems[currentItemIndex] = {
-        ...editingItem,
-        quantity: itemData.quantity,
-        selectedOption: itemData.selectedOption,
-        selectedFlavor: itemData.selectedFlavor,
-        selectedExtras: itemData.selectedExtras || [],
-        selectedSauces: itemData.selectedSauces || [],
-        comment: itemData.comment || '',
-        // ✅ PRESERVAR EL CLIENT_NAME de la orden original
-        clientName: editingOrder.client_name || '',
-        // Mapear para compatibilidad
-        id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
-        variant_name: itemData.selectedOption?.size || editingItem.variant_name,
-        flavor: itemData.selectedFlavor || editingItem.flavor,
-        extras: itemData.selectedExtras || [],
-        sauces: itemData.selectedSauces || [],
-        id_flavor: itemData.selectedFlavor?.id_flavor || editingItem.id_flavor,
-        // Recalcular precios
-        unit_price: itemData.selectedOption?.price || editingItem.unit_price,
-        total_price: (itemData.selectedOption?.price || editingItem.unit_price) * itemData.quantity
+      // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API
+      const orderUpdateData = {
+        id_payment_method: itemData.selectedPaymentMethod || editingOrder.id_payment_method,
+        client_name: itemData.clientName || editingOrder.client_name,
+        comment: itemData.comment || editingOrder.comment,
+        updated_items: [{
+          id_order_detail: editingItem.id_order_detail || editingItem.id_product,
+          id_product: editingItem.id_product,
+          id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
+          quantity: itemData.quantity || 1,
+          updated_extras: (itemData.selectedExtras || []).map(extra => ({
+            id_extra: extra.id_extra,
+            quantity: extra.quantity || 1
+          })),
+          updated_sauces: (itemData.selectedSauces || []).map(sauce => ({
+            id_sauce: sauce.id_sauce
+          })),
+          ...(itemData.selectedFlavor && {
+            id_flavor: itemData.selectedFlavor.id_flavor
+          }),
+          comment: itemData.comment || ''
+        }]
       };
-
-      // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API DE EDICIÓN
- const orderUpdateData = {
-      id_payment_method: itemData.selectedPaymentMethod || editingOrder.id_payment_method,
-      client_name: itemData.clientName || editingOrder.client_name,
-      comment: itemData.comment || editingOrder.comment,
-      // ✅ Incluir items actualizados - solo el que se está editando
-      updated_items: [{
-        id_order_detail: editingItem.id_order_detail || editingItem.id_product, // Fallback si no existe
-        id_product: editingItem.id_product,
-        id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
-        quantity: itemData.quantity || 1, // ✅ USAR LA CANTIDAD DEL MODAL
-        // ✅ Mapear extras correctamente CON SUS CANTIDADES
-        updated_extras: (itemData.selectedExtras || []).map(extra => ({
-          id_extra: extra.id_extra,
-          quantity: extra.quantity || 1 // ✅ USAR LA CANTIDAD DEL EXTRA
-        })),
-        // ✅ Mapear salsas correctamente
-        updated_sauces: (itemData.selectedSauces || []).map(sauce => ({
-          id_sauce: sauce.id_sauce
-        })),
-        // ✅ Incluir sabor si existe
-        ...(itemData.selectedFlavor && {
-          id_flavor: itemData.selectedFlavor.id_flavor
-        }),
-        comment: itemData.comment || ''
-      }]
-    };
 
       console.log('📤 Enviando datos de actualización:', orderUpdateData);
 
-      // Llamar a la API con el ID y los datos correctos
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
-      // Actualizar el estado local de las órdenes
-    // ✅ Actualizar el estado local de las órdenes
-    setOrders(prevOrders =>
-      prevOrders.map(order =>
-        order.id_order === editingOrder.id_order
-          ? {
-              ...order,
-              client_name: itemData.clientName || order.client_name,
-              comment: itemData.comment || order.comment,
-              id_payment_method: itemData.selectedPaymentMethod || order.id_payment_method,
-              // ✅ Actualizar el item específico
-              items: order.items.map((item, index) =>
-                index === currentItemIndex
-                  ? {
-                      ...item,
-                      // ✅ Actualizar campos del item
-                      id_variant: itemData.selectedOption?.id_variant || item.id_variant,
-                      variant_name: itemData.selectedOption?.size || item.variant_name,
-                      product_price: itemData.selectedOption?.price || item.product_price,
-                      flavor: itemData.selectedFlavor || item.flavor,
-                      // ✅ Actualizar extras CON CANTIDADES
-                      extras: itemData.selectedExtras ? itemData.selectedExtras.map(extra => ({
-                        id_extra: extra.id_extra,
-                        name: extra.name,
-                        actual_price: extra.price,
-                        quantity: extra.quantity || 1 // ✅ PRESERVAR CANTIDAD
-                      })) : item.extras,
-                      sauces: itemData.selectedSauces ? itemData.selectedSauces.map(sauce => ({
-                        id_sauce: sauce.id_sauce,
-                        name: sauce.name,
-                        image: sauce.image
-                      })) : item.sauces
-                    }
-                  : item
-              )
-            }
-          : order
-      )
-    );
+      // ✅ Actualizar el estado local
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.id_order === editingOrder.id_order
+            ? {
+                ...order,
+                client_name: itemData.clientName || order.client_name,
+                comment: itemData.comment || order.comment,
+                id_payment_method: itemData.selectedPaymentMethod || order.id_payment_method,
+                items: order.items.map((item, index) =>
+                  index === currentItemIndex
+                    ? {
+                        ...item,
+                        id_variant: itemData.selectedOption?.id_variant || item.id_variant,
+                        variant_name: itemData.selectedOption?.size || item.variant_name,
+                        product_price: itemData.selectedOption?.price || item.product_price,
+                        flavor: itemData.selectedFlavor || item.flavor,
+                        extras: itemData.selectedExtras ? itemData.selectedExtras.map(extra => ({
+                          id_extra: extra.id_extra,
+                          name: extra.name,
+                          actual_price: extra.price,
+                          quantity: extra.quantity || 1
+                        })) : item.extras,
+                        sauces: itemData.selectedSauces ? itemData.selectedSauces.map(sauce => ({
+                          id_sauce: sauce.id_sauce,
+                          name: sauce.name,
+                          image: sauce.image
+                        })) : item.sauces
+                      }
+                    : item
+                )
+              }
+            : order
+        )
+      );
 
-    // Recargar las órdenes para asegurar consistencia
-    await loadOrders();
+      // Recargar las órdenes para consistencia
+      await loadOrders();
+      handleCloseEditModal();
 
-    // Cerrar el modal
-    handleCloseEditModal();
-
-    setMessage({
+      setMessage({
         text: 'Producto actualizado exitosamente',
         type: 'success'
-    });
+      });
 
-       // Mostrar confirmación
-    await Swal.fire({
-      title: '¡Producto actualizado!',
-      text: 'Los cambios se han guardado correctamente',
-      icon: 'success',
-      timer: 2000,
-      showConfirmButton: false,
-      toast: true,
-      position: 'top-end',
-      background: theme === 'dark' ? '#1f2937' : '#ffffff',
-      color: theme === 'dark' ? '#f9fafb' : '#111827'
-    });
+      await Swal.fire({
+        title: '¡Producto actualizado!',
+        text: 'Los cambios se han guardado correctamente',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
 
     } catch (error) {
       debugLog('ERROR', 'Failed to update order item:', error);
@@ -319,179 +441,36 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA CERRAR MODAL DE EDICIÓN
-    const handleCloseEditModal = () => {
-      setEditingProduct(null);
-      setEditingItem(null);
-      setEditingOrder(null);
-      setCurrentItemIndex(null);
-      debugLog('ORDERS', 'Edit modal closed');
-    };
-
-  // ✅ FUNCIÓN PARA EDITAR ORDEN COMPLETA - CORREGIDA
-  const handleEditFullOrder = async (order) => {
-    // Si ya estamos editando esta orden, simplemente abrimos el modal
-    if (fullOrderEdit && fullOrderEdit.id_order === order.id_order) {
-      setIsEditingFullOrder(true);
-      return;
-    }
-
-    // Si es una nueva orden para editar, cargamos sus datos.
-    try {
-      setFullOrderEdit({
-        id_order: order.id_order,
-        client_name: order.client_name || '',
-        comment: order.comment || '',
-        id_payment_method: Number(order.id_payment_method),
-        items: [...(order.items || [])]
-      });
-      setIsEditingFullOrder(true);
-    } catch (error) {
-      debugLog('ERROR', 'Failed to open full order edit:', error);
-      handleApiError(error, setMessage);
-    }
+  const handleCloseEditModal = () => {
+    setEditingProduct(null);
+    setEditingItem(null);
+    setEditingOrder(null);
+    setCurrentItemIndex(null);
+    debugLog('ORDERS', 'Edit modal closed');
   };
 
-  // ✅ FUNCIÓN PARA CANCELAR EDICIÓN COMPLETA - CORREGIDA
-  const handleCancelFullOrderEdit = () => {
-    setIsEditingFullOrder(false);
-    setFullOrderEdit({
-      id_order: null,
-      client_name: '',
-      comment: '',
-      id_payment_method: null,
-      items: []
-    });
-  };
+  // ✅ CÁLCULOS PARA PAGINACIÓN
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
-  // ✅ FUNCIÓN PARA GUARDAR ORDEN COMPLETA - CORREGIDA
-  const handleSaveFullOrder = async () => {
-    try {
-      if (!fullOrderEdit.id_payment_method) {
-        Swal.fire({
-          title: 'Error de validación',
-          text: 'Debes seleccionar un método de pago',
-          icon: 'warning',
-          confirmButtonText: 'Entendido',
-          background: theme === 'dark' ? '#1f2937' : '#ffffff',
-          color: theme === 'dark' ? '#f9fafb' : '#111827'
-        });
-        return;
-      }
-
-      setLoading(true);
-
-      // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API
-      const orderUpdateData = {
-        client_name: fullOrderEdit.client_name || '',
-        comment: fullOrderEdit.comment || '',
-        id_payment_method: fullOrderEdit.id_payment_method,
-        updated_items: fullOrderEdit.items.map(item => ({
-          id_order_detail: item.id_order_detail,
-          id_product: item.id_product,
-          id_variant: item.id_variant,
-          quantity: item.quantity,
-          updated_extras: (item.extras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
-          updated_sauces: (item.sauces || []).map(s => ({ id_sauce: s.id_sauce })),
-          ...(item.id_flavor && { flavor: item.id_flavor }),
-          comment: item.comment || ''
-        }))
-      };
-
-      console.log('📤 Enviando actualización completa de orden:', orderUpdateData);
-
-      await updateOrder(fullOrderEdit.id_order, orderUpdateData);
-
-      // Actualizar el estado local
-      setOrders(prevOrders =>
-        prevOrders.map(order =>
-          order.id_order === fullOrderEdit.id_order
-            ? {
-                ...order,
-                client_name: fullOrderEdit.client_name,
-                comment: fullOrderEdit.comment,
-                id_payment_method: fullOrderEdit.id_payment_method,
-                payment_name: paymentMethods.find(pm =>
-                    pm.id_payment_method === fullOrderEdit.id_payment_method)
-                    ?.name || order.payment_name,
-                items: fullOrderEdit.items
-              }
-            : order
-        )
-      );
-
-      // Recargar órdenes para consistencia
-      await loadOrders();
-
-      // Cerrar modal y limpiar estado
-      handleCancelFullOrderEdit();
-
-      setMessage({
-        text: 'Orden actualizada exitosamente',
-        type: 'success'
-      });
-
-      // Mostrar confirmación
-      Swal.fire({
-        title: '¡Orden actualizada!',
-        text: `La orden #${fullOrderEdit.id_order} se ha actualizado correctamente`,
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-
-    } catch (error) {
-      debugLog('ERROR', 'Failed to update full order:', error);
-      handleApiError(error, setMessage);
-
-      Swal.fire({
-        title: 'Error al actualizar',
-        text: 'No se pudo actualizar la orden. Inténtalo de nuevo.',
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ✅ FUNCIÓN PARA ELIMINAR PRODUCTO DE LA ORDEN
-  const handleRemoveItem = (itemIndex) => {
-    Swal.fire({
-      title: '¿Eliminar producto?',
-      text: 'Esta acción no se puede deshacer',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc2626',
-      cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Eliminar',
-      cancelButtonText: 'Cancelar',
-      background: theme === 'dark' ? '#1f2937' : '#ffffff',
-      color: theme === 'dark' ? '#f9fafb' : '#111827'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        const updatedItems = fullOrderEdit.items.filter((_, index) => index !== itemIndex);
-        setFullOrderEdit(prev => ({
-          ...prev,
-          items: updatedItems
-        }));
-      }
-    });
-  };
-
+  // ✅ ESTADÍSTICAS MEJORADAS
   const getFilterStats = () => {
-    const total = filteredOrders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
+    const total = filteredOrders.reduce((sum, order) => sum + parseFloat(order.total_amount || order.bill || 0), 0);
+    const uniqueClients = new Set(filteredOrders.map(order => order.client_name).filter(Boolean)).size;
+    const paymentMethodsUsed = new Set(filteredOrders.map(order => order.payment_name).filter(Boolean)).size;
+
     return {
       count: filteredOrders.length,
-      total: total
+      total: total,
+      uniqueClients,
+      paymentMethodsUsed,
+      averageTicket: filteredOrders.length > 0 ? total / filteredOrders.length : 0
     };
   };
+
+  const stats = getFilterStats();
 
   const filterOptions = [
     { value: 'today', label: 'Hoy', icon: ClockIcon },
@@ -500,11 +479,18 @@ function Orders({ onBack }) {
     { value: 'all', label: 'Todas', icon: ShoppingBagIcon }
   ];
 
-  const stats = getFilterStats();
+  const sortOptions = [
+    { value: 'newest', label: 'Más recientes' },
+    { value: 'oldest', label: 'Más antiguos' },
+    { value: 'highest', label: 'Mayor monto' },
+    { value: 'lowest', label: 'Menor monto' },
+    { value: 'client', label: 'Por cliente' }
+  ];
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Header Compacto */}
+
+      {/* Header Mejorado */}
       <div className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-sm border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between py-4 gap-4">
@@ -526,24 +512,24 @@ function Orders({ onBack }) {
                     Órdenes
                   </h1>
                   <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {stats.count} órdenes • ${formatPrice(stats.total)}
+                    {stats.count} órdenes • {formatPrice(stats.total)} • {stats.uniqueClients} clientes
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Controles */}
+            {/* Controles principales */}
             <div className="flex flex-col sm:flex-row gap-3">
-              {/* Búsqueda */}
+              {/* Búsqueda rápida */}
               <div className="relative">
                 <MagnifyingGlassIcon className={`w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 ${
                   theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
                 }`} />
                 <input
                   type="text"
-                  placeholder="Buscar órdenes..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Buscar órdenes, clientes..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange('search', e.target.value)}
                   className={`pl-10 pr-4 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-64 ${
                     theme === 'dark'
                       ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
@@ -552,27 +538,159 @@ function Orders({ onBack }) {
                 />
               </div>
 
-              {/* Filtro temporal */}
-              <div className="flex items-center gap-2">
-                <FunnelIcon className={`w-5 h-5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
-                <select
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  className={`border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  }`}
-                >
-                  {filterOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Botón filtros avanzados */}
+              <button
+                onClick={() => handleFilterChange('showFilters', !filters.showFilters)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  filters.showFilters
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : theme === 'dark'
+                      ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <AdjustmentsHorizontalIcon className="w-5 h-5" />
+                <span className="text-sm">Filtros</span>
+              </button>
             </div>
           </div>
+
+          {/* ✅ FILTROS AVANZADOS DESPLEGABLES */}
+          {filters.showFilters && (
+            <div className={`pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className="pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Filtro por período */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Período
+                  </label>
+                  <select
+                    value={filters.period}
+                    onChange={(e) => handleFilterChange('period', e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    {filterOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filtro por cliente */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={filters.clientName}
+                    onChange={(e) => handleFilterChange('clientName', e.target.value)}
+                    placeholder="Nombre del cliente"
+                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Filtro por método de pago */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Método de Pago
+                  </label>
+                  <select
+                    value={filters.paymentMethod}
+                    onChange={(e) => handleFilterChange('paymentMethod', e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    <option value="">Todos los métodos</option>
+                    {paymentMethods.map(method => (
+                      <option key={method.id_payment_method} value={method.id_payment_method}>
+                        {method.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Ordenamiento */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Ordenar por
+                  </label>
+                  <select
+                    value={filters.sortBy}
+                    onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    {sortOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Rango de montos */}
+                <div className="md:col-span-2">
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Rango de Montos
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={filters.minAmount}
+                      onChange={(e) => handleFilterChange('minAmount', e.target.value)}
+                      placeholder="Mínimo"
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        theme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                      }`}
+                    />
+                    <input
+                      type="number"
+                      value={filters.maxAmount}
+                      onChange={(e) => handleFilterChange('maxAmount', e.target.value)}
+                      placeholder="Máximo"
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        theme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Botón limpiar filtros */}
+                <div className="flex items-end">
+                  <button
+                    onClick={clearFilters}
+                    className={`w-full px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      theme === 'dark'
+                        ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Limpiar Filtros
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -585,191 +703,237 @@ function Orders({ onBack }) {
               Cargando órdenes...
             </span>
           </div>
-        ) : filteredOrders.length > 0 ? (
-          <div className="grid gap-4">
-            {filteredOrders.map((order) => {
-              const isExpanded = expandedOrders.has(order.id_order);
-              return (
-                <div
-                  key={order.id_order}
-                  className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-sm border ${
-                    theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-                  } overflow-hidden transition-all duration-200 hover:shadow-md`}
-                >
-                  {/* Header de la orden */}
-                  <div className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      {/* ID y Estado */}
-                      <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-xl ${theme === 'dark' ? 'bg-blue-900/30' : 'bg-blue-50'} flex items-center justify-center`}>
-                          <span className={`text-lg font-bold ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
-                            #{order.id_order}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                            {order.client_name || 'Cliente genérico'}
-                          </h3>
-                          <div className="flex items-center gap-4 text-sm">
-                            <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                              <ClockIcon className="w-4 h-4" />
-                              {formatDate(order.order_date)}
-                            </span>
-                            <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                              <CreditCardIcon className="w-4 h-4" />
-                              {order.payment_name || 'Sin método'}
+        ) : paginatedOrders.length > 0 ? (
+          <>
+            {/* Lista de órdenes mejorada */}
+            <div className="grid gap-4 mb-6">
+              {paginatedOrders.map((order) => {
+                const isExpanded = expandedOrders.has(order.id_order);
+                const orderTotal = parseFloat(order.total_amount || order.bill || 0);
+
+                return (
+                  <div
+                    key={order.id_order}
+                    className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-sm border ${
+                      theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+                    } overflow-hidden transition-all duration-200 hover:shadow-md`}
+                  >
+                    {/* Header de la orden mejorado */}
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-12 h-12 rounded-xl ${theme === 'dark' ? 'bg-blue-900/30' : 'bg-blue-50'} flex items-center justify-center`}>
+                            <span className={`text-lg font-bold ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
+                              #{order.id_order}
                             </span>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {/* Total */}
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-green-600">
-                          {formatPrice(order.bill)}
-                        </div>
-                        <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                          {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-
-                      {/* Acciones */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleOrderExpansion(order.id_order)}
-                          className={`p-2 rounded-lg transition-colors ${
-                            theme === 'dark'
-                              ? 'text-gray-400 hover:bg-gray-700'
-                              : 'text-gray-600 hover:bg-gray-100'
-                          }`}
-                          title={isExpanded ? 'Contraer' : 'Expandir'}
-                        >
-                          {isExpanded ? (
-                            <ChevronUpIcon className="w-5 h-5" />
-                          ) : (
-                            <ChevronDownIcon className="w-5 h-5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Vista previa rápida de productos */}
-                  {!isExpanded && order.items && order.items.length > 0 && (
-                    <div className={`px-4 pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-                      <div className="pt-3 flex flex-wrap gap-2">
-                        {order.items.slice(0, 3).map((item, index) => (
-                          <div key={index} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
-                            theme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            <span className="font-medium">{item.product_name}</span>
-                            <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>
-                              x{item.quantity}
-                            </span>
-                            <button
-                              onClick={() => handleEditOrderItem(order, index)}
-                              className="ml-1 text-blue-600 hover:text-blue-800"
-                              title="Editar producto"
-                            >
-                              <PencilIcon className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                        {order.items.length > 3 && (
-                          <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm ${
-                            theme === 'dark' ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            +{order.items.length - 3} más
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Detalles expandidos */}
-                  {isExpanded && (
-                    <div className={`border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-                      {/* Comentarios de la orden */}
-                      {order.comment && (
-                        <div className="px-4 py-3 bg-opacity-50">
-                          <div className="flex items-start gap-2">
-                            <ChatBubbleLeftRightIcon className={`w-4 h-4 mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
-                            <div>
-                              <p className={`text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                                Comentarios:
-                              </p>
-                              <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                {order.comment}
-                              </p>
+                          <div>
+                            <h3 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                              {order.client_name || 'Cliente genérico'}
+                            </h3>
+                            <div className="flex items-center gap-4 text-sm">
+                              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                <ClockIcon className="w-4 h-4" />
+                                {formatDate(order.order_date)}
+                              </span>
+                              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                <CreditCardIcon className="w-4 h-4" />
+                                {order.payment_name || 'Sin método'}
+                              </span>
                             </div>
                           </div>
                         </div>
-                      )}
+                      </div>
 
-                      {/* Lista detallada de productos */}
-                      <div className="p-4">
-                        <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                          Productos de la orden:
-                        </h4>
-                        <div className="space-y-2">
-                          {order.items?.map((item, index) => (
-                            <div key={index} className={`flex items-center justify-between p-3 rounded-lg ${
-                              theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                      <div className="flex items-center gap-3">
+                        {/* Total */}
+                        <div className="text-right">
+                          <div className="text-2xl font-bold text-green-600">
+                            {formatPrice(orderTotal)}
+                          </div>
+                          <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                            {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+
+                        {/* Acciones */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleOrderExpansion(order.id_order)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              theme === 'dark'
+                                ? 'text-gray-400 hover:bg-gray-700'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                            title={isExpanded ? 'Contraer' : 'Expandir'}
+                          >
+                            {isExpanded ? (
+                              <ChevronUpIcon className="w-5 h-5" />
+                            ) : (
+                              <ChevronDownIcon className="w-5 h-5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vista previa rápida de productos mejorada */}
+                    {!isExpanded && order.items && order.items.length > 0 && (
+                      <div className={`px-4 pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <div className="pt-3 flex flex-wrap gap-2">
+                          {order.items.slice(0, 3).map((item, index) => (
+                            <div key={index} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
+                              theme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                             }`}>
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3">
-                                  <div>
-                                    <h5 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                                      {item.product_name || 'Producto'}<span> • </span>{item.variant_name}
-                                    </h5>
-                                    {/* Extras y salsas */}
-                                    {((item.extras && item.extras.length > 0) || (item.sauces && item.sauces.length > 0)) && (
-                                      <div className={`text-xs mt-1 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>
-                                        {item.extras && item.extras.length > 0 && (
-                                          <span>Extras: {item.extras.map(e => e.name).join(', ')}</span>
-                                        )}
-                                        {item.sauces && item.sauces.length > 0 && (
-                                          <span>
-                                            {item.extras && item.extras.length > 0 && ' • '}
-                                            Salsas: {item.sauces.map(s => s.name).join(', ')}
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                  <div className="font-semibold text-green-600">
-                                    {formatPrice(item.product_price)}
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => handleEditOrderItem(order, index)}
-                                  className={`p-2 rounded-lg transition-colors ${
-                                    theme === 'dark'
-                                      ? 'text-blue-400 hover:bg-blue-900/20'
-                                      : 'text-blue-600 hover:bg-blue-50'
-                                  }`}
-                                  title="Editar producto"
-                                >
-                                  <PencilIcon className="w-4 h-4" />
-                                </button>
-                              </div>
+                              <span className="font-medium">{item.product_name}</span>
+                              <button
+                                onClick={() => handleEditOrderItem(order, index)}
+                                className="ml-1 text-blue-600 hover:text-blue-800"
+                                title="Editar producto"
+                              >
+                                <PencilIcon className="w-3 h-3" />
+                              </button>
                             </div>
                           ))}
+                          {order.items.length > 3 && (
+                            <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm ${
+                              theme === 'dark' ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              +{order.items.length - 3} más
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                    {/* Detalles expandidos mejorados */}
+                    {isExpanded && (
+                      <div className={`border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+                        {/* Comentarios de la orden */}
+                        {order.comment && (
+                          <div className="px-4 py-3 bg-opacity-50">
+                            <div className="flex items-start gap-2">
+                              <ChatBubbleLeftRightIcon className={`w-4 h-4 mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
+                              <div>
+                                <p className={`text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                                  Comentarios:
+                                </p>
+                                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                  {order.comment}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Lista detallada de productos mejorada */}
+                        <div className="p-4">
+                          <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Productos de la orden:
+                          </h4>
+                          <div className="space-y-2">
+                            {order.items?.map((item, index) => (
+                              <div key={index} className={`flex items-center justify-between p-3 rounded-lg ${
+                                theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                              }`}>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3">
+                                    {/* ✅ IMAGEN DEL PRODUCTO */}
+                                    {item.product_image && (
+                                      <img
+                                        src={item.product_image}
+                                        alt={item.product_name}
+                                        className="w-10 h-10 rounded-lg object-cover"
+                                        loading="lazy"
+                                      />
+                                    )}
+                                    <div>
+                                      <h5 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                        {item.product_name || 'Producto'} • {item.variant_name}
+                                      </h5>
+                                      <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} space-y-0.5`}>
+                                        <div>Cantidad: {item.quantity}</div>
+                                        {/* Extras y salsas */}
+                                        {((item.extras && item.extras.length > 0) || (item.sauces && item.sauces.length > 0)) && (
+                                          <div>
+                                            {item.extras && item.extras.length > 0 && (
+                                              <div>Extras: {item.extras.map(e => e.name).join(', ')}</div>
+                                            )}
+                                            {item.sauces && item.sauces.length > 0 && (
+                                              <div>Salsas: {item.sauces.map(s => s.name).join(', ')}</div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <div className="text-right">
+                                    <div className="font-semibold text-green-600">
+                                      {formatPrice(item.product_price)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleEditOrderItem(order, index)}
+                                    className={`p-2 rounded-lg transition-colors ${
+                                      theme === 'dark'
+                                        ? 'text-blue-400 hover:bg-blue-900/20'
+                                        : 'text-blue-600 hover:bg-blue-50'
+                                    }`}
+                                    title="Editar producto"
+                                  >
+                                    <PencilIcon className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ✅ PAGINACIÓN MEJORADA */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes
                 </div>
-              );
-            })}
-          </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className={`px-3 py-2 rounded-lg border transition-colors disabled:opacity-50 ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 disabled:hover:bg-gray-700'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 disabled:hover:bg-white'
+                    }`}
+                  >
+                    Anterior
+                  </button>
+                  <span className={`px-3 py-2 text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {currentPage} de {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className={`px-3 py-2 rounded-lg border transition-colors disabled:opacity-50 ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 disabled:hover:bg-gray-700'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 disabled:hover:bg-white'
+                    }`}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-12">
             <ShoppingBagIcon className={`w-16 h-16 mx-auto mb-4 ${
@@ -778,227 +942,59 @@ function Orders({ onBack }) {
             <h3 className={`text-lg font-medium mb-2 ${
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}>
-              {searchTerm ? 'No se encontraron órdenes' : 'No hay órdenes'}
+              {filters.search || filters.clientName || filters.paymentMethod || filters.minAmount || filters.maxAmount
+                ? 'No se encontraron órdenes'
+                : 'No hay órdenes'
+              }
             </h3>
             <p className={`text-sm ${
               theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
             }`}>
-              {searchTerm
-                ? `No hay resultados para "${searchTerm}"`
-                : filter === 'today'
+              {filters.search || filters.clientName || filters.paymentMethod || filters.minAmount || filters.maxAmount
+                ? 'Intenta ajustar los filtros para obtener más resultados.'
+                : filters.period === 'today'
                   ? 'No se encontraron órdenes para hoy.'
-                  : `No se encontraron órdenes para el filtro "${filter}".`
+                  : `No se encontraron órdenes para el filtro "${filters.period}".`
               }
             </p>
+            {(filters.search || filters.clientName || filters.paymentMethod || filters.minAmount || filters.maxAmount) && (
+              <button
+                onClick={clearFilters}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Limpiar Filtros
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* ✅ Modal de edición de producto individual usando ProductModal - CORREGIDO */}
-        {editingProduct && editingItem && editingOrder && (
-          <ProductModal
-            isOpen={true}
-            onClose={handleCloseEditModal}
-            product={editingProduct}
-            // ✅ CANTIDAD: Calcular desde extras o usar 1 por defecto
-            initialQuantity={
-              editingItem.quantity ||
-              (editingItem.extras && editingItem.extras.length > 0 ?
-                Math.max(...editingItem.extras.map(e => e.quantity || 1)) : 1)
-            }
-            // ✅ OPCIONES: Usar las opciones ya mapeadas del producto
-            initialOptions={editingProduct.options || []}
-            // ✅ SABORES: Usar los sabores ya mapeados del producto
-            initialFlavors={editingProduct.flavors || []}
-            // ✅ EXTRAS: Mapear extras del item con sus cantidades
-            initialExtras={editingItem.extras ? editingItem.extras.map(extra => ({
-              id_extra: extra.id_extra,
-              name: extra.name,
-              price: extra.actual_price,
-              quantity: extra.quantity || 1 // ✅ INCLUIR CANTIDAD DEL EXTRA
-            })) : []}
-            // ✅ SALSAS: Mapear salsas del item de la orden
-            initialSauces={editingItem.sauces ? editingItem.sauces.map(sauce => ({
-              id_sauce: sauce.id_sauce,
-              name: sauce.name,
-              image: sauce.image
-            })) : []}
-            // ✅ COMENTARIO: Usar el comentario de la ORDEN (no del item)
-            initialComment={editingOrder.comment || ''}
-            // ✅ CLIENTE: Usar el client_name de la ORDEN
-            initialClientName={editingOrder.client_name || ''}
-            // ✅ MÉTODO DE PAGO: Usar el de la ORDEN
-            initialPaymentMethod={editingOrder.id_payment_method}
-            onSave={handleSaveItemChanges}
-            isEditing={true}
-          />
-        )}
-
-      {/* Modal de edición completa de orden - Versión compacta */}
-      {isEditingFullOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className={`w-full max-w-3xl max-h-[85vh] rounded-2xl shadow-2xl transition-all duration-300 ease-out ${
-            theme === 'dark'
-              ? 'bg-gray-900 text-white border border-gray-700'
-              : 'bg-white text-gray-900 border border-gray-200'
-          }`}>
-            {/* Header */}
-            <div className={`flex items-center justify-between p-4 border-b ${
-              theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-            }`}>
-              <div className="flex items-center gap-3">
-                <Cog6ToothIcon className={`w-6 h-6 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
-                <div>
-                  <h2 className="text-lg font-bold">Editar Orden #{fullOrderEdit.id_order}</h2>
-                  <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Modificar información y productos
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleCancelFullOrderEdit}
-                className={`p-2 rounded-lg transition-colors ${
-                  theme === 'dark'
-                    ? 'text-gray-400 hover:text-white hover:bg-gray-700'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Contenido */}
-            <div className="overflow-y-auto max-h-[calc(85vh-120px)] p-4">
-              <div className="space-y-4">
-                {/* Información básica - Grid compacto */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Cliente</label>
-                    <input
-                      type="text"
-                      value={fullOrderEdit.client_name}
-                      onChange={(e) => setFullOrderEdit(prev => ({ ...prev, client_name: e.target.value }))}
-                      className={`w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600 text-white'
-                          : 'bg-white border-gray-300'
-                      }`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Método de Pago</label>
-                    <select
-                      value={fullOrderEdit.id_payment_method || ''}
-                      onChange={(e) => setFullOrderEdit(prev => ({
-                        ...prev,
-                        id_payment_method: e.target.value ? Number(e.target.value) : null
-                      }))}
-                      className={`w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600 text-white'
-                          : 'bg-white border-gray-300'
-                      }`}
-                    >
-                      <option value="">Seleccionar...</option>
-                      {paymentMethods.map(method => (
-                        <option key={method.id_payment_method} value={method.id_payment_method}>
-                          {method.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Total</label>
-                    <div className={`p-2 rounded-lg text-sm font-bold text-green-600 ${
-                      theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
-                    }`}>
-                      ${formatPrice(fullOrderEdit.items.reduce((sum, item) => sum + parseFloat(item.total_price || 0), 0))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Comentarios */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">Comentarios</label>
-                  <textarea
-                    value={fullOrderEdit.comment}
-                    onChange={(e) => setFullOrderEdit(prev => ({ ...prev, comment: e.target.value }))}
-                    rows={2}
-                    className={`w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${
-                      theme === 'dark'
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300'
-                    }`}
-                    placeholder="Comentarios adicionales..."
-                  />
-                </div>
-
-                {/* Lista de productos compacta */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-2">Productos ({fullOrderEdit.items.length})</h3>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {fullOrderEdit.items.map((item, index) => (
-                      <div key={index} className={`flex items-center justify-between p-3 border rounded-lg ${
-                        theme === 'dark' ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'
-                      }`}>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm truncate">{item.product_name}</h4>
-                          <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {item.variant_size} • Cant: {item.quantity} • ${formatPrice(item.total_price)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 ml-2">
-                          <button
-                            onClick={() => handleEditOrderItem(
-                              { ...fullOrderEdit, items: fullOrderEdit.items },
-                              index
-                            )}
-                            className="text-blue-600 hover:text-blue-800 p-1"
-                            title="Editar"
-                          >
-                            <PencilIcon className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveItem(index)}
-                            className="text-red-600 hover:text-red-800 p-1"
-                            title="Eliminar"
-                          >
-                            <TrashIcon className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className={`flex items-center justify-end gap-3 p-4 border-t ${
-              theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-            }`}>
-              <button
-                onClick={handleCancelFullOrderEdit}
-                className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                  theme === 'dark'
-                    ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveFullOrder}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-              >
-                <CheckIcon className="w-4 h-4" />
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* ✅ Modal de edición de producto individual MEJORADO */}
+      {editingProduct && editingItem && editingOrder && (
+        <ProductModal
+          isOpen={true}
+          onClose={handleCloseEditModal}
+          product={editingProduct}
+          initialQuantity={editingItem.quantity || 1}
+          initialOptions={editingProduct.options || []}
+          initialFlavors={editingProduct.flavors || []}
+          initialExtras={editingItem.extras ? editingItem.extras.map(extra => ({
+            id_extra: extra.id_extra,
+            name: extra.name,
+            price: extra.actual_price,
+            quantity: extra.quantity || 1
+          })) : []}
+          initialSauces={editingItem.sauces ? editingItem.sauces.map(sauce => ({
+            id_sauce: sauce.id_sauce,
+            name: sauce.name,
+            image: sauce.image
+          })) : []}
+          initialComment={editingOrder.comment || ''}
+          initialClientName={editingOrder.client_name || ''}
+          initialPaymentMethod={editingOrder.id_payment_method}
+          onSave={handleSaveItemChanges}
+          isEditing={true}
+        />
       )}
     </div>
   );

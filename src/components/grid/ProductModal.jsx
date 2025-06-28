@@ -12,7 +12,6 @@ import {
   BanknotesIcon,
   QrCodeIcon,
   LinkIcon,
-  ArrowPathIcon,
   UserIcon
 } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
@@ -47,107 +46,184 @@ function ProductModal({
   const [comment, setComment] = useState('');
   const [clientName, setClientName] = useState('');
   const [errors, setErrors] = useState({});
-
-  // ✅ Estados para método de pago (ahora usando los del contexto)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
 
   // Estado para manejo de imagen del producto
   const [productImageState, setProductImageState] = useState({
     hasError: false,
-    errorCount: 0
+    errorCount: 0,
+    finalImageSrc: null
   });
 
-  // ✅ FUNCIÓN PARA OPTIMIZAR IMAGEN DEL PRODUCTO
+  // ✅ FUNCIÓN MEJORADA PARA OBTENER IMAGEN DEL PRODUCTO
   const getOptimizedProductImage = () => {
     const isDark = theme === 'dark';
-    if (!product?.image) {
-      return generatePlaceholderUrl(product?.name || 'Producto', 300, isDark);
+
+    // ✅ BUSCAR IMAGEN EN MÚLTIPLES UBICACIONES POSIBLES
+    let imageUrl = null;
+
+    // Prioridad 1: Imagen directa del producto
+    if (product?.image) {
+      imageUrl = product.image;
     }
-    return optimizeGoogleDriveImageUrl(product.image, 300) || generatePlaceholderUrl(product.name, 300, isDark);
+    // Prioridad 2: Imagen anidada en product
+    else if (product?.product?.image) {
+      imageUrl = product.product.image;
+    }
+    // Prioridad 3: product_image (para compatibilidad con órdenes)
+    else if (product?.product_image) {
+      imageUrl = product.product_image;
+    }
+
+    console.log('🖼️ ProductModal image lookup:', {
+      productName: product?.name || product?.product_name,
+      directImage: product?.image,
+      nestedImage: product?.product?.image,
+      productImage: product?.product_image,
+      finalImageUrl: imageUrl
+    });
+
+    // Si no hay imagen, usar placeholder
+    if (!imageUrl) {
+      const placeholderUrl = generatePlaceholderUrl(
+        product?.name || product?.product_name || 'Producto',
+        300,
+        isDark
+      );
+      console.log('❌ No image found, using placeholder:', placeholderUrl);
+      return placeholderUrl;
+    }
+
+    // Optimizar imagen de Google Drive
+    const optimizedUrl = optimizeGoogleDriveImageUrl(imageUrl, 300);
+    console.log('✅ Using optimized image:', optimizedUrl);
+
+    return optimizedUrl || generatePlaceholderUrl(
+      product?.name || product?.product_name || 'Producto',
+      300,
+      isDark
+    );
   };
 
+  // ✅ FUNCIÓN MEJORADA PARA MANEJAR ERROR DE IMAGEN
   const handleProductImageError = (e) => {
+    console.log('❌ ProductModal image error:', e.target.src);
+
     setProductImageState(prev => {
-      if (prev.errorCount >= 1) {
+      if (prev.errorCount >= 2) {
+        console.log('❌ Too many image errors, stopping retries');
         return prev;
       }
 
-      const placeholderSrc = generatePlaceholderUrl(product.name, 300, theme === 'dark');
-      e.target.src = placeholderSrc;
+      const productName = product?.name || product?.product_name || 'Producto';
+      const placeholderSrc = generatePlaceholderUrl(productName, 300, theme === 'dark');
+
+      console.log('🔄 Setting fallback image:', placeholderSrc);
+
+      // Cambiar la src del elemento img
+      if (e.target) {
+        e.target.src = placeholderSrc;
+      }
 
       return {
         hasError: true,
-        errorCount: prev.errorCount + 1
+        errorCount: prev.errorCount + 1,
+        finalImageSrc: placeholderSrc
       };
     });
   };
 
-  // ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL - INCLUYE CLIENTE
+  // ✅ RESETEAR ESTADOS CUANDO SE ABRE/CIERRA EL MODAL - MEJORADO
   useEffect(() => {
     if (isOpen && product) {
+      console.log('🔄 Initializing ProductModal with product:', product);
+
       // 1. Restablecer estados básicos
       setQuantity(initialQuantity || 1);
-
-      // ✅ MAPEAR EXTRAS CON CANTIDADES
-      const extrasWithQuantities = Array.isArray(initialExtras)
-        ? initialExtras.map(extra => ({
-            ...extra,
-            quantity: extra.quantity || 1 // ✅ ASEGURAR QUE TENGA CANTIDAD
-          }))
-        : [];
-      setSelectedExtras(extrasWithQuantities);
-      setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
       setComment(initialComment || '');
       setClientName(initialClientName || '');
       setErrors({});
-      setProductImageState({ hasError: false, errorCount: 0 });
 
-      console.log('🔄 Initializing ProductModal:', {
+      // Reset imagen
+      setProductImageState({
+        hasError: false,
+        errorCount: 0,
+        finalImageSrc: null
+      });
+
+      // 2. ✅ MAPEAR EXTRAS CON CANTIDADES
+      const extrasWithQuantities = Array.isArray(initialExtras)
+        ? initialExtras.map(extra => ({
+            ...extra,
+            quantity: extra.quantity || 1
+          }))
+        : [];
+      setSelectedExtras(extrasWithQuantities);
+
+      // 3. ✅ MAPEAR SALSAS
+      setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
+
+      console.log('🔄 Mapped initial data:', {
         isEditing,
         initialPaymentMethod,
         initialClientName,
         paymentMethodsLength: paymentMethods?.length || 0,
-        initialExtrasWithQuantities: extrasWithQuantities
+        extrasWithQuantities,
+        initialSauces
       });
 
-      // 2. ✅ CONFIGURAR MÉTODO DE PAGO - Usar métodos del contexto
+      // 4. ✅ CONFIGURAR MÉTODO DE PAGO
       if (isEditing && initialPaymentMethod) {
         setSelectedPaymentMethod(initialPaymentMethod);
       } else {
-        // Seleccionar el primer método de pago disponible por defecto
         const defaultPaymentMethod = paymentMethods && paymentMethods.length > 0
           ? paymentMethods[0]?.id_payment_method
           : null;
         setSelectedPaymentMethod(defaultPaymentMethod);
       }
 
-      // 3. Configurar opción y sabor seleccionados
-      let optionToSelect = (initialOptions && initialOptions.length > 0)
-        ? initialOptions[0]
-        : (product.options && product.options.length > 0)
-          ? product.options[0]
-          : null;
+      // 5. ✅ CONFIGURAR OPCIONES Y SABORES - MEJORADO
+      // Para opciones (tamaños)
+      let optionToSelect = null;
+      if (initialOptions && initialOptions.length > 0) {
+        optionToSelect = initialOptions[0];
+      } else if (product.options && product.options.length > 0) {
+        optionToSelect = product.options[0];
+      } else if (product.product?.options && product.product.options.length > 0) {
+        optionToSelect = product.product.options[0];
+      }
       setSelectedOption(optionToSelect);
 
-      let flavorToSelect = (initialFlavors && initialFlavors.length > 0)
-        ? initialFlavors[0]
-        : (product.flavors && product.flavors.length > 0)
-          ? product.flavors[0]
-          : null;
+      // Para sabores
+      let flavorToSelect = null;
+      if (initialFlavors && initialFlavors.length > 0) {
+        flavorToSelect = initialFlavors[0];
+      } else if (product.flavors && product.flavors.length > 0) {
+        flavorToSelect = product.flavors[0];
+      } else if (product.product?.flavors && product.product.flavors.length > 0) {
+        flavorToSelect = product.product.flavors[0];
+      }
       setSelectedFlavor(flavorToSelect);
+
+      console.log('✅ ProductModal initialized with options and flavors:', {
+        selectedOption: optionToSelect,
+        selectedFlavor: flavorToSelect,
+        productHasOptions: !!(product.options || product.product?.options),
+        productHasFlavors: !!(product.flavors || product.product?.flavors)
+      });
 
     } else if (!isOpen) {
       // Reset cuando se cierra
       setQuantity(1);
       setSelectedOption(null);
       setSelectedFlavor(null);
-      setSelectedExtras([]); // ✅ Array vacío (sin cantidades)
+      setSelectedExtras([]);
       setSelectedSauces([]);
       setComment('');
       setClientName('');
       setSelectedPaymentMethod(null);
       setErrors({});
-      setProductImageState({ hasError: false, errorCount: 0 });
+      setProductImageState({ hasError: false, errorCount: 0, finalImageSrc: null });
     }
   }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, initialClientName, initialPaymentMethod, isEditing, paymentMethods]);
 
@@ -157,15 +233,12 @@ function ProductModal({
       const existingExtraIndex = prev.findIndex(e => e.id_extra === extra.id_extra);
 
       if (newQuantity === 0) {
-        // Si la cantidad es 0, remover el extra
         return prev.filter(e => e.id_extra !== extra.id_extra);
       } else if (existingExtraIndex >= 0) {
-        // Si ya existe, actualizar la cantidad
         const updated = [...prev];
         updated[existingExtraIndex] = { ...updated[existingExtraIndex], quantity: newQuantity };
         return updated;
       } else {
-        // Si no existe, agregarlo con la cantidad especificada
         return [...prev, { ...extra, quantity: newQuantity }];
       }
     });
@@ -207,17 +280,21 @@ function ProductModal({
   const validateForm = () => {
     const newErrors = {};
 
+    // ✅ OBTENER OPCIONES Y SABORES DE MÚLTIPLES UBICACIONES
+    const availableOptions = product.options || product.product?.options || initialOptions || [];
+    const availableFlavors = product.flavors || product.product?.flavors || initialFlavors || [];
+
     // Validar opción si hay opciones disponibles
-    if (product.options && product.options.length > 0 && !selectedOption) {
+    if (availableOptions.length > 0 && !selectedOption) {
       newErrors.option = 'Selecciona un tamaño';
     }
 
     // Validar sabor si hay sabores disponibles
-    if (product.flavors && product.flavors.length > 0 && !selectedFlavor) {
+    if (availableFlavors.length > 0 && !selectedFlavor) {
       newErrors.flavor = 'Selecciona un sabor';
     }
 
-    // ✅ Validar método de pago
+    // Validar método de pago
     if (!selectedPaymentMethod) {
       newErrors.paymentMethod = 'Selecciona un método de pago';
     }
@@ -231,7 +308,6 @@ function ProductModal({
     if (!validateForm()) {
       const firstErrorKey = Object.keys(errors)[0];
       if (firstErrorKey) {
-        // Hacer scroll hacia el primer error
         const errorElement = document.querySelector(`[data-error="${firstErrorKey}"]`);
         if (errorElement) {
           errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -242,42 +318,45 @@ function ProductModal({
 
     try {
       const productToAdd = {
-        id_product: product.id_product,
-        product_name: product.name,
-        product_image: product.image,
+        id_product: product.id_product || product.product?.id_product,
+        product_name: product.name || product.product_name || product.product?.name,
+        product_image: product.image || product.product_image || product.product?.image,
         quantity,
         selectedOption,
         selectedFlavor,
-        selectedExtras, // ✅ Ya incluye cantidades
+        selectedExtras,
         selectedSauces,
         selectedPaymentMethod,
         comment: comment.trim(),
         clientName: clientName.trim(),
-        totalPrice: calculateTotalPrice()
+        totalPrice: calculateTotalPrice(),
+        // ✅ MANTENER REFERENCIA AL PRODUCTO COMPLETO
+        product: product
       };
 
-      console.log('🛒 Adding to cart with extras quantities:', {
-        productToAdd,
-        extrasWithQuantities: selectedExtras
-      });
+      console.log('🛒 Adding to cart with complete data:', productToAdd);
 
       if (isEditing && onSave) {
         await onSave(productToAdd);
         await Swal.fire({
           title: '✅ Producto actualizado',
-          text: `${product.name} ha sido actualizado en el carrito`,
+          text: `${product.name || product.product_name} ha sido actualizado en el carrito`,
           icon: 'success',
           timer: 1500,
-          showConfirmButton: false
+          showConfirmButton: false,
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
         });
       } else {
         addToCart(productToAdd);
         await Swal.fire({
           title: '✅ Agregado al carrito',
-          text: `${product.name} ha sido agregado al carrito`,
+          text: `${product.name || product.product_name} ha sido agregado al carrito`,
           icon: 'success',
           timer: 1500,
-          showConfirmButton: false
+          showConfirmButton: false,
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
         });
 
         if (onAddedToCart) {
@@ -292,12 +371,29 @@ function ProductModal({
         title: 'Error',
         text: 'Error al agregar el producto al carrito',
         icon: 'error',
-        confirmButtonText: 'Entendido'
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
     }
   };
 
   if (!isOpen || !product) return null;
+
+  // ✅ OBTENER OPCIONES Y SABORES DE MÚLTIPLES UBICACIONES
+  const availableOptions = product.options || product.product?.options || initialOptions || [];
+  const availableFlavors = product.flavors || product.product?.flavors || initialFlavors || [];
+  const availableExtras = extras || [];
+  const availableSauces = sauces || [];
+
+  console.log('🔍 ProductModal render data:', {
+    productName: product.name || product.product_name,
+    availableOptionsCount: availableOptions.length,
+    availableFlavorsCount: availableFlavors.length,
+    availableExtrasCount: availableExtras.length,
+    availableSaucesCount: availableSauces.length,
+    hasImage: !!(product.image || product.product_image || product.product?.image)
+  });
 
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-2 md:p-4">
@@ -309,13 +405,13 @@ function ProductModal({
         animate-in slide-in-from-bottom-full sm:zoom-in-95 duration-300 sm:duration-200
       `}>
 
-        {/* HEADER CON IMAGEN DEL PRODUCTO */}
+        {/* HEADER CON IMAGEN DEL PRODUCTO MEJORADO */}
         <div className="flex-shrink-0 relative">
-          {/* Imagen del producto */}
+          {/* Imagen del producto mejorada */}
           <div className="h-32 xs:h-36 sm:h-40 md:h-48 lg:h-52 overflow-hidden relative">
             <img
               src={getOptimizedProductImage()}
-              alt={product.name}
+              alt={product.name || product.product_name || 'Producto'}
               className="w-full h-full object-cover"
               onError={handleProductImageError}
               loading="lazy"
@@ -328,7 +424,7 @@ function ProductModal({
             <div className="flex items-end justify-between">
               <div className="flex-1 min-w-0 pr-2">
                 <h2 className="text-lg xs:text-xl sm:text-2xl md:text-3xl font-bold text-white truncate">
-                  {product.name}
+                  {product.name || product.product_name || 'Producto'}
                 </h2>
                 <p className="text-white/80 text-xs sm:text-sm">
                   {isEditing ? 'Editar producto' : 'Personalizar producto'}
@@ -464,15 +560,15 @@ function ProductModal({
               )}
             </div>
 
-            {/* TAMAÑOS/OPCIONES */}
-            {product.options && product.options.length > 0 && (
+            {/* TAMAÑOS/OPCIONES MEJORADOS */}
+            {availableOptions.length > 0 && (
               <div data-error="option">
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-blue-400' : 'bg-blue-500'}`}></div>
                   Tamaños
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {product.options.map((option, idx) => (
+                  {availableOptions.map((option, idx) => (
                     <button
                       key={`option-${option.id_variant}-${idx}`}
                       className={`relative p-2.5 sm:p-3 rounded-lg border-2 transition-all min-h-[3rem] sm:min-h-[2.5rem] ${
@@ -505,15 +601,15 @@ function ProductModal({
               </div>
             )}
 
-            {/* SABORES */}
-            {product.flavors && product.flavors.length > 0 && (
+            {/* SABORES MEJORADOS */}
+            {availableFlavors.length > 0 && (
               <div data-error="flavor">
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-yellow-400' : 'bg-yellow-500'}`}></div>
                   Sabores
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {product.flavors.map((flavor, idx) => (
+                  {availableFlavors.map((flavor, idx) => (
                     <button
                       key={`flavor-${flavor.id_flavor}-${idx}`}
                       className={`relative p-2.5 sm:p-3 rounded-lg border-2 transition-all min-h-[3rem] sm:min-h-[2.5rem] ${
@@ -544,14 +640,14 @@ function ProductModal({
             )}
 
             {/* EXTRAS CON CONTROLES DE CANTIDAD */}
-            {extras && extras.length > 0 && (
+            {availableExtras.length > 0 && (
               <div>
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
                   Extras <span className="text-xs font-normal">(Opcional)</span>
                 </h3>
                 <div className="space-y-2">
-                  {extras.map((extra) => {
+                  {availableExtras.map((extra) => {
                     const selectedExtra = selectedExtras.find(e => e.id_extra === extra.id_extra);
                     const currentQuantity = selectedExtra ? selectedExtra.quantity : 0;
                     const extraPrice = Number(extra.price || 0);
@@ -580,7 +676,6 @@ function ProductModal({
 
                         {/* Controles de cantidad */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* Botón menos */}
                           <button
                             type="button"
                             onClick={() => handleExtraQuantityChange(extra, Math.max(0, currentQuantity - 1))}
@@ -596,12 +691,10 @@ function ProductModal({
                             <MinusIcon className="w-4 h-4" />
                           </button>
 
-                          {/* Cantidad actual */}
                           <span className="text-lg font-bold min-w-[2rem] text-center">
                             {currentQuantity}
                           </span>
 
-                          {/* Botón más */}
                           <button
                             type="button"
                             onClick={() => handleExtraQuantityChange(extra, currentQuantity + 1)}
@@ -621,15 +714,15 @@ function ProductModal({
               </div>
             )}
 
-            {/* SALSAS */}
-            {sauces && sauces.length > 0 && (
+            {/* SALSAS MEJORADAS */}
+            {availableSauces.length > 0 && (
               <div>
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-red-400' : 'bg-red-500'}`}></div>
                   Salsas <span className="text-xs font-normal">(Opcional)</span>
                 </h3>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-                  {sauces.map((sauce) => {
+                  {availableSauces.map((sauce) => {
                     const isSelected = selectedSauces.find(s => s.id_sauce === sauce.id_sauce);
                     return (
                       <button
@@ -667,40 +760,6 @@ function ProductModal({
                 </div>
               </div>
             )}
-
-            {/* CANTIDAD */}
-            <div>
-              <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-indigo-400' : 'bg-indigo-500'}`}></div>
-                Cantidad
-              </h3>
-              <div className="flex items-center justify-center gap-4 sm:justify-start">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 flex items-center justify-center transition-all touch-manipulation ${
-                    theme === 'dark'
-                      ? 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 active:bg-gray-700'
-                      : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700 active:bg-gray-50'
-                  } disabled:opacity-50`}
-                  disabled={quantity <= 1}
-                >
-                  <MinusIcon className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
-
-                <span className="text-xl sm:text-2xl font-bold min-w-[3rem] sm:min-w-[4rem] text-center">{quantity}</span>
-
-                <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 flex items-center justify-center transition-all touch-manipulation ${
-                    theme === 'dark'
-                      ? 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 active:bg-gray-700'
-                      : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700 active:bg-gray-50'
-                  }`}
-                >
-                  <PlusIcon className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
-              </div>
-            </div>
 
             {/* COMENTARIO */}
             <div>

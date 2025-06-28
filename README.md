@@ -141,7 +141,7 @@ Enlace al proyecto: [https://github.com/maizdemicorazon/posofmyheartfe](https://
 [issues-url]: https://github.com/maizdemicorazon/posofmyheartfe/issues
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/raúlgarcía/
-[product-screenshot]: public/images/screen.png
+[product-screenshot]: public/images/screesssn.png
 [Javascript]: https://img.shields.io/badge/javascript-20232A?style=for-the-badge&logo=javascript
 [Javascript-url]: https://lenguajejs.com/javascript/
 [Node]: https://img.shields.io/badge/node.js-20232A?style=for-the-badge&logo=node.js
