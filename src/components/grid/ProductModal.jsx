@@ -182,7 +182,7 @@ function ProductModal({
         setSelectedPaymentMethod(defaultPaymentMethod);
       }
 
-      // 5. ✅ CONFIGURAR OPCIONES Y SABORES - MEJORADO
+      // 5. ✅ CONFIGURAR OPCIONES Y SABORES
       // Para opciones (tamaños)
       let optionToSelect = null;
       if (initialOptions && initialOptions.length > 0) {
@@ -784,28 +784,60 @@ function ProductModal({
 
         {/* FOOTER CON PRECIO Y BOTÓN */}
         <div className={`flex-shrink-0 p-3 sm:p-4 border-t ${theme === 'dark' ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'}`}>
-          <div className="flex items-center justify-between gap-3 sm:gap-4">
-            <div className="text-left">
-              <div className="text-xs sm:text-sm text-gray-500">Total</div>
-              <div className="text-xl sm:text-2xl font-bold">
+          {/* Contenedor principal con mejor distribución */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+
+            {/* Sección del precio - Más prominente */}
+            <div className="flex-1 text-center sm:text-left">
+              <div className={`text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} font-medium`}>
+                Total a pagar
+              </div>
+              <div className="text-2xl sm:text-3xl font-bold text-green-500">
                 ${calculateTotalPrice().toFixed(2)}
               </div>
             </div>
-            <button
-              onClick={handleAddToCart}
-              className={`
-                flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-semibold text-white text-sm sm:text-base
-                transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation
-                ${theme === 'dark'
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600'
-                  : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500'
-                }
-                shadow-lg hover:shadow-xl
-              `}
-            >
-              <ShoppingCartIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-              {isEditing ? 'Actualizar' : 'Agregar'}
-            </button>
+
+            {/* Sección de botones con mejor espaciado */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:min-w-[280px]">
+
+              {/* Botón Cancelar - Más discreto */}
+              <button
+                onClick={onClose}
+                className={`
+                  flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg font-medium text-sm
+                  transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] touch-manipulation
+                  ${theme === 'dark'
+                    ? 'bg-gray-700/50 hover:bg-gray-600/60 text-gray-300 hover:text-gray-200 border border-gray-600/50 hover:border-gray-500/60'
+                    : 'bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 border border-gray-200 hover:border-gray-300'
+                  }
+                  backdrop-blur-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-400/50 focus:ring-offset-2
+                  ${theme === 'dark' ? 'focus:ring-offset-gray-800' : 'focus:ring-offset-white'}
+                  sm:flex-1
+                `}
+              >
+                <XMarkIcon className="w-4 h-4 opacity-70" />
+                <span>Cancelar</span>
+              </button>
+
+              {/* Botón Agregar - Más prominente */}
+              <button
+                onClick={handleAddToCart}
+                className={`
+                  flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-3.5 rounded-lg font-semibold text-white text-sm sm:text-base
+                  transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] touch-manipulation
+                  ${theme === 'dark'
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600'
+                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500'
+                  }
+                  shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:ring-offset-2
+                  ${theme === 'dark' ? 'focus:ring-offset-gray-800' : 'focus:ring-offset-white'}
+                  sm:flex-[1.5]
+                `}
+              >
+                <ShoppingCartIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span>{isEditing ? 'Actualizar' : 'Agregar'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
