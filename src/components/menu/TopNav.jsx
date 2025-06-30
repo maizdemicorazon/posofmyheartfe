@@ -80,7 +80,7 @@ function TopNav({ selectedCategory, onSelectCategory, onMenuClick }) {
   };
 
   // ✅ CONTAR CATEGORÍAS VISIBLES EN DESKTOP
-  const maxVisibleCategories = isMobile ? 2 : 6;
+  const maxVisibleCategories = isMobile ? 3 : 6;
   const visibleCategories = categories.slice(0, maxVisibleCategories);
   const hiddenCategories = categories.slice(maxVisibleCategories);
 
