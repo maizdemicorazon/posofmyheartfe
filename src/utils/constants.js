@@ -234,7 +234,7 @@ export const FORM_CONFIG = {
 export const CONNECTIVITY_CONFIG = {
   INTERVAL: 600000, // 10 min
   TIMEOUT: 10000, // 10 segundos
-  CHECK_ON_FOCUS: true,
+  CHECK_ON_FOCUS: false,
   CHECK_ON_VISIBILITY_CHANGE: true,
   CHECK_BACKEND_TIMEOUT: 1000
 };
