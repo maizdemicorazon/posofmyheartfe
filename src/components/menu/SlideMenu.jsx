@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
-import CartBadge from '../cart/CartBadge';
 import {
   MoonIcon,
   SunIcon,
@@ -92,18 +91,6 @@ function SlideMenu({ isOpen, onClose, view, setView }) {
 
           {/* Navegación principal */}
           <div className="space-y-2">
-            {/* Productos */}
-            <button
-              onClick={() => {
-                setView('home');
-                onClose();
-              }}
-              className="w-full px-4 py-3 border rounded-lg flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"
-            >
-              <RocketLaunchIcon className="w-5 h-5 text-blue-500" />
-              <span>Productos</span>
-            </button>
-
             {/* Mis Pedidos */}
             <button
               onClick={() => {
@@ -114,21 +101,6 @@ function SlideMenu({ isOpen, onClose, view, setView }) {
             >
               <ShoppingBagIcon className="w-5 h-5 text-green-500" />
               <span>Mis Pedidos</span>
-            </button>
-
-            {/* Carrito */}
-            <button
-              onClick={() => {
-                setView('cart');
-                onClose();
-              }}
-              className="w-full px-4 py-3 border rounded-lg flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium relative"
-            >
-              <ShoppingCartIcon className="w-5 h-5 text-orange-500" />
-              <span>Carrito</span>
-              <div className="ml-auto relative">
-                <CartBadge count={cart.length} variant="green" size="sm" className="relative top-0 right-0" />
-              </div>
             </button>
           </div>
 
