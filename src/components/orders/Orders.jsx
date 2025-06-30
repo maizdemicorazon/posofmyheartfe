@@ -3,12 +3,11 @@ import { useTheme } from '../../context/ThemeContext';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
 import {
-  CalendarIcon,
   ShoppingBagIcon,
   PencilIcon,
   ArrowLeftIcon,
   FunnelIcon,
-  ClockIcon,
+  CalendarIcon,
   UserIcon,
   CurrencyDollarIcon,
   Cog6ToothIcon,
@@ -72,13 +71,7 @@ function Orders({ onBack }) {
     id_payment_method: null,
     items: []
   });
-  const [paymentMethods, setPaymentMethods] = useState([
-    { id_payment_method: 1, name: 'Efectivo' },
-    { id_payment_method: 2, name: 'Tarjeta' },
-    { id_payment_method: 3, name: 'Transferencia' },
-    { id_payment_method: 4, name: 'QR' },
-    { id_payment_method: 5, name: 'Link de Pago' }
-  ]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
 
   const subtractDays = (dias) => {
     const resultado = new Date();
@@ -88,7 +81,7 @@ function Orders({ onBack }) {
 
   // Cargar órdenes al montar el componente
   useEffect(() => {
-    loadOrders();
+    loadOrdersByPeriod();
   }, [filters.period]);
 
   // Aplicar filtros a las órdenes
@@ -97,7 +90,7 @@ function Orders({ onBack }) {
   }, [orders, filters]);
 
   function getStartDateForPeriod(period) {
-      const today = startOfToday(); // Pone la hora a 00:00:00
+      const today = startOfToday();
 
       const periodMap = {
           today: () => today,
@@ -111,7 +104,7 @@ function Orders({ onBack }) {
       return getStartDate();
   }
 
-  const loadOrders = async () => {
+  const loadOrdersByPeriod = async () => {
     try {
       setLoading(true);
       setIsLoading(true);
@@ -271,7 +264,7 @@ function Orders({ onBack }) {
     setExpandedOrders(newExpanded);
   };
 
-  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL - MEJORADA
+  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL
   const handleEditOrderItem = async (order, itemIndex) => {
     try {
       const item = order.items[itemIndex];
@@ -301,19 +294,17 @@ function Orders({ onBack }) {
         return;
       }
 
-      // ✅ ENCONTRAR EL PRODUCTO ESPECÍFICO EN LA RESPUESTA
-      const productInfo = productData.items?.[itemIndex] || productData;
-
       // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL
       const completeProduct = {
         id_product: item.id_product,
         name: item.product_name,
         image: item.product_image,
-        options: productInfo.options || [],
-        flavors: productInfo.flavors || [],
-        // ✅ MAPEAR CORRECTAMENTE LAS OPCIONES DISPONIBLES
+        options: productData.options || [],
+        flavors: productData.flavors || [],
         ...(productData.product || {})
       };
+
+        console.log("completeProduct :::: " + JSON.stringify(completeProduct))
 
       setEditingOrder(order);
       setCurrentItemIndex(itemIndex);
@@ -343,11 +334,11 @@ function Orders({ onBack }) {
       const orderUpdateData = {
         id_payment_method: itemData.selectedPaymentMethod || editingOrder.id_payment_method,
         client_name: itemData.clientName || editingOrder.client_name,
-        comment: itemData.comment || editingOrder.comment,
         updated_items: [{
           id_order_detail: editingItem.id_order_detail || editingItem.id_product,
           id_product: editingItem.id_product,
           id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
+          comment: itemData.comment || editingOrder.comment,
           quantity: itemData.quantity || 1,
           updated_extras: (itemData.selectedExtras || []).map(extra => ({
             id_extra: extra.id_extra,
@@ -358,8 +349,7 @@ function Orders({ onBack }) {
           })),
           ...(itemData.selectedFlavor && {
             id_flavor: itemData.selectedFlavor.id_flavor
-          }),
-          comment: itemData.comment || ''
+          })
         }]
       };
 
@@ -374,7 +364,6 @@ function Orders({ onBack }) {
             ? {
                 ...order,
                 client_name: itemData.clientName || order.client_name,
-                comment: itemData.comment || order.comment,
                 id_payment_method: itemData.selectedPaymentMethod || order.id_payment_method,
                 items: order.items.map((item, index) =>
                   index === currentItemIndex
@@ -382,6 +371,7 @@ function Orders({ onBack }) {
                         ...item,
                         id_variant: itemData.selectedOption?.id_variant || item.id_variant,
                         variant_name: itemData.selectedOption?.size || item.variant_name,
+                        comment: itemData.comment || item.comment,
                         product_price: itemData.selectedOption?.price || item.product_price,
                         flavor: itemData.selectedFlavor || item.flavor,
                         extras: itemData.selectedExtras ? itemData.selectedExtras.map(extra => ({
@@ -403,8 +393,6 @@ function Orders({ onBack }) {
         )
       );
 
-      // Recargar las órdenes para consistencia
-      await loadOrders();
       handleCloseEditModal();
 
       setMessage({
@@ -473,10 +461,10 @@ function Orders({ onBack }) {
   const stats = getFilterStats();
 
   const filterOptions = [
-    { value: 'today', label: 'Hoy', icon: ClockIcon },
-    { value: 'week', label: 'Esta semana', icon: CalendarIcon },
-    { value: 'month', label: 'Este mes', icon: CalendarIcon },
-    { value: 'all', label: 'Todas', icon: ShoppingBagIcon }
+    { value: 'today', label: 'Hoy'},
+    { value: 'week', label: 'Esta semana'},
+    { value: 'month', label: 'Este mes' },
+    { value: 'all', label: 'Todas' }
   ];
 
   const sortOptions = [
@@ -733,7 +721,7 @@ function Orders({ onBack }) {
                             </h3>
                             <div className="flex items-center gap-4 text-sm">
                               <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                <ClockIcon className="w-4 h-4" />
+                                <CalendarIcon className="w-4 h-4" />
                                 {formatDate(order.order_date)}
                               </span>
                               <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -810,7 +798,7 @@ function Orders({ onBack }) {
                     {isExpanded && (
                       <div className={`border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
                         {/* Comentarios de la orden */}
-                        {order.comment && (
+                        {order.items?.map((item, index) => (
                           <div className="px-4 py-3 bg-opacity-50">
                             <div className="flex items-start gap-2">
                               <ChatBubbleLeftRightIcon className={`w-4 h-4 mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -819,12 +807,12 @@ function Orders({ onBack }) {
                                   Comentarios:
                                 </p>
                                 <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                  {order.comment}
+                                  {item.comment}
                                 </p>
                               </div>
                             </div>
                           </div>
-                        )}
+                        ))}
 
                         {/* Lista detallada de productos mejorada */}
                         <div className="p-4">
@@ -852,7 +840,6 @@ function Orders({ onBack }) {
                                         {item.product_name || 'Producto'} • {item.variant_name}
                                       </h5>
                                       <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} space-y-0.5`}>
-                                        <div>Cantidad: {item.quantity}</div>
                                         {/* Extras y salsas */}
                                         {((item.extras && item.extras.length > 0) || (item.sauces && item.sauces.length > 0)) && (
                                           <div>
@@ -989,7 +976,7 @@ function Orders({ onBack }) {
             name: sauce.name,
             image: sauce.image
           })) : []}
-          initialComment={editingOrder.comment || ''}
+          initialComment={editingItem.comment || ''}
           initialClientName={editingOrder.client_name || ''}
           initialPaymentMethod={editingOrder.id_payment_method}
           onSave={handleSaveItemChanges}
