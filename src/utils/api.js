@@ -15,7 +15,7 @@ class ApiService {
   }
 
   /**
-   * ✅ Método base para hacer requests HTTP
+   * ✅ Función base para hacer requests HTTP
    */
   async request(url, options = {}) {
     const config = {
@@ -237,13 +237,6 @@ class ApiService {
 
       if (paymentsRes.status === 'fulfilled') {
         catalogs.paymentMethods = await paymentsRes.value.json();
-      } else {
-        // Fallback para métodos de pago
-        catalogs.paymentMethods = [
-          { id_payment_method: 1, name: 'Efectivo' },
-          { id_payment_method: 2, name: 'Tarjeta' },
-          { id_payment_method: 3, name: 'Transferencia' }
-        ];
       }
 
       return catalogs;
@@ -290,10 +283,8 @@ class ApiService {
    */
   async checkHealth() {
     try {
-      const response = await this.request(`${this.baseURL}/ping`, {
-        timeout: 5000
-      });
-      return response.ok;
+       const response = await this.request(API_ENDPOINTS.PING);
+       return response.json();
     } catch (error) {
       return false;
     }
