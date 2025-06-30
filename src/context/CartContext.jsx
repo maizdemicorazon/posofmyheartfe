@@ -409,17 +409,35 @@ const calculateProductPrice = useCallback((product) => {
     };
   }, [cart]);
 
-  // ✅ GUARDAR ORDEN
-  const saveOrder = useCallback(async () => {
+  // ✅ GUARDAR ORDEN - MODIFICADO PARA ACEPTAR PARÁMETROS
+  const saveOrder = useCallback(async (clientNameParam = null, paymentMethodParam = null) => {
     if (cart.length === 0) {
       setMessage({ text: 'El carrito está vacío', type: 'error' });
       return;
     }
 
-    // ✅ OBTENER CLIENTE Y MÉTODO DE PAGO DEL PRIMER ARTÍCULO
-    const firstItem = cart[0];
-    const idPaymentMethod = firstItem?.selectedPaymentMethod;
-    const clientName = firstItem?.clientName || '';
+    console.log('💾 saveOrder called with params:', {
+      clientNameParam,
+      paymentMethodParam,
+      cartLength: cart.length
+    });
+
+    // ✅ PRIORIZAR PARÁMETROS, LUEGO OBTENER DEL PRIMER ARTÍCULO DEL CARRITO
+    let idPaymentMethod = paymentMethodParam;
+    let clientName = clientNameParam;
+
+    // Si no se proporcionan parámetros, usar el comportamiento anterior
+    if (!idPaymentMethod || !clientName) {
+      const firstItem = cart[0];
+      idPaymentMethod = idPaymentMethod || firstItem?.selectedPaymentMethod;
+      clientName = clientName || firstItem?.clientName || '';
+    }
+
+    console.log('💾 Final values for order:', {
+      idPaymentMethod,
+      clientName,
+      source: paymentMethodParam ? 'modal' : 'cart'
+    });
 
     // 🛡️ VALIDACIÓN: Verificar que el método de pago exista ANTES de enviar.
     if (!idPaymentMethod) {
@@ -438,7 +456,7 @@ const calculateProductPrice = useCallback((product) => {
       // ✅ CONSTRUIR EL CUERPO DE LA PETICIÓN CON CLIENTE
       const orderData = {
         id_payment_method: Number(idPaymentMethod),
-        client_name: clientName.trim() || "Cliente POS",
+        client_name: (clientName || '').trim() || "Cliente POS",
         items: cart.map(item => {
           const mappedItem = {
             id_product: item.id_product,
@@ -447,11 +465,6 @@ const calculateProductPrice = useCallback((product) => {
             sauces: (item.selectedSauces || []).map(s => ({ id_sauce: s.id_sauce })),
             extras: (item.selectedExtras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
           };
-
-         // Añadir método solo si está seleccionado y tiene un ID
-        if (item.selectedPaymentMethod && item.selectedFlavor.id_payment_method) {
-          mappedItem.paymentMethods = item.selectedFlavor.id_payment_method;
-        }
 
           // Añadir sabor solo si está seleccionado y tiene un ID
           if (item.selectedFlavor && item.selectedFlavor.id_flavor) {

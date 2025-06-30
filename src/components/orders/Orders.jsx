@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLoading } from '../../context/LoadingContext';
 import { useMessage } from '../../context/MessageContext';
+import { useCart } from '../../context/CartContext';
 import {
   ShoppingBagIcon,
   PencilIcon,
@@ -23,7 +24,7 @@ import {
   AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline';
 import BusinessHeader from '../menu/BusinessHeader';
-import ProductModal from '../grid/ProductModal';
+import ProductModal from '../modals/ProductModal';
 import Swal from 'sweetalert2';
 import { getOrders, getOrdersByPeriod, updateOrder, getOrderById } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog } from '../../utils/helpers';
@@ -33,6 +34,7 @@ function Orders({ onBack }) {
   const { theme } = useTheme();
   const { setLoading } = useLoading();
   const { setMessage } = useMessage();
+  const { paymentMethods } = useCart();
 
   // Estados principales
   const [orders, setOrders] = useState([]);
@@ -71,12 +73,200 @@ function Orders({ onBack }) {
     id_payment_method: null,
     items: []
   });
-  const [paymentMethods, setPaymentMethods] = useState([]);
 
   const subtractDays = (dias) => {
     const resultado = new Date();
     resultado.setDate(resultado.getDate() - dias);
     return resultado;
+  };
+
+  // ✅ MODAL COMBINADO PARA CLIENTE Y MÉTODO DE PAGO (IGUAL QUE EN CART)
+  const showClientAndPaymentModal = async (initialClientName = '', initialPaymentMethod = null) => {
+    if (!paymentMethods || paymentMethods.length === 0) {
+      await Swal.fire({
+        title: 'Error',
+        text: 'No hay métodos de pago disponibles',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+      return null;
+    }
+
+    // Variable para almacenar la selección
+    let selectedPaymentMethodId = initialPaymentMethod || null;
+
+    // HTML personalizado para el modal
+    const modalHtml = `
+      <div class="space-y-6">
+        <!-- Sección de Cliente -->
+        <div>
+          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
+            👤 Nombre del Cliente (Opcional)
+          </label>
+          <input
+            id="swal-client-name"
+            type="text"
+            placeholder="Ej: Juan Pérez"
+            value="${initialClientName || ''}"
+            class="w-full px-4 py-3 rounded-lg border text-center ${theme === 'dark'
+              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'}
+              focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
+        </div>
+
+        <!-- Sección de Métodos de Pago -->
+        <div>
+          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
+            💳 Método de Pago <span class="text-red-500">*</span>
+          </label>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="payment-methods-grid">
+            ${paymentMethods.map(method => `
+              <button
+                type="button"
+                data-payment-id="${method.id_payment_method}"
+                class="payment-method-btn relative flex flex-col items-center gap-2 p-3 border-2 rounded-lg transition-all min-h-[4rem] ${
+                  (initialPaymentMethod && initialPaymentMethod == method.id_payment_method)
+                    ? `border-green-500 ${theme === 'dark' ? 'bg-green-900/30' : 'bg-green-50'}`
+                    : `border-gray-300 ${theme === 'dark' ? 'border-gray-600 hover:border-gray-500 active:bg-gray-700' : 'hover:border-gray-400 active:bg-gray-50'}`
+                }"
+              >
+                <div class="payment-icon w-8 h-8 rounded-lg flex items-center justify-center ${
+                  (initialPaymentMethod && initialPaymentMethod == method.id_payment_method)
+                    ? 'bg-green-500 text-white'
+                    : theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200'
+                }">
+                  ${method.name.toLowerCase().includes('efectivo') ? '💵' :
+                    method.name.toLowerCase().includes('tarjeta') ? '💳' :
+                    method.name.toLowerCase().includes('clabe') ? '🏦' :
+                    method.name.toLowerCase().includes('qr') ? '📱' :
+                    method.name.toLowerCase().includes('link') ? '🔗' : '💵'}
+                </div>
+                <div class="text-center">
+                  <div class="font-medium text-xs leading-tight">${method.name}</div>
+                </div>
+                <div class="payment-check absolute -top-1 -right-1 ${
+                  (initialPaymentMethod && initialPaymentMethod == method.id_payment_method) ? '' : 'hidden'
+                }">
+                  <div class="w-5 h-5 bg-green-500 text-white rounded-full flex items-center justify-center">
+                    <span class="text-xs">✓</span>
+                  </div>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+          <div id="payment-error" class="text-red-500 text-sm mt-2 hidden">
+            Selecciona un método de pago
+          </div>
+        </div>
+      </div>
+    `;
+
+    const result = await Swal.fire({
+      title: '🔄 Actualizar Orden',
+      html: modalHtml,
+      showCancelButton: true,
+      confirmButtonText: '✅ Actualizar',
+      cancelButtonText: '❌ Cancelar',
+      background: theme === 'dark' ? '#1f2937' : '#ffffff',
+      color: theme === 'dark' ? '#f9fafb' : '#111827',
+      customClass: {
+        confirmButton: `px-6 py-3 ${theme === 'dark'
+          ? 'bg-blue-600 hover:bg-blue-700'
+          : 'bg-blue-500 hover:bg-blue-600'} text-white rounded-lg font-medium transition-colors`,
+        cancelButton: `px-6 py-3 ${theme === 'dark'
+          ? 'bg-gray-600 hover:bg-gray-700'
+          : 'bg-gray-500 hover:bg-gray-600'} text-white rounded-lg font-medium transition-colors mr-3`,
+        popup: 'max-w-md sm:max-w-lg'
+      },
+      buttonsStyling: false,
+      allowOutsideClick: false,
+      allowEscapeKey: true,
+      didOpen: () => {
+        // Configurar listeners para métodos de pago
+        const paymentButtons = document.querySelectorAll('.payment-method-btn');
+        const paymentError = document.getElementById('payment-error');
+
+        function selectPaymentMethod(button, paymentId) {
+          // Deseleccionar todos
+          paymentButtons.forEach(btn => {
+            btn.classList.remove('border-green-500');
+            btn.classList.add('border-gray-300');
+            if (theme === 'dark') {
+              btn.classList.add('border-gray-600');
+              btn.classList.remove('bg-green-900/30');
+            } else {
+              btn.classList.remove('bg-green-50');
+            }
+            const icon = btn.querySelector('.payment-icon');
+            const check = btn.querySelector('.payment-check');
+            icon.classList.remove('bg-green-500', 'text-white');
+            icon.classList.add(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
+            check.classList.add('hidden');
+          });
+
+          // Seleccionar actual
+          button.classList.remove('border-gray-300');
+          if (theme === 'dark') {
+            button.classList.remove('border-gray-600');
+            button.classList.add('bg-green-900/30');
+          } else {
+            button.classList.add('bg-green-50');
+          }
+          button.classList.add('border-green-500');
+          const icon = button.querySelector('.payment-icon');
+          const check = button.querySelector('.payment-check');
+          icon.classList.remove(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
+          icon.classList.add('bg-green-500', 'text-white');
+          check.classList.remove('hidden');
+
+          selectedPaymentMethodId = parseInt(paymentId);
+          paymentError.classList.add('hidden');
+
+          console.log('✅ Payment method selected:', selectedPaymentMethodId);
+        }
+
+        paymentButtons.forEach(button => {
+          button.addEventListener('click', () => {
+            const paymentId = button.getAttribute('data-payment-id');
+            selectPaymentMethod(button, paymentId);
+          });
+        });
+
+        console.log('🔧 Modal opened with initial payment method:', selectedPaymentMethodId);
+      },
+      preConfirm: () => {
+        const clientName = document.getElementById('swal-client-name').value.trim();
+        const paymentError = document.getElementById('payment-error');
+
+        console.log('🔍 Validating payment method:', selectedPaymentMethodId);
+
+        // Validar método de pago
+        if (!selectedPaymentMethodId) {
+          paymentError.classList.remove('hidden');
+          console.log('❌ No payment method selected');
+          return false;
+        }
+
+        console.log('✅ Validation passed, returning:', {
+          clientName,
+          selectedPaymentMethod: selectedPaymentMethodId
+        });
+
+        return {
+          clientName,
+          selectedPaymentMethod: selectedPaymentMethodId
+        };
+      }
+    });
+
+    if (result.isConfirmed) {
+      return result.value;
+    }
+
+    return null;
   };
 
   // Cargar órdenes al montar el componente
@@ -294,17 +484,38 @@ function Orders({ onBack }) {
         return;
       }
 
-      // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL
+      // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL CON PRECIOS CORRECTOS
       const completeProduct = {
         id_product: item.id_product,
         name: item.product_name,
         image: item.product_image,
+        price: item.product_price, // ✅ PRECIO BASE DEL PRODUCTO
+        product_price: item.product_price, // ✅ PRECIO BASE ALTERNATIVO
         options: productData.options || [],
         flavors: productData.flavors || [],
         ...(productData.product || {})
       };
 
-        console.log("completeProduct :::: " + JSON.stringify(completeProduct))
+      // ✅ CONSTRUIR OPCIÓN SELECCIONADA CON PRECIO CORRECTO
+      const selectedOption = item.id_variant ? {
+        id_variant: item.id_variant,
+        size: item.variant_name,
+        price: item.product_price // ✅ USAR EL PRECIO DEL ITEM
+      } : null;
+
+      // ✅ CONSTRUIR SABOR SELECCIONADO SI EXISTE
+      const selectedFlavor = item.flavor ? {
+        id_flavor: item.flavor.id_flavor,
+        name: item.flavor.name
+      } : null;
+
+      console.log("✅ Complete product with pricing:", {
+        completeProduct,
+        selectedOption,
+        selectedFlavor,
+        basePrice: item.product_price,
+        variantPrice: item.product_price
+      });
 
       setEditingOrder(order);
       setCurrentItemIndex(itemIndex);
@@ -319,21 +530,33 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS EN PRODUCTO INDIVIDUAL - MEJORADA
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS CON MODAL - MODIFICADA
   const handleSaveItemChanges = async (itemData) => {
     try {
+      // Mostrar modal para capturar cliente y método de pago
+      const modalResult = await showClientAndPaymentModal(
+        editingOrder.client_name,
+        editingOrder.id_payment_method
+      );
+
+      // Si el usuario canceló, no continúa
+      if (!modalResult) {
+        return;
+      }
+
       setLoading(true);
 
-      debugLog('ORDERS', 'Saving item changes:', {
+      debugLog('ORDERS', 'Saving item changes with modal data:', {
         orderId: editingOrder.id_order,
         itemIndex: currentItemIndex,
-        itemData
+        itemData,
+        modalResult
       });
 
       // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API
       const orderUpdateData = {
-        id_payment_method: itemData.selectedPaymentMethod || editingOrder.id_payment_method,
-        client_name: itemData.clientName || editingOrder.client_name,
+        id_payment_method: modalResult.selectedPaymentMethod,
+        client_name: modalResult.clientName || 'Cliente POS',
         updated_items: [{
           id_order_detail: editingItem.id_order_detail || editingItem.id_product,
           id_product: editingItem.id_product,
@@ -363,8 +586,8 @@ function Orders({ onBack }) {
           order.id_order === editingOrder.id_order
             ? {
                 ...order,
-                client_name: itemData.clientName || order.client_name,
-                id_payment_method: itemData.selectedPaymentMethod || order.id_payment_method,
+                client_name: modalResult.clientName || order.client_name,
+                id_payment_method: modalResult.selectedPaymentMethod,
                 items: order.items.map((item, index) =>
                   index === currentItemIndex
                     ? {
@@ -602,7 +825,7 @@ function Orders({ onBack }) {
                     }`}
                   >
                     <option value="">Todos los métodos</option>
-                    {paymentMethods.map(method => (
+                    {paymentMethods && paymentMethods.map(method => (
                       <option key={method.id_payment_method} value={method.id_payment_method}>
                         {method.name}
                       </option>
@@ -956,19 +1179,26 @@ function Orders({ onBack }) {
         )}
       </div>
 
-      {/* ✅ Modal de edición de producto individual MEJORADO */}
+      {/* ✅ Modal de edición de producto individual MODIFICADO CON DATOS COMPLETOS */}
       {editingProduct && editingItem && editingOrder && (
         <ProductModal
           isOpen={true}
           onClose={handleCloseEditModal}
           product={editingProduct}
           initialQuantity={editingItem.quantity || 1}
-          initialOptions={editingProduct.options || []}
-          initialFlavors={editingProduct.flavors || []}
+          initialOptions={editingItem.id_variant ? [{
+            id_variant: editingItem.id_variant,
+            size: editingItem.variant_name,
+            price: editingItem.product_price // ✅ PRECIO CORRECTO DEL RESPONSE
+          }] : (editingProduct.options || [])}
+          initialFlavors={editingItem.flavor ? [{
+            id_flavor: editingItem.flavor.id_flavor,
+            name: editingItem.flavor.name
+          }] : (editingProduct.flavors || [])}
           initialExtras={editingItem.extras ? editingItem.extras.map(extra => ({
             id_extra: extra.id_extra,
             name: extra.name,
-            price: extra.actual_price,
+            price: extra.actual_price, // ✅ USAR actual_price del response
             quantity: extra.quantity || 1
           })) : []}
           initialSauces={editingItem.sauces ? editingItem.sauces.map(sauce => ({
@@ -977,8 +1207,6 @@ function Orders({ onBack }) {
             image: sauce.image
           })) : []}
           initialComment={editingItem.comment || ''}
-          initialClientName={editingOrder.client_name || ''}
-          initialPaymentMethod={editingOrder.id_payment_method}
           onSave={handleSaveItemChanges}
           isEditing={true}
         />

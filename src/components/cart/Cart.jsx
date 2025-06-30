@@ -6,7 +6,7 @@ import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
 function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
-  const { cart, removeFromCart, startEditProduct, saveOrder, clearCart, calculateProductPrice, cartTotal } = useCart();
+  const { cart, removeFromCart, startEditProduct, saveOrder, clearCart, calculateProductPrice, cartTotal, paymentMethods } = useCart();
   const { theme } = useTheme();
   const hasProducts = cart && cart.length > 0;
 
@@ -97,6 +97,231 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
         }
       };
     });
+  };
+
+  // ✅ MODAL COMBINADO PARA CLIENTE Y MÉTODO DE PAGO
+  const showClientAndPaymentModal = async () => {
+    if (!paymentMethods || paymentMethods.length === 0) {
+      await Swal.fire({
+        title: 'Error',
+        text: 'No hay métodos de pago disponibles',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+      return null;
+    }
+
+    // Variable para almacenar la selección
+    let selectedPaymentMethodId = null;
+
+    // HTML personalizado para el modal
+    const modalHtml = `
+      <div class="space-y-6">
+        <!-- Sección de Cliente -->
+        <div>
+          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
+            👤 Nombre del Cliente (Opcional)
+          </label>
+          <input
+            id="swal-client-name"
+            type="text"
+            placeholder="Ej: Juan Pérez"
+            value=""
+            class="w-full px-4 py-3 rounded-lg border text-center ${theme === 'dark'
+              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'}
+              focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
+        </div>
+
+        <!-- Sección de Métodos de Pago -->
+        <div>
+          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
+            💳 Método de Pago <span class="text-red-500">*</span>
+          </label>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="payment-methods-grid">
+            ${paymentMethods.map(method => `
+              <button
+                type="button"
+                data-payment-id="${method.id_payment_method}"
+                class="payment-method-btn relative flex flex-col items-center gap-2 p-3 border-2 rounded-lg transition-all min-h-[4rem] border-gray-300 ${theme === 'dark'
+                  ? 'border-gray-600 hover:border-gray-500 active:bg-gray-700'
+                  : 'hover:border-gray-400 active:bg-gray-50'}"
+              >
+                <div class="payment-icon w-8 h-8 rounded-lg flex items-center justify-center ${theme === 'dark'
+                  ? 'bg-gray-600'
+                  : 'bg-gray-200'}">
+                  ${method.name.toLowerCase().includes('efectivo') ? '💵' :
+                    method.name.toLowerCase().includes('tarjeta') ? '💳' :
+                    method.name.toLowerCase().includes('clabe') ? '🏦' :
+                    method.name.toLowerCase().includes('qr') ? '📱' :
+                    method.name.toLowerCase().includes('link') ? '🔗' : '💵'}
+                </div>
+                <div class="text-center">
+                  <div class="font-medium text-xs leading-tight">${method.name}</div>
+                </div>
+                <div class="payment-check absolute -top-1 -right-1 hidden">
+                  <div class="w-5 h-5 bg-green-500 text-white rounded-full flex items-center justify-center">
+                    <span class="text-xs">✓</span>
+                  </div>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+          <div id="payment-error" class="text-red-500 text-sm mt-2 hidden">
+            Selecciona un método de pago
+          </div>
+        </div>
+      </div>
+    `;
+
+    const result = await Swal.fire({
+      title: '🛒 Finalizar Pedido',
+      html: modalHtml,
+      showCancelButton: true,
+      confirmButtonText: '✅ Guardar Orden',
+      cancelButtonText: '❌ Cancelar',
+      background: theme === 'dark' ? '#1f2937' : '#ffffff',
+      color: theme === 'dark' ? '#f9fafb' : '#111827',
+      customClass: {
+        confirmButton: `px-6 py-3 ${theme === 'dark'
+          ? 'bg-green-600 hover:bg-green-700'
+          : 'bg-green-500 hover:bg-green-600'} text-white rounded-lg font-medium transition-colors`,
+        cancelButton: `px-6 py-3 ${theme === 'dark'
+          ? 'bg-gray-600 hover:bg-gray-700'
+          : 'bg-gray-500 hover:bg-gray-600'} text-white rounded-lg font-medium transition-colors mr-3`,
+        popup: 'max-w-md sm:max-w-lg'
+      },
+      buttonsStyling: false,
+      allowOutsideClick: false,
+      allowEscapeKey: true,
+      didOpen: () => {
+        // Configurar listeners para métodos de pago
+        const paymentButtons = document.querySelectorAll('.payment-method-btn');
+        const paymentError = document.getElementById('payment-error');
+
+        function selectPaymentMethod(button, paymentId) {
+          // Deseleccionar todos
+          paymentButtons.forEach(btn => {
+            btn.classList.remove('border-green-500');
+            btn.classList.add('border-gray-300');
+            if (theme === 'dark') {
+              btn.classList.add('border-gray-600');
+              btn.classList.remove('bg-green-900/30');
+            } else {
+              btn.classList.remove('bg-green-50');
+            }
+            const icon = btn.querySelector('.payment-icon');
+            const check = btn.querySelector('.payment-check');
+            icon.classList.remove('bg-green-500', 'text-white');
+            icon.classList.add(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
+            check.classList.add('hidden');
+          });
+
+          // Seleccionar actual
+          button.classList.remove('border-gray-300');
+          if (theme === 'dark') {
+            button.classList.remove('border-gray-600');
+            button.classList.add('bg-green-900/30');
+          } else {
+            button.classList.add('bg-green-50');
+          }
+          button.classList.add('border-green-500');
+          const icon = button.querySelector('.payment-icon');
+          const check = button.querySelector('.payment-check');
+          icon.classList.remove(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
+          icon.classList.add('bg-green-500', 'text-white');
+          check.classList.remove('hidden');
+
+          selectedPaymentMethodId = parseInt(paymentId);
+          paymentError.classList.add('hidden');
+
+          console.log('✅ Payment method selected:', selectedPaymentMethodId);
+        }
+
+        paymentButtons.forEach(button => {
+          button.addEventListener('click', () => {
+            const paymentId = button.getAttribute('data-payment-id');
+            selectPaymentMethod(button, paymentId);
+          });
+        });
+
+        console.log('🔧 Modal opened for order save');
+      },
+      preConfirm: () => {
+        const clientName = document.getElementById('swal-client-name').value.trim();
+        const paymentError = document.getElementById('payment-error');
+
+        console.log('🔍 Validating payment method:', selectedPaymentMethodId);
+
+        // Validar método de pago
+        if (!selectedPaymentMethodId) {
+          paymentError.classList.remove('hidden');
+          console.log('❌ No payment method selected');
+          return false;
+        }
+
+        console.log('✅ Validation passed, returning:', {
+          clientName,
+          selectedPaymentMethod: selectedPaymentMethodId
+        });
+
+        return {
+          clientName,
+          selectedPaymentMethod: selectedPaymentMethodId
+        };
+      }
+    });
+
+    if (result.isConfirmed) {
+      return result.value;
+    }
+
+    return null;
+  };
+
+  // ✅ HANDLER PARA GUARDAR ORDEN CON MODAL
+  const handleSaveOrder = async () => {
+    try {
+      // Mostrar modal para capturar cliente y método de pago
+      const modalResult = await showClientAndPaymentModal();
+
+      // Si el usuario canceló, no continúa
+      if (!modalResult) {
+        return;
+      }
+
+      console.log('💾 Saving order with modal data:', {
+        clientName: modalResult.clientName,
+        selectedPaymentMethod: modalResult.selectedPaymentMethod,
+        cartItemsCount: cart.length,
+        cartTotal: cartTotal
+      });
+
+      // ✅ PASAR CORRECTAMENTE LOS PARÁMETROS A saveOrder
+      await saveOrder(
+        modalResult.clientName || '',
+        modalResult.selectedPaymentMethod
+      );
+
+      // Cerrar carrito en mobile después de guardar
+      if (typeof onCloseCart === 'function' && isMobile) {
+        setTimeout(() => onCloseCart(), 1500);
+      }
+
+    } catch (error) {
+      console.error('❌ Error saving order:', error);
+      await Swal.fire({
+        title: 'Error',
+        text: 'Error al guardar la orden',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+    }
   };
 
   const handleClearCart = async () => {
@@ -568,14 +793,10 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
             </div>
 
             <div className="space-y-3">
+              {/* ✅ BOTÓN MODIFICADO PARA USAR EL MODAL */}
               <button
                 className={`w-full bg-green-600 text-white rounded-lg ${isMobile ? 'py-3 text-base' : 'py-4 text-lg'} font-semibold hover:bg-green-700 transition-colors`}
-                onClick={() => {
-                  saveOrder();
-                  if (typeof onCloseCart === 'function' && isMobile) {
-                    setTimeout(() => onCloseCart(), 1500);
-                  }
-                }}
+                onClick={handleSaveOrder}
               >
                 Guardar Orden
               </button>

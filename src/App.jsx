@@ -5,7 +5,7 @@ import { LoadingProvider } from './context/LoadingContext';
 import { MessageProvider } from './context/MessageContext';
 import Layout from './Layouts/Layout';
 import Home from './components/Home';
-import ProductModal from './components/grid/ProductModal';
+import ProductModal from './components/modals/ProductModal';
 import Orders from './components/orders/Orders';
 import DailyEarnings from './components/metrics/DailyEarnings';
 import EarningsChart from './components/metrics/EarningsChart';

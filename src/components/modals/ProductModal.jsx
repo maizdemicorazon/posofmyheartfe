@@ -11,8 +11,7 @@ import {
   CreditCardIcon,
   BanknotesIcon,
   QrCodeIcon,
-  LinkIcon,
-  UserIcon
+  LinkIcon
 } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
@@ -28,8 +27,6 @@ function ProductModal({
   initialExtras = [],
   initialSauces = [],
   initialComment = '',
-  initialClientName = '',
-  initialPaymentMethod = null,
   onSave,
   isEditing = false,
   onAddedToCart
@@ -44,9 +41,7 @@ function ProductModal({
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedSauces, setSelectedSauces] = useState([]);
   const [comment, setComment] = useState('');
-  const [clientName, setClientName] = useState('');
   const [errors, setErrors] = useState({});
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
 
   // Estado para manejo de imagen del producto
   const [productImageState, setProductImageState] = useState({
@@ -141,7 +136,6 @@ function ProductModal({
       // 1. Restablecer estados básicos
       setQuantity(initialQuantity || 1);
       setComment(initialComment || '');
-      setClientName(initialClientName || '');
       setErrors({});
 
       // Reset imagen
@@ -165,24 +159,12 @@ function ProductModal({
 
       console.log('🔄 Mapped initial data:', {
         isEditing,
-        initialPaymentMethod,
-        initialClientName,
         paymentMethodsLength: paymentMethods?.length || 0,
         extrasWithQuantities,
         initialSauces
       });
 
-      // 4. ✅ CONFIGURAR MÉTODO DE PAGO
-      if (isEditing && initialPaymentMethod) {
-        setSelectedPaymentMethod(initialPaymentMethod);
-      } else {
-        const defaultPaymentMethod = paymentMethods && paymentMethods.length > 0
-          ? paymentMethods[0]?.id_payment_method
-          : null;
-        setSelectedPaymentMethod(defaultPaymentMethod);
-      }
-
-      // 5. ✅ CONFIGURAR OPCIONES Y SABORES
+      // 4. ✅ CONFIGURAR OPCIONES Y SABORES
       // Para opciones (tamaños)
       let optionToSelect = null;
       if (initialOptions && initialOptions.length > 0) {
@@ -220,12 +202,10 @@ function ProductModal({
       setSelectedExtras([]);
       setSelectedSauces([]);
       setComment('');
-      setClientName('');
-      setSelectedPaymentMethod(null);
       setErrors({});
       setProductImageState({ hasError: false, errorCount: 0, finalImageSrc: null });
     }
-  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, initialClientName, initialPaymentMethod, isEditing, paymentMethods]);
+  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, isEditing, paymentMethods]);
 
   // ✅ MANEJADORES DE CAMBIO PARA EXTRAS CON CANTIDAD
   const handleExtraQuantityChange = (extra, newQuantity) => {
@@ -276,7 +256,7 @@ function ProductModal({
     return total * quantity;
   };
 
-  // ✅ VALIDACIÓN ANTES DE AGREGAR AL CARRITO
+  // ✅ VALIDACIÓN ANTES DE AGREGAR AL CARRITO (SIN MÉTODO DE PAGO)
   const validateForm = () => {
     const newErrors = {};
 
@@ -294,16 +274,29 @@ function ProductModal({
       newErrors.flavor = 'Selecciona un sabor';
     }
 
-    // Validar método de pago
-    if (!selectedPaymentMethod) {
-      newErrors.paymentMethod = 'Selecciona un método de pago';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // ✅ MANEJAR AGREGAR AL CARRITO
+  // ✅ GENERAR ÍCONO DEL MÉTODO DE PAGO (PARA EXPORTAR)
+  const getPaymentMethodIcon = (methodName) => {
+    const name = methodName.toLowerCase();
+    if (name.includes(PAYMENT_METHODS.EFECTIVO)) {
+      return <CurrencyDollarIcon className="w-4 h-4" />;
+    } else if (name.includes(PAYMENT_METHODS.TB)) {
+      return <CreditCardIcon className="w-4 h-4" />;
+    } else if (name.includes(PAYMENT_METHODS.CLABE)) {
+      return <BanknotesIcon className="w-4 h-4" />;
+    } else if (name.includes(PAYMENT_METHODS.QR)) {
+      return <QrCodeIcon className="w-4 h-4" />;
+    } else if (name.includes(PAYMENT_METHODS.LINK)) {
+      return <LinkIcon className="w-4 h-4" />;
+    } else {
+      return <CurrencyDollarIcon className="w-4 h-4" />;
+    }
+  };
+
+  // ✅ MANEJAR AGREGAR AL CARRITO (SIN MODAL DE  E/PAGO)
   const handleAddToCart = async () => {
     if (!validateForm()) {
       const firstErrorKey = Object.keys(errors)[0];
@@ -326,15 +319,13 @@ function ProductModal({
         selectedFlavor,
         selectedExtras,
         selectedSauces,
-        selectedPaymentMethod,
         comment: comment.trim(),
-        clientName: clientName.trim(),
         totalPrice: calculateTotalPrice(),
         // ✅ MANTENER REFERENCIA AL PRODUCTO COMPLETO
         product: product
       };
 
-      console.log('🛒 Adding to cart with complete data:', productToAdd);
+      console.log('🛒 Adding to cart with product data:', productToAdd);
 
       if (isEditing && onSave) {
         await onSave(productToAdd);
@@ -449,116 +440,6 @@ function ProductModal({
         {/* CONTENIDO SCROLLEABLE */}
         <div className="flex-1 px-3 sm:px-4 py-2 sm:py-3 overflow-y-auto min-h-0">
           <div className="space-y-3 sm:space-y-4 pb-4">
-
-            {/* ✅ SECCIÓN DE MÉTODOS DE PAGO */}
-            <div data-error="paymentMethod">
-              <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
-                Método de Pago
-              </h3>
-
-              {!paymentMethods || paymentMethods.length === 0 ? (
-                <div className={`p-3 border rounded-lg border-red-300 ${
-                  theme === 'dark' ? 'bg-red-900/20' : 'bg-red-50'
-                }`}>
-                  <p className={`text-sm ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}`}>
-                    No hay métodos de pago disponibles
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {paymentMethods.map(method => {
-                    const isSelected = selectedPaymentMethod === method.id_payment_method;
-                    return (
-                      <button
-                        key={method.id_payment_method}
-                        type="button"
-                        onClick={() => {
-                          setSelectedPaymentMethod(method.id_payment_method);
-                          setErrors(prev => ({ ...prev, paymentMethod: '' }));
-                        }}
-                        className={`
-                          relative flex flex-col items-center gap-2 p-2.5 sm:p-3 border-2 rounded-lg transition-all min-h-[3.5rem] sm:min-h-[4rem]
-                          ${isSelected
-                            ? `border-green-500 ${theme === 'dark' ? 'bg-green-900/30' : 'bg-green-50'} transform scale-105`
-                            : `border-gray-300 ${theme === 'dark' ? 'border-gray-600 hover:border-gray-500 active:bg-gray-700' : 'hover:border-gray-400 active:bg-gray-50'}`
-                          }
-                        `}
-                      >
-                        {/* Ícono del método de pago */}
-                        <div className={`
-                          flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center
-                          ${isSelected
-                            ? theme === 'dark' ? 'bg-green-800' : 'bg-green-500 text-white'
-                            : theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200'
-                          }
-                        `}>
-                          {method.name.toLowerCase().includes(PAYMENT_METHODS.EFECTIVO) ? (
-                            <CurrencyDollarIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          ) : method.name.toLowerCase().includes(PAYMENT_METHODS.TB) ? (
-                            <CreditCardIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          ) : method.name.toLowerCase().includes(PAYMENT_METHODS.CLABE) ? (
-                            <BanknotesIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          ) : method.name.toLowerCase().includes(PAYMENT_METHODS.QR) ? (
-                            <QrCodeIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          ) : method.name.toLowerCase().includes(PAYMENT_METHODS.LINK) ? (
-                            <LinkIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          ) : (
-                             <CurrencyDollarIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          )}
-                        </div>
-
-                        <div className="text-center">
-                          <div className="font-medium text-xs sm:text-sm leading-tight">{method.name}</div>
-                        </div>
-
-                        {isSelected && (
-                          <div className="absolute -top-1 -right-1">
-                            <CheckIcon className="w-4 h-4 bg-green-500 text-white rounded-full p-0.5" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {errors.paymentMethod && (
-                <p className="text-red-500 text-xs sm:text-sm mt-2">{errors.paymentMethod}</p>
-              )}
-            </div>
-
-            {/* ✅ SECCIÓN DE CLIENTE */}
-            <div data-error="clientName">
-              <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-purple-400' : 'bg-purple-500'}`}></div>
-                Cliente
-              </h3>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <UserIcon className={`h-4 w-4 sm:h-5 sm:w-5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`} />
-                </div>
-                <input
-                  type="text"
-                  value={clientName}
-                  onChange={(e) => {
-                    setClientName(e.target.value);
-                    setErrors(prev => ({ ...prev, clientName: '' }));
-                  }}
-                  placeholder="Nombre del cliente"
-                  className={`
-                    block w-full pl-10 pr-3 py-2.5 sm:py-3 border rounded-lg text-sm
-                    ${theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-purple-500'
-                    }
-                    focus:outline-none focus:ring-2 focus:ring-purple-500/20 touch-manipulation
-                  `}
-                />
-              </div>
-              {errors.clientName && (
-                <p className="text-red-500 text-xs sm:text-sm mt-2">{errors.clientName}</p>
-              )}
-            </div>
 
             {/* TAMAÑOS/OPCIONES MEJORADOS */}
             {availableOptions.length > 0 && (

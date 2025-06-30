@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import ProductGrid from './grid/ProductGrid';
-import ProductModal from './grid/ProductModal';
+import ProductModal from './modals/ProductModal';
 import Cart from './cart/Cart';
 import CartBadge from './cart/CartBadge';
 import { BREAKPOINTS } from '../utils/constants';
