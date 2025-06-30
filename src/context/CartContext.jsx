@@ -1,16 +1,12 @@
-// src/context/CartContext.jsx
-
 import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useLoading } from './LoadingContext';
 import { useMessage } from './MessageContext';
 import Swal from 'sweetalert2';
 
-// ✅ IMPORTAR NUEVAS UTILIDADES DE API
 import {
   createOrder,
   getOrders,
-  updateOrder,
-  getOrderById
+  updateOrder
 } from '../utils/api';
 
 // Crear el contexto
@@ -127,14 +123,14 @@ const calculateProductPrice = useCallback((product) => {
     }, 0);
   }, [cart, calculateProductPrice]);
 
-  // ✅ FUNCIÓN PARA AGREGAR AL CARRITO - INCLUYE CLIENTE
+  // ✅ FUNCIÓN PARA AGREGAR AL CARRITO
   const addToCart = useCallback((item) => {
     console.log('🔄 Adding to cart - Input item:', item);
 
     // ✅ GENERAR ID ÚNICO MÁS ROBUSTO PARA EVITAR DUPLICADOS
     const uniqueId = `cart-${Date.now()}-${Math.floor(Math.random() * 10000)}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // ✅ MAPEAR ESTRUCTURA PARA COMPATIBILIDAD CON Cart.jsx - INCLUYE CLIENTE
+    // ✅ MAPEAR ESTRUCTURA PARA COMPATIBILIDAD
     const newItem = {
       // ✅ ID único ROBUSTO para el carrito
       id: uniqueId,
@@ -222,9 +218,9 @@ const calculateProductPrice = useCallback((product) => {
       if (item.id === editingProduct.id) {
         console.log('🎯 Found item to update by unique cart ID:', item.id);
 
-        // ✅ CREAR ITEM ACTUALIZADO CON MAPEO COMPLETO - INCLUYE CLIENTE
+        // ✅ CREAR ITEM ACTUALIZADO CON MAPEO COMPLETO
         const updatedCartItem = {
-          // ✅ CRÍTICO: Mantener EL MISMO ID único del carrito
+          // ✅ Mantener EL MISMO ID único del carrito
           id: editingProduct.id,
 
           // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR
@@ -307,7 +303,7 @@ const calculateProductPrice = useCallback((product) => {
     console.log('Product edit cancelled');
   }, []);
 
-  // ✅ FUNCIÓN PARA TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND - INCLUYE CLIENTE
+  // ✅ FUNCIÓN PARA TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND
   const transformOrderData = useCallback((orderData = null) => {
     // Si no se proporciona orderData, transformar desde el carrito
     if (!orderData) {
@@ -330,7 +326,6 @@ const calculateProductPrice = useCallback((product) => {
           if (item.selectedPaymentMethod) {
             orderItem.id_payment_method = item.selectedFlavor.id_payment_method;
           }
-
 
           // Agregar sabor seleccionado
           if (item.selectedFlavor) {
@@ -361,7 +356,6 @@ const calculateProductPrice = useCallback((product) => {
     return {
       id_order: orderData.id_order,
       client_name: orderData.client_name || '',
-      comment: orderData.comment || '',
 
       // ✅ MAPEO CORRECTO: bill → total_amount
       total_amount: Number(orderData.bill || orderData.total_amount || 0),
@@ -380,10 +374,10 @@ const calculateProductPrice = useCallback((product) => {
         id_order_detail: item.id_order_detail || `temp-${index}`,
         id_product: item.id_product,
         id_variant: item.id_variant,
+        comment: item.comment || '',
         quantity: Number(item.quantity || 1),
         unit_price: Number(item.product_price || item.unit_price || 0),
         total_price: Number(item.product_price || item.total_price || 0),
-        comment: item.comment || '',
 
         // ✅ Estructura del producto (anidada para compatibilidad)
         product: {
@@ -415,44 +409,6 @@ const calculateProductPrice = useCallback((product) => {
     };
   }, [cart]);
 
-  // ✅ CARGAR TODAS LAS ÓRDENES
-  const loadAllOrders = useCallback(async () => {
-    setLoading(true);
-    try {
-      console.log('📡 Cargando órdenes desde CartContext...');
-
-      const ordersData = await getOrders();
-      console.log('📋 Raw orders data:', ordersData);
-
-      const transformedOrders = ordersData.map(order => transformOrderData(order));
-
-      console.log('✅ Transformed orders:', transformedOrders);
-      setOrders(transformedOrders);
-      setMessage(null);
-      return transformedOrders;
-
-    } catch (error) {
-      console.error('❌ Error al cargar órdenes:', error);
-      let errorMessage = 'Error al cargar las órdenes';
-      if (error.name === 'TimeoutError') {
-        errorMessage = 'Tiempo de espera agotado al cargar órdenes';
-      } else if (error.message.includes('Failed to fetch')) {
-        errorMessage = 'No se puede conectar al servidor para cargar órdenes';
-      }
-      await Swal.fire({
-        title: 'Error de conexión',
-        text: errorMessage,
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        confirmButtonColor: '#ef4444'
-      });
-      setMessage({ text: errorMessage, type: 'error' });
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setMessage, transformOrderData]);
-
   // ✅ GUARDAR ORDEN
   const saveOrder = useCallback(async () => {
     if (cart.length === 0) {
@@ -483,16 +439,16 @@ const calculateProductPrice = useCallback((product) => {
       const orderData = {
         id_payment_method: Number(idPaymentMethod),
         client_name: clientName.trim() || "Cliente POS",
-        comment: cart.map(item => item.comment).filter(c => c).join('; '),
         items: cart.map(item => {
           const mappedItem = {
             id_product: item.id_product,
             id_variant: item.id_variant,
+            comment: item.comment,
             sauces: (item.selectedSauces || []).map(s => ({ id_sauce: s.id_sauce })),
             extras: (item.selectedExtras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
           };
 
-         // Añadir sabor solo si está seleccionado y tiene un ID
+         // Añadir método solo si está seleccionado y tiene un ID
         if (item.selectedPaymentMethod && item.selectedFlavor.id_payment_method) {
           mappedItem.paymentMethods = item.selectedFlavor.id_payment_method;
         }
@@ -547,24 +503,6 @@ const calculateProductPrice = useCallback((product) => {
     }
   }, [cart, setLoading, setMessage]);
 
-  // ✅ CARGAR ORDEN PARA EDICIÓN
-  const loadOrderForEdit = useCallback(async (orderId) => {
-    setLoading(true);
-    try {
-      const orderData = await getOrderById(orderId);
-      return transformOrderData(orderData);
-    } catch (error) {
-      console.error('❌ Error al cargar orden para edición:', error);
-      setMessage({
-        text: `Error al cargar la orden: ${error.message}`,
-        type: 'error'
-      });
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setMessage, transformOrderData]);
-
   // ✅ ACTUALIZAR ORDEN
   const updateOrderContext = useCallback(async (orderId, updateData) => {
     setLoading(true);
@@ -618,9 +556,7 @@ const calculateProductPrice = useCallback((product) => {
     setSauces,
     setPaymentMethods,
     setOrders,
-    loadOrderForEdit,
     updateOrder: updateOrderContext,
-    loadAllOrders,
     transformOrderData
   }), [
     cart,
@@ -639,9 +575,7 @@ const calculateProductPrice = useCallback((product) => {
     clearCart,
     saveOrder,
     calculateProductPrice,
-    loadOrderForEdit,
     updateOrderContext,
-    loadAllOrders,
     transformOrderData
   ]);
 
