@@ -6,6 +6,7 @@ import ProductModal from './grid/ProductModal';
 import Cart from './cart/Cart';
 import CartBadge from './cart/CartBadge';
 import { BREAKPOINTS } from '../utils/constants';
+import SimpleCartProtection from './protection/SimpleCartProtection';
 
 function Home({ selectedCategory }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -51,7 +52,7 @@ function Home({ selectedCategory }) {
     return (
       <>
         <div className="w-full min-h-screen bg-gray-50 relative">
-          {/* Área de productos - full width */}
+          {/* Área de productos */}
           <div className="pb-20">
             <ProductGrid
               selectedCategory={selectedCategory}
@@ -149,7 +150,11 @@ function Home({ selectedCategory }) {
 
   // Layout desktop - columnas lado a lado con carrito responsivo
   return (
+
     <div className="min-h-screen bg-gray-50 flex">
+          <div>
+            <SimpleCartProtection />
+          </div>
       {/* Área de productos - lado izquierdo */}
       <div className="flex-1 min-w-0">
         <div className="h-full overflow-y-auto">
@@ -161,78 +166,13 @@ function Home({ selectedCategory }) {
         </div>
       </div>
 
-      {/* ✅ CARRITO ÚNICO - Sin duplicados */}
-      <div className="
-        /* Responsivo por breakpoints */
-        w-full
-        sm:w-[min(350px,45vw)]
-        md:w-[min(380px,42vw)]
-        lg:w-[min(420px,40vw)]
-        xl:w-[min(450px,38vw)]
-
-        /* Límites de ancho */
-        min-w-[280px]
-        sm:min-w-[320px]
-        max-w-[280px]
-        sm:max-w-[350px]
-        md:max-w-[420px]
-        lg:max-w-[480px]
-
-        /* Styling base */
-        bg-white
-        border-l-0
-        sm:border-l
-        border-gray-300
-        flex
-        flex-col
-        shadow-none
-        sm:shadow-lg
-
-        /* Mobile: pantalla completa, Desktop: panel lateral */
-        h-screen
-        sm:h-auto
-        sm:max-h-screen
-      ">
-        {/* Header del carrito responsivo */}
-        <div className="
-          bg-red-600
-          text-white
-          p-2
-          sm:p-3
-          md:p-4
-          text-center
-          shadow-md
-          /* Mobile: header más compacto */
-          sticky
-          top-0
-          z-10
-        ">
-          <div className="
-            flex
-            items-center
-            justify-center
-            gap-1
-            sm:gap-2
-            lg:gap-3
-            relative
-          ">
-            <ShoppingCartIcon className="
-              w-4 h-4
-              sm:w-5 sm:h-5
-              lg:w-6 lg:h-6
-            " />
-            <h2 className="
-              text-base
-              sm:text-lg
-              lg:text-xl
-              font-bold
-              uppercase
-              tracking-wide
-              /* Ajuste de texto para pantallas pequeñas */
-              leading-tight
-            ">
-              Carrito
-            </h2>
+      {/* Área del carrito - lado derecho, ancho responsivo */}
+      <div className="w-[min(370px,40vw)] min-w-[270px] max-w-[370px] bg-white border-l border-gray-300 flex flex-col shadow-lg">
+        {/* Header del carrito desktop responsivo */}
+        <div className="bg-red-600 text-white p-3 lg:p-4 text-center shadow-md">
+          <div className="flex items-center justify-center gap-2 lg:gap-3 relative">
+            <ShoppingCartIcon className="w-5 h-5 lg:w-6 lg:h-6" />
+            <h2 className="text-lg lg:text-xl font-bold uppercase tracking-wide">Carrito</h2>
             <div className="relative">
               <CartBadge
                 count={cart.length}
@@ -276,34 +216,7 @@ function Home({ selectedCategory }) {
             onCloseCart={() => {}}
           />
         </div>
-
-        {/* Footer opcional para mobile */}
-        <div className="
-          sm:hidden
-          bg-gray-50
-          border-t
-          border-gray-200
-          p-3
-          /* Solo visible en mobile para acciones rápidas */
-          flex
-          justify-center
-        ">
-          <button
-            onClick={() => {}}
-            className="
-              text-sm
-              text-gray-600
-              hover:text-gray-800
-              transition-colors
-            "
-          >
-            Cerrar Carrito
-          </button>
-        </div>
       </div>
-
-      {/* ❌ CARRITO DUPLICADO ELIMINADO */}
-      {/* Ya no hay segundo contenedor de carrito aquí */}
 
       {/* Modal de opciones - CORREGIDO */}
       {selectedProduct && (
