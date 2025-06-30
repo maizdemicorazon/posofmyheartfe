@@ -212,7 +212,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                     <ShoppingCartIcon className={`w-16 h-16 ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} />
                   </div>
                 </div>
-               <p className={`font-semibold text-gray-700 dark:text-gray-200 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} ${isMobile ? 'text-base' : 'text-lg'}`}>
+               <p className={`font-semibold text-gray-700 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} ${isMobile ? 'text-base' : 'text-lg'}`}>
                  Tu carrito está vacío
                </p>
                <p className={`mt-1 text-gray-500 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2 ${isMobile ? 'text-sm' : 'text-sm'}`}>
