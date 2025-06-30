@@ -5,7 +5,6 @@ import { LoadingProvider } from './context/LoadingContext';
 import { MessageProvider } from './context/MessageContext';
 import Layout from './Layouts/Layout';
 import Home from './components/Home';
-import CartPage from './components/cart/CartPage';
 import ProductModal from './components/grid/ProductModal';
 import Orders from './components/orders/Orders';
 import DailyEarnings from './components/metrics/DailyEarnings';
@@ -26,7 +25,6 @@ function AppContent() {
     >
       {/* Renderizar solo según la vista actual */}
       {view === 'home' && <Home selectedCategory={selectedCategory} />}
-      {view === 'cart' && <CartPage onBack={() => setView('home')} />}
       {view === 'orders' && <Orders onBack={() => setView('home')} />}
       {view === 'metrics' && <DailyEarnings onBack={() => setView('home')} />}
       {view === 'earnings-chart' && <EarningsChart onBack={() => setView('home')} />}
@@ -43,7 +41,7 @@ function AppContent() {
           initialFlavors={editingProduct.flavors || (editingProduct.selectedFlavor ? [editingProduct.selectedFlavor] : [])}
           initialExtras={editingProduct.extras || editingProduct.selectedExtras || []}
           initialSauces={editingProduct.sauces || editingProduct.selectedSauces || []}
-           initialPaymentMethod={editingProduct.payment_methods || editingProduct.selectedPaymentMethod || []}
+          initialPaymentMethod={editingProduct.payment_methods || editingProduct.selectedPaymentMethod || []}
           initialComment={editingProduct.comment || ''}
           initialClientName={editingProduct.clientName || ''}
           onSave={saveEditProduct}
