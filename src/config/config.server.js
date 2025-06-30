@@ -67,6 +67,10 @@ export const API_ENDPOINTS = {
   EARNINGS_WITH_PERCENTAGE: (percentage) =>
     `${API_CONFIG.BASE_URL}/metrics/summary/${percentage}`,
   SALES_REPORT: (days) => `${API_CONFIG.BASE_URL}/reports/sales/${days}`,
+
+  //Utils
+  PING: `${API_CONFIG.BASE_URL}/flavors`
+
 };
 
 // ✅ CONFIGURACIONES POR ENTORNO
@@ -111,22 +115,6 @@ export const buildApiUrl = (endpoint, params = {}) => {
   return url;
 };
 
-// ✅ FUNCIÓN PARA VALIDAR SI LA API ESTÁ DISPONIBLE
-export const checkApiHealth = async () => {
-  try {
-    const response = await fetch(`${API_CONFIG.BASE_URL_ROOT}/ping`, {
-      method: 'GET',
-      headers: API_CONFIG.DEFAULT_HEADERS,
-      signal: AbortSignal.timeout(5000) // 5 segundos para health check
-    });
-
-    return response.ok;
-  } catch (error) {
-    console.warn('⚠️ API Health Check failed:', error.message);
-    return false;
-  }
-};
-
 // ✅ CONFIGURACIÓN DE DEBUG
 export const DEBUG_CONFIG = {
   ENABLED: getCurrentConfig().DEBUG_MODE,
@@ -160,6 +148,5 @@ export default {
   getCurrentEnvironment,
   getCurrentConfig,
   buildApiUrl,
-  checkApiHealth,
   DEBUG_CONFIG
 };
