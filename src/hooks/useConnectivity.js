@@ -56,7 +56,7 @@ export function useConnectivity({
       console.log('🔄 Checking backend connectivity...');
 
       // Hacer un request ligero al endpoint de health check
-      const response = await fetch(`${API_CONFIG.BASE_URL_ROOT}/ping`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/ping`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
