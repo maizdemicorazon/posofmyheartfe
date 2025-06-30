@@ -29,10 +29,10 @@ function ConnectivityIndicator({
 }) {
   const { theme } = useTheme();
   const [showTooltip, setShowTooltip] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.SM);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.MD);
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < BREAKPOINTS.SM);
+    const handleResize = () => setIsMobile(window.innerWidth < BREAKPOINTS.MD);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
