@@ -29,12 +29,13 @@ import Swal from 'sweetalert2';
 import { getOrders, getOrdersByPeriod, updateOrder, getOrderById } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog } from '../../utils/helpers';
 import { startOfToday, subDays, subMonths } from 'date-fns';
+import { PAYMENT_METHODS } from '../../utils/constants';
 
 function Orders({ onBack }) {
   const { theme } = useTheme();
   const { setLoading } = useLoading();
   const { setMessage } = useMessage();
-  const { paymentMethods } = useCart();
+  const { paymentMethods, products, extras, sauces } = useCart(); // ✅ OBTENER PRODUCTOS, EXTRAS Y SALSAS
 
   // Estados principales
   const [orders, setOrders] = useState([]);
@@ -454,7 +455,7 @@ function Orders({ onBack }) {
     setExpandedOrders(newExpanded);
   };
 
-  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL
+  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL - CORREGIDA PARA CARGAR OPCIONES Y SABORES
   const handleEditOrderItem = async (order, itemIndex) => {
     try {
       const item = order.items[itemIndex];
@@ -473,54 +474,87 @@ function Orders({ onBack }) {
         item
       });
 
-      // ✅ CARGAR DATOS COMPLETOS DEL PRODUCTO PARA EL MODAL
-      const productData = await getOrderById(order.id_order);
+      // ✅ CARGAR INFORMACIÓN COMPLETA DEL PRODUCTO DESDE EL CONTEXTO
+      let completeProductInfo = null;
 
-      if (!productData) {
-        setMessage({
-          text: 'No se pudo cargar la información del producto',
-          type: 'error'
-        });
-        return;
+      // Buscar el producto en el contexto
+      if (products && products.length > 0) {
+        completeProductInfo = products.find(p => p.id_product === item.id_product);
+        console.log('🔍 Found product in context:', completeProductInfo);
       }
 
-      // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL CON PRECIOS CORRECTOS
+      // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL CON TODAS LAS OPCIONES
       const completeProduct = {
         id_product: item.id_product,
         name: item.product_name,
         image: item.product_image,
-        price: item.product_price, // ✅ PRECIO BASE DEL PRODUCTO
-        product_price: item.product_price, // ✅ PRECIO BASE ALTERNATIVO
-        options: productData.options || [],
-        flavors: productData.flavors || [],
-        ...(productData.product || {})
+        price: item.product_price,
+        product_price: item.product_price,
+        // ✅ CONSTRUIR OPCIONES: usar del contexto O crear fallback
+        options: completeProductInfo?.options || completeProductInfo?.variants || [
+          {
+            id_variant: item.id_variant,
+            size: item.variant_name,
+            price: item.product_price
+          }
+        ],
+        // ✅ CONSTRUIR SABORES: usar del contexto O crear fallback
+        flavors: completeProductInfo?.flavors || (item.flavor ? [
+          {
+            id_flavor: item.flavor.id_flavor,
+            name: item.flavor.name
+          }
+        ] : []),
+        ...(completeProductInfo || {})
       };
 
-      // ✅ CONSTRUIR OPCIÓN SELECCIONADA CON PRECIO CORRECTO
-      const selectedOption = item.id_variant ? {
-        id_variant: item.id_variant,
-        size: item.variant_name,
-        price: item.product_price // ✅ USAR EL PRECIO DEL ITEM
-      } : null;
+      // ✅ REORGANIZAR OPCIONES PARA QUE LA SELECCIONADA ESTÉ PRIMERA
+      let initialOptions = [...(completeProduct.options || [])];
+      if (item.id_variant && initialOptions.length > 1) {
+        const selectedIndex = initialOptions.findIndex(opt => opt.id_variant === item.id_variant);
+        if (selectedIndex > 0) {
+          const selectedOption = initialOptions.splice(selectedIndex, 1)[0];
+          initialOptions.unshift(selectedOption);
+        }
+      }
 
-      // ✅ CONSTRUIR SABOR SELECCIONADO SI EXISTE
-      const selectedFlavor = item.flavor ? {
-        id_flavor: item.flavor.id_flavor,
-        name: item.flavor.name
-      } : null;
+      // ✅ REORGANIZAR SABORES PARA QUE EL SELECCIONADO ESTÉ PRIMERO
+      let initialFlavors = [...(completeProduct.flavors || [])];
+      if (item.flavor?.id_flavor && initialFlavors.length > 1) {
+        const selectedIndex = initialFlavors.findIndex(flavor => flavor.id_flavor === item.flavor.id_flavor);
+        if (selectedIndex > 0) {
+          const selectedFlavor = initialFlavors.splice(selectedIndex, 1)[0];
+          initialFlavors.unshift(selectedFlavor);
+        }
+      }
 
-      console.log("✅ Complete product with pricing:", {
-        completeProduct,
-        selectedOption,
-        selectedFlavor,
-        basePrice: item.product_price,
-        variantPrice: item.product_price
+      // ✅ SI NO HAY OPCIONES DEL CONTEXTO, USAR EXTRAS Y SALSAS GLOBALES
+      const availableExtras = extras || [];
+      const availableSauces = sauces || [];
+
+      console.log("✅ Complete product setup:", {
+        productFromContext: !!completeProductInfo,
+        optionsCount: initialOptions.length,
+        flavorsCount: initialFlavors.length,
+        extrasCount: availableExtras.length,
+        saucesCount: availableSauces.length,
+        selectedOption: item.id_variant,
+        selectedFlavor: item.flavor?.id_flavor
       });
+
+      // ✅ CREAR OBJETO FINAL CON TODA LA INFORMACIÓN
+      const finalProduct = {
+        ...completeProduct,
+        reorderedOptions: initialOptions,
+        reorderedFlavors: initialFlavors,
+        availableExtras,
+        availableSauces
+      };
 
       setEditingOrder(order);
       setCurrentItemIndex(itemIndex);
       setEditingItem(item);
-      setEditingProduct(completeProduct);
+      setEditingProduct(finalProduct);
 
     } catch (error) {
       debugLog('ERROR', 'Failed to load product for editing:', error);
@@ -1179,33 +1213,31 @@ function Orders({ onBack }) {
         )}
       </div>
 
-      {/* ✅ Modal de edición de producto individual MODIFICADO CON DATOS COMPLETOS */}
+      {/* ✅ Modal de edición de producto individual CON OPCIONES Y SABORES COMPLETOS */}
       {editingProduct && editingItem && editingOrder && (
         <ProductModal
           isOpen={true}
           onClose={handleCloseEditModal}
           product={editingProduct}
           initialQuantity={editingItem.quantity || 1}
-          initialOptions={editingItem.id_variant ? [{
-            id_variant: editingItem.id_variant,
-            size: editingItem.variant_name,
-            price: editingItem.product_price // ✅ PRECIO CORRECTO DEL RESPONSE
-          }] : (editingProduct.options || [])}
-          initialFlavors={editingItem.flavor ? [{
-            id_flavor: editingItem.flavor.id_flavor,
-            name: editingItem.flavor.name
-          }] : (editingProduct.flavors || [])}
+          // ✅ USAR OPCIONES REORDENADAS (SELECCIONADA PRIMERO)
+          initialOptions={editingProduct.reorderedOptions || editingProduct.options || []}
+          // ✅ USAR SABORES REORDENADOS (SELECCIONADO PRIMERO)
+          initialFlavors={editingProduct.reorderedFlavors || editingProduct.flavors || []}
+          // ✅ EXTRAS SELECCIONADOS EN LA ORDEN
           initialExtras={editingItem.extras ? editingItem.extras.map(extra => ({
             id_extra: extra.id_extra,
             name: extra.name,
-            price: extra.actual_price, // ✅ USAR actual_price del response
+            price: extra.actual_price,
             quantity: extra.quantity || 1
           })) : []}
+          // ✅ SALSAS SELECCIONADAS EN LA ORDEN
           initialSauces={editingItem.sauces ? editingItem.sauces.map(sauce => ({
             id_sauce: sauce.id_sauce,
             name: sauce.name,
             image: sauce.image
           })) : []}
+          // ✅ COMENTARIO INICIAL
           initialComment={editingItem.comment || ''}
           onSave={handleSaveItemChanges}
           isEditing={true}
