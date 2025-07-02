@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { getPaymentMethodIcon } from '../../utils/helpers';
 
 /**
  * Modal reutilizable para capturar cliente y método de pago
@@ -93,17 +94,6 @@ function ClientPaymentModal({
         selectedPaymentMethod: selectedPaymentMethod
       });
     }
-  };
-
-  // ✅ Función helper para iconos
-  const getPaymentMethodIcon = (methodName) => {
-    const name = methodName.toLowerCase();
-    if (name.includes('efectivo')) return '💵';
-    if (name.includes('tarjeta')) return '💳';
-    if (name.includes('clabe') || name.includes('transfer')) return '🏦';
-    if (name.includes('qr')) return '📱';
-    if (name.includes('link')) return '🔗';
-    return '💵';
   };
 
   if (!isOpen) return null;

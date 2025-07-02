@@ -22,14 +22,17 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   AdjustmentsHorizontalIcon,
-  PlusIcon
+  PlusIcon,
+  ArrowPathIcon,
+  ClockIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../modals/ProductModal';
 import ClientPaymentModal from '../modals/ClientPaymentModal';
 import Swal from 'sweetalert2';
 import { getOrders, getOrdersByPeriod, updateOrder, getOrderById } from '../../utils/api';
-import { handleApiError, formatPrice, debugLog } from '../../utils/helpers';
+import { handleApiError, formatPrice, debugLog, getPaymentMethodIcon } from '../../utils/helpers';
 import { startOfToday, subDays, subMonths } from 'date-fns';
 import { PAYMENT_METHODS } from '../../utils/constants';
 
@@ -74,6 +77,10 @@ function Orders({ onBack }) {
   const [showClientPaymentModal, setShowClientPaymentModal] = useState(false);
   const [editingOrderData, setEditingOrderData] = useState(null);
 
+  // ✅ NUEVO ESTADO: Para controlar el auto-refresh
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
   // Estados para edición completa de orden
   const [isEditingFullOrder, setIsEditingFullOrder] = useState(false);
   const [fullOrderEdit, setFullOrderEdit] = useState({
@@ -88,6 +95,60 @@ function Orders({ onBack }) {
     const resultado = new Date();
     resultado.setDate(resultado.getDate() - dias);
     return resultado;
+  };
+
+  // ✅ NUEVA FUNCIÓN: Refrescar órdenes del día
+  const handleRefreshToday = async () => {
+    setIsRefreshing(true);
+    try {
+      // Forzar período a 'today' y recargar
+      setFilters(prev => ({ ...prev, period: 'today' }));
+      await loadOrdersByPeriod();
+      setLastRefresh(new Date());
+
+      setMessage({
+        text: 'Órdenes actualizadas correctamente',
+        type: 'success'
+      });
+    } catch (error) {
+      handleApiError(error, setMessage);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // ✅ FUNCIÓN PARA OBTENER TIEMPO TRANSCURRIDO DESDE LA ORDEN
+  const getTimeElapsed = (orderDate) => {
+    try {
+      const now = new Date();
+      const orderTime = new Date(orderDate);
+      const diffInMinutes = Math.floor((now - orderTime) / (1000 * 60));
+
+      if (diffInMinutes < 1) return 'Hace un momento';
+      if (diffInMinutes < 60) return `Hace ${diffInMinutes}m`;
+
+      const diffInHours = Math.floor(diffInMinutes / 60);
+      if (diffInHours < 24) return `Hace ${diffInHours}h ${diffInMinutes % 60}m`;
+
+      return formatDate(orderDate);
+    } catch (error) {
+      return formatDate(orderDate);
+    }
+  };
+
+  // ✅ FUNCIÓN PARA DETERMINAR URGENCIA DE LA ORDEN
+  const getOrderUrgency = (orderDate) => {
+    try {
+      const now = new Date();
+      const orderTime = new Date(orderDate);
+      const diffInMinutes = Math.floor((now - orderTime) / (1000 * 60));
+
+      if (diffInMinutes > 30) return 'urgent'; // Más de 30 min = urgente
+      if (diffInMinutes > 15) return 'warning'; // Más de 15 min = advertencia
+      return 'normal'; // Menos de 15 min = normal
+    } catch (error) {
+      return 'normal';
+    }
   };
 
   // ✅ FUNCIÓN PARA EDITAR DATOS DE LA ORDEN (cliente y método de pago) - SIMPLIFICADA
@@ -846,16 +907,6 @@ function Orders({ onBack }) {
       const itemQuantity = parseInt(item.quantity || 1);
       totalPrice *= itemQuantity;
 
-      console.log(`💰 Order item price calculation:`, {
-        productName: item.product_name,
-        basePrice: parseFloat(item.product_price || 0),
-        extrasTotal,
-        extrasCount: item.extras?.length || 0,
-        quantity: itemQuantity,
-        subtotalBeforeQuantity: parseFloat(item.product_price || 0) + extrasTotal,
-        finalPrice: totalPrice
-      });
-
       return totalPrice;
     } catch (error) {
       console.error('Error calculating order item price:', error);
@@ -920,11 +971,11 @@ function Orders({ onBack }) {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
-      {/* Header Mejorado */}
+      {/* Header simplificado para cocina */}
       <div className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-sm border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between py-4 gap-4">
-            {/* Título y navegación */}
+          <div className="flex items-center justify-between py-3">
+            {/* Información básica */}
             <div className="flex items-center gap-4">
               <button
                 onClick={onBack}
@@ -938,66 +989,61 @@ function Orders({ onBack }) {
               <div className="flex items-center gap-3">
                 <ShoppingBagIcon className={`w-6 h-6 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
                 <div>
-                  <h1 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                    Órdenes
+                  <h1 className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                    📋 Órdenes de Cocina
                   </h1>
-                  <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {stats.count} órdenes • {formatPrice(stats.total)} • {stats.uniqueClients} clientes
+                  <p className={`text-base font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {stats.count} órdenes activas • Actualizado: {lastRefresh.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Controles principales */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* Búsqueda rápida */}
-              <div className="relative">
-                <MagnifyingGlassIcon className={`w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-                }`} />
-                <input
-                  type="text"
-                  placeholder="Buscar órdenes, clientes..."
-                  value={filters.search}
-                  onChange={(e) => handleFilterChange('search', e.target.value)}
-                  className={`pl-10 pr-4 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-64 ${
-                    theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                  }`}
-                />
-              </div>
+            {/* Controles de cocina */}
+            <div className="flex items-center gap-3">
+              {/* Botón refrescar - OPTIMIZADO PARA TABLET */}
+              <button
+                onClick={handleRefreshToday}
+                disabled={isRefreshing}
+                className={`flex items-center gap-3 px-6 py-4 rounded-xl font-bold text-lg transition-all duration-200 ${
+                  isRefreshing
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-1'
+                }`}
+                title="Actualizar órdenes del día"
+              >
+                <ArrowPathIcon className={`w-6 h-6 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>
+                  {isRefreshing ? 'Actualizando...' : 'Actualizar'}
+                </span>
+              </button>
 
-              {/* Botón filtros avanzados */}
+              {/* Botón filtros - OPTIMIZADO PARA TABLET */}
               <button
                 onClick={() => handleFilterChange('showFilters', !filters.showFilters)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                className={`flex items-center gap-3 px-5 py-4 rounded-xl transition-all ${
                   filters.showFilters
-                    ? 'bg-blue-600 text-white border-blue-600'
+                    ? 'bg-blue-600 text-white shadow-lg'
                     : theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-2 border-gray-600'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300 border-2 border-gray-300'
                 }`}
+                title="Filtros avanzados"
               >
-                <AdjustmentsHorizontalIcon className="w-5 h-5" />
-                <span className="text-sm">Filtros</span>
+                <AdjustmentsHorizontalIcon className="w-6 h-6" />
               </button>
             </div>
           </div>
 
-          {/* ✅ FILTROS AVANZADOS DESPLEGABLES */}
+          {/* ✅ FILTROS SIMPLIFICADOS PARA COCINA */}
           {filters.showFilters && (
             <div className={`pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className="pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Filtro por período */}
+              <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Período
-                  </label>
                   <select
                     value={filters.period}
                     onChange={(e) => handleFilterChange('period', e.target.value)}
-                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       theme === 'dark'
                         ? 'bg-gray-700 border-gray-600 text-white'
                         : 'bg-white border-gray-300 text-gray-900'
@@ -1010,112 +1056,29 @@ function Orders({ onBack }) {
                     ))}
                   </select>
                 </div>
-
-                {/* Filtro por cliente */}
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Cliente
-                  </label>
                   <input
                     type="text"
-                    value={filters.clientName}
-                    onChange={(e) => handleFilterChange('clientName', e.target.value)}
-                    placeholder="Nombre del cliente"
-                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    value={filters.search}
+                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    placeholder="Buscar orden o cliente..."
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       theme === 'dark'
                         ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
                     }`}
                   />
                 </div>
-
-                {/* Filtro por método de pago */}
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Método de Pago
-                  </label>
-                  <select
-                    value={filters.paymentMethod}
-                    onChange={(e) => handleFilterChange('paymentMethod', e.target.value)}
-                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      theme === 'dark'
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
-                  >
-                    <option value="">Todos los métodos</option>
-                    {paymentMethods && paymentMethods.map(method => (
-                      <option key={method.id_payment_method} value={method.id_payment_method}>
-                        {method.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Ordenamiento */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Ordenar por
-                  </label>
-                  <select
-                    value={filters.sortBy}
-                    onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-                    className={`w-full px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      theme === 'dark'
-                        ? 'bg-gray-700 border-gray-600 text-white'
-                        : 'bg-white border-gray-300 text-gray-900'
-                    }`}
-                  >
-                    {sortOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Rango de montos */}
-                <div className="md:col-span-2">
-                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Rango de Montos
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      value={filters.minAmount}
-                      onChange={(e) => handleFilterChange('minAmount', e.target.value)}
-                      placeholder="Mínimo"
-                      className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                      }`}
-                    />
-                    <input
-                      type="number"
-                      value={filters.maxAmount}
-                      onChange={(e) => handleFilterChange('maxAmount', e.target.value)}
-                      placeholder="Máximo"
-                      className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        theme === 'dark'
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                      }`}
-                    />
-                  </div>
-                </div>
-
-                {/* Botón limpiar filtros */}
-                <div className="flex items-end">
                   <button
                     onClick={clearFilters}
-                    className={`w-full px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`w-full px-3 py-2 rounded-lg border text-sm transition-colors ${
                       theme === 'dark'
                         ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
                         : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    Limpiar Filtros
+                    Limpiar
                   </button>
                 </div>
               </div>
@@ -1124,8 +1087,8 @@ function Orders({ onBack }) {
         </div>
       </div>
 
-      {/* Contenido principal */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* ✅ CONTENIDO OPTIMIZADO PARA COCINA Y TABLET */}
+      <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -1135,286 +1098,265 @@ function Orders({ onBack }) {
           </div>
         ) : paginatedOrders.length > 0 ? (
           <>
-            {/* Lista de órdenes mejorada */}
-            <div className="grid gap-4 mb-6">
+            {/* ✅ LISTA OPTIMIZADA PARA COCINA Y TABLET - INFORMACIÓN CLAVE VISIBLE */}
+            <div className="grid gap-5 mb-8">
               {paginatedOrders.map((order) => {
-                const isExpanded = expandedOrders.has(order.id_order);
-
-                // ✅ CALCULAR TOTAL CORRECTO INCLUYENDO EXTRAS
+                const urgency = getOrderUrgency(order.order_date);
                 const orderTotal = order.total_amount || order.bill || order.calculated_total ||
                   (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
 
                 return (
                   <div
                     key={order.id_order}
-                    className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-sm border ${
-                      theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-                    } overflow-hidden transition-all duration-200 hover:shadow-md`}
+                    className={`rounded-xl shadow-lg border-l-6 transition-all duration-200 hover:shadow-xl ${
+                      urgency === 'urgent'
+                        ? 'border-l-red-600 bg-red-600 dark:bg-red-900/20'
+                        : urgency === 'warning'
+                        ? 'border-l-yellow-600 bg-green-600 dark:bg-yellow-900/10'
+                        : 'border-l-yellow-400 bg-white dark:bg-600-800'
+                    } ${
+                      theme === 'dark'
+                        ? 'border-600-700'
+                        : 'border-600-200'
+                    }`}
                   >
-                    {/* Header de la orden mejorado */}
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-12 h-12 rounded-xl ${theme === 'dark' ? 'bg-blue-900/30' : 'bg-blue-50'} flex items-center justify-center`}>
-                            <span className={`text-lg font-bold ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
-                              #{order.id_order}
-                            </span>
+                    {/* ✅ HEADER COMPACTO CON INFO CLAVE - OPTIMIZADO TABLET */}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between mb-5">
+                        {/* Info principal */}
+                        <div className="flex items-center gap-4">
+                          <div className={`text-3xl font-black px-4 py-2 rounded-xl ${
+                            urgency === 'urgent'
+                              ? 'bg-red-300 text-red-900 dark:bg-red-700 dark:text-red-100 shadow-lg border-2 border-red-500'
+                              : urgency === 'warning'
+                              ? 'bg-stone-200 text-yellow-800 dark:bg-yellow-600 dark:text-yellow-200 shadow-lg border-2 border-yellow-400'
+                              : 'bg-stone-100 text-yellow-700 dark:bg-yellow-500 dark:text-yellow-100 shadow-lg border-2 border-yellow-300'
+                          }`}>
+                            #{order.id_order}
                           </div>
                           <div>
-                            <h3 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                              {order.client_name || 'Cliente genérico'}
+                            <h3 className={`font-black text-2xl ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>
+                              {order.client_name || 'Sin nombre'}
                             </h3>
-                            <div className="flex items-center gap-4 text-sm">
-                              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                <CalendarIcon className="w-4 h-4" />
-                                {formatDate(order.order_date)}
+                            <div className="flex items-center gap-5 text-base mt-1">
+                              <span className={`flex items-center gap-2 font-bold ${
+                                urgency === 'urgent' ? 'text-red-700 dark:text-red-700' :
+                                urgency === 'warning' ? 'text-yellow-700 dark:text-yellow-700' :
+                                'text-gray-700 dark:text-gray-700'
+                              }`}>
+                                <ClockIcon className="w-5 h-5" />
+                                {getTimeElapsed(order.order_date)}
                               </span>
-                              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                <CreditCardIcon className="w-4 h-4" />
-                                {order.payment_name || 'Sin método'}
+                              <span className={`flex items-center gap-2 font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                {getPaymentMethodIcon(order.payment_name)} {order.payment_name}
                               </span>
                             </div>
                           </div>
                         </div>
+
+                        {/* Acciones y total */}
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <div className="text-2xl font-black text-green-600">
+                              {formatPrice(parseFloat(orderTotal))}
+                            </div>
+                            <div className={`text-base font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                              {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+
+                          {/* Botones de acción compactos */}
+                          <div className="flex flex-col gap-2">
+                            <button
+                              onClick={() => handleAddProductToOrder(order)}
+                              className="p-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 transition-all hover:border-slate-400 dark:hover:border-slate-500"
+                              title="Agregar producto"
+                            >
+                              <PlusIcon className="w-6 h-6" />
+                            </button>
+                            <button
+                              onClick={() => handleEditOrderData(order)}
+                              className="p-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 transition-all hover:border-slate-400 dark:hover:border-slate-500"
+                              title="Editar datos"
+                            >
+                              <Cog6ToothIcon className="w-6 h-6" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        {/* Total */}
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-green-600">
-                            {formatPrice(parseFloat(orderTotal))}
+                      {/* ✅ PRODUCTOS VISIBLES INMEDIATAMENTE - INFORMACIÓN CLAVE PARA COCINA - OPTIMIZADO TABLET */}
+                      <div className="space-y-4">
+                        {order.items?.map((item, index) => (
+                          <div key={index} className={`p-5 rounded-xl border-2 ${
+                            theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+                          } shadow-md`}>
+                            <div className="flex items-start justify-between">
+                              {/* Info del producto */}
+                              <div className="flex-1">
+                                <div className="flex items-center gap-4 mb-3">
+                                  {/* Imagen del producto */}
+                                  {item.product_image && (
+                                    <img
+                                      src={item.product_image}
+                                      alt={item.product_name}
+                                      className="w-20 h-20 rounded-xl object-cover border-3 border-gray-300 dark:border-gray-600 shadow-md"
+                                      loading="lazy"
+                                    />
+                                  )}
+
+                                  <div className="flex-1">
+                                    {/* Nombre y cantidad destacados */}
+                                    <h4 className={`font-black text-2xl ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>
+                                      {item.quantity > 1 && (
+                                        <span className="bg-slate-600 text-white px-3 py-2 rounded-full text-lg mr-3 font-black">
+                                          {item.quantity}x
+                                        </span>
+                                      )}
+                                      {item.product_name}
+                                      {item.variant_name && (
+                                        <span className={`ml-3 text-lg font-bold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                          • {item.variant_name}
+                                        </span>
+                                      )}
+                                    </h4>
+
+                                    {/* Sabor destacado */}
+                                    {item.flavor && (
+                                      <div className="mt-2">
+                                        <span className="inline-flex items-center px-3 py-2 rounded-full text-base font-bold bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border border-slate-400">
+                                           {item.flavor.name}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* ✅ EXTRAS Y SALSAS DESTACADOS PARA COCINA - COLORES SOBRIOS */}
+                                {(item.extras?.length > 0 || item.sauces?.length > 0) && (
+                                  <div className="space-y-3 ml-20">
+                                    {/* Extras */}
+                                    {item.extras && item.extras.length > 0 && (
+                                      <div>
+                                        <span className={`text-base font-bold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>
+                                          ➕ EXTRAS:
+                                        </span>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                          {item.extras.map((extra, extraIdx) => (
+                                            <span
+                                              key={extraIdx}
+                                              className="inline-flex items-center px-4 py-2 rounded-full text-base font-bold bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 border-2 border-gray-400 dark:border-gray-500"
+                                            >
+                                              {extra.name}
+                                              {extra.quantity > 1 && (
+                                                <span className="ml-2 bg-slate-600 text-white px-2 py-1 rounded-full text-sm font-bold">
+                                                  ×{extra.quantity}
+                                                </span>
+                                              )}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Salsas */}
+                                    {item.sauces && item.sauces.length > 0 && (
+                                      <div>
+                                        <span className={`text-base font-bold ${theme === 'dark' ? 'text-orange-200' : 'text-orange-800'}`}>
+                                          🌶️ SALSAS:
+                                        </span>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                          {item.sauces.map((sauce, sauceIdx) => (
+                                            <span
+                                              key={sauceIdx}
+                                              className="inline-flex items-center px-4 py-2 rounded-full text-base font-bold bg-orange-200 text-orange-900 dark:bg-orange-800 dark:text-orange-100 border-2 border-orange-400 dark:border-orange-600"
+                                            >
+                                              {sauce.name}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* ✅ COMENTARIOS DESTACADOS - COLORES SOBRIOS */}
+                                {item.comment && (
+                                  <div className={`mt-4 p-4 rounded-xl border-l-4 border-slate-500 ${
+                                    theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'
+                                  }`}>
+                                    <div className="flex items-start gap-3">
+                                      <ExclamationTriangleIcon className="w-7 h-7 text-slate-600 dark:text-slate-400 mt-0.5 flex-shrink-0" />
+                                      <div className="flex-1">
+                                        <span className={`text-lg font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                                          ⚠️ INSTRUCCIONES ESPECIALES:
+                                        </span>
+                                        <p className={`text-lg font-bold mt-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-900'} leading-relaxed`}>
+                                          "{item.comment}"
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Precio y botón editar */}
+                              <div className="flex items-start gap-4 ml-6">
+                                <div className="text-right">
+                                  <div className="font-black text-2xl text-green-600">
+                                    {formatPrice(calculateOrderItemPrice(item))}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleEditOrderItem(order, index)}
+                                  className={`p-4 rounded-xl transition-all border-2 ${
+                                    theme === 'dark'
+                                      ? 'text-slate-400 hover:bg-slate-800 border-slate-600 hover:border-slate-500'
+                                      : 'text-slate-600 hover:bg-slate-50 border-slate-300 hover:border-slate-400'
+                                  }`}
+                                  title="Editar producto"
+                                >
+                                  <PencilIcon className="w-6 h-6" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
-                          </div>
-                        </div>
-
-                        {/* Acciones */}
-                        <div className="flex items-center gap-2">
-                          {/* ✅ BOTÓN: Agregar producto a orden */}
-                          <button
-                            onClick={() => handleAddProductToOrder(order)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              theme === 'dark'
-                                ? 'text-green-400 hover:bg-green-900/20 hover:text-green-300'
-                                : 'text-green-600 hover:bg-green-50 hover:text-green-700'
-                            }`}
-                            title="Agregar producto a la orden"
-                          >
-                            <PlusIcon className="w-5 h-5" />
-                          </button>
-
-                          {/* ✅ BOTÓN: Editar datos de la orden - SOLO ESTE MUESTRA EL MODAL */}
-                          <button
-                            onClick={() => handleEditOrderData(order)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              theme === 'dark'
-                                ? 'text-blue-400 hover:bg-blue-900/20 hover:text-blue-300'
-                                : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
-                            }`}
-                            title="Editar cliente y método de pago"
-                          >
-                            <Cog6ToothIcon className="w-5 h-5" />
-                          </button>
-
-                          <button
-                            onClick={() => toggleOrderExpansion(order.id_order)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              theme === 'dark'
-                                ? 'text-gray-400 hover:bg-gray-700'
-                                : 'text-gray-600 hover:bg-gray-100'
-                            }`}
-                            title={isExpanded ? 'Contraer' : 'Expandir'}
-                          >
-                            {isExpanded ? (
-                              <ChevronUpIcon className="w-5 h-5" />
-                            ) : (
-                              <ChevronDownIcon className="w-5 h-5" />
-                            )}
-                          </button>
-                        </div>
+                        ))}
                       </div>
                     </div>
-
-                    {/* Vista previa rápida de productos mejorada */}
-                    {!isExpanded && order.items && order.items.length > 0 && (
-                      <div className={`px-4 pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <div className="pt-3 flex flex-wrap gap-2">
-                          {order.items.slice(0, 3).map((item, index) => (
-                            <div key={index} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
-                              theme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              <span className="font-medium">{item.product_name}</span>
-                              <button
-                                onClick={() => handleEditOrderItem(order, index)}
-                                className="ml-1 text-blue-600 hover:text-blue-800"
-                                title="Editar producto"
-                              >
-                                <PencilIcon className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                          {order.items.length > 3 && (
-                            <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm ${
-                              theme === 'dark' ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'
-                            }`}>
-                              +{order.items.length - 3} más
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Detalles expandidos mejorados */}
-                    {isExpanded && (
-                      <div className={`border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-                        {/* Lista detallada de productos mejorada */}
-                        <div className="p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className={`text-sm font-semibold ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                              Productos de la orden:
-                            </h4>
-                            {/* ✅ VERIFICACIÓN DE TOTAL CALCULADO */}
-                            {(() => {
-                              const calculatedTotal = order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0;
-                              const backendTotal = parseFloat(order.bill);
-                              const difference = Math.abs(calculatedTotal - backendTotal);
-
-                              if (difference > 0.01 && backendTotal > 0) { // Si hay diferencia mayor a 1 centavo y hay total del backend
-                                return (
-                                  <div className={`text-xs px-2 py-1 rounded ${
-                                    theme === 'dark' ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-700'
-                                  }`}>
-                                    ⚠️ Calculado: {formatPrice(calculatedTotal)} | Backend: {formatPrice(backendTotal)}
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-                          <div className="space-y-2">
-                            {order.items?.map((item, index) => (
-                              <div key={index} className={`flex items-center justify-between p-3 rounded-lg ${
-                                theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                              }`}>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-3">
-                                    {/* ✅ IMAGEN DEL PRODUCTO */}
-                                    {item.product_image && (
-                                      <img
-                                        src={item.product_image}
-                                        alt={item.product_name}
-                                        className="w-10 h-10 rounded-lg object-cover"
-                                        loading="lazy"
-                                      />
-                                    )}
-                                    <div>
-                                      <h5 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                                        {item.product_name || 'Producto'} • {item.variant_name}
-                                      </h5>
-                                      <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} space-y-0.5`}>
-                                        {/* Desglose de precio */}
-                                        <div className="flex items-center gap-2">
-                                          <span>Precio base:</span>
-                                          <span className="font-medium">{formatPrice(parseFloat(item.product_price || 0))}</span>
-                                          {item.quantity > 1 && <span>× {item.quantity}</span>}
-                                        </div>
-
-                                        {/* Extras y salsas */}
-                                        {item.extras && item.extras.length > 0 && (
-                                          <div>
-                                            <div>Extras: {item.extras.map(e => {
-                                              const extraPrice = parseFloat(e.actual_price || e.price || 0);
-                                              const extraQty = parseInt(e.quantity || 1);
-                                              return `${e.name} (${formatPrice(extraPrice)}${extraQty > 1 ? ` ×${extraQty}` : ''})`;
-                                            }).join(', ')}</div>
-                                          </div>
-                                        )}
-                                        {item.sauces && item.sauces.length > 0 && (
-                                          <div>Salsas: {item.sauces.map(s => s.name).join(', ')}</div>
-                                        )}
-                                      </div>
-                                      {/* Comentarios de la orden */}
-                                      <div className="flex items-start gap-2">
-                                        <ChatBubbleLeftRightIcon className={`w-4 h-4 mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
-                                        <div>
-                                          <p className={`text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                                              Comentarios:
-                                          </p>
-                                          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                              {item.comment}
-                                          </p>
-                                        </div>
-                                     </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                  <div className="text-right">
-                                    <div className="font-semibold text-green-600">
-                                      {formatPrice(calculateOrderItemPrice(item))}
-                                    </div>
-                                    <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      {item.quantity > 1 && `${item.quantity}x ${formatPrice(parseFloat(item.product_price || 0))}`}
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => handleEditOrderItem(order, index)}
-                                    className={`p-2 rounded-lg transition-colors ${
-                                      theme === 'dark'
-                                        ? 'text-blue-400 hover:bg-blue-900/20'
-                                        : 'text-blue-600 hover:bg-blue-50'
-                                    }`}
-                                    title="Editar producto"
-                                  >
-                                    <PencilIcon className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* ✅ PAGINACIÓN MEJORADA */}
+            {/* Paginación optimizada para tablet */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className={`px-3 py-2 rounded-lg border transition-colors disabled:opacity-50 ${
-                      theme === 'dark'
-                        ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 disabled:hover:bg-gray-700'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 disabled:hover:bg-white'
-                    }`}
-                  >
-                    Anterior
-                  </button>
-                  <span className={`px-3 py-2 text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {currentPage} de {totalPages}
-                  </span>
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className={`px-3 py-2 rounded-lg border transition-colors disabled:opacity-50 ${
-                      theme === 'dark'
-                        ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 disabled:hover:bg-gray-700'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 disabled:hover:bg-white'
-                    }`}
-                  >
-                    Siguiente
-                  </button>
-                </div>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className={`px-6 py-3 rounded-xl text-lg font-bold transition-all disabled:opacity-50 ${
+                    theme === 'dark'
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-2 border-gray-600'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200'
+                  }`}
+                >
+                  Anterior
+                </button>
+                <span className={`px-6 py-3 text-lg font-bold ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {currentPage} de {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className={`px-6 py-3 rounded-xl text-lg font-bold transition-all disabled:opacity-50 ${
+                    theme === 'dark'
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-2 border-gray-600'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200'
+                  }`}
+                >
+                  Siguiente
+                </button>
               </div>
             )}
           </>
@@ -1426,68 +1368,54 @@ function Orders({ onBack }) {
             <h3 className={`text-lg font-medium mb-2 ${
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}>
-              {filters.search || filters.clientName || filters.paymentMethod || filters.minAmount || filters.maxAmount
-                ? 'No se encontraron órdenes'
-                : 'No hay órdenes'
-              }
+              🍽️ No hay órdenes pendientes
             </h3>
             <p className={`text-sm ${
               theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
             }`}>
-              {filters.search || filters.clientName || filters.paymentMethod || filters.minAmount || filters.maxAmount
-                ? 'Intenta ajustar los filtros para obtener más resultados.'
-                : filters.period === 'today'
-                  ? 'No se encontraron órdenes para hoy.'
-                  : `No se encontraron órdenes para el filtro "${filters.period}".`
+              {filters.period === 'today'
+                ? 'No hay órdenes para preparar en este momento.'
+                : 'Ajusta los filtros para ver más órdenes.'
               }
             </p>
-            {(filters.search || filters.clientName || filters.paymentMethod || filters.minAmount || filters.maxAmount) && (
-              <button
-                onClick={clearFilters}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Limpiar Filtros
-              </button>
-            )}
+            <button
+              onClick={handleRefreshToday}
+              className="mt-6 px-6 py-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all text-lg font-bold shadow-lg"
+            >
+              🔄 Actualizar Órdenes
+            </button>
           </div>
         )}
       </div>
 
-      {/* ✅ MODAL DE EDICIÓN CON MANEJO DUAL: EDITAR PRODUCTO vs AGREGAR A ORDEN */}
+      {/* ✅ MODALES (sin cambios) */}
       {editingProduct && editingOrder && (
         <ProductModal
           isOpen={true}
           onClose={handleCloseEditModal}
           product={editingProduct}
           initialQuantity={editingItem?.quantity || 1}
-          // ✅ USAR OPCIONES REORDENADAS (SELECCIONADA PRIMERO)
           initialOptions={editingProduct.reorderedOptions || editingProduct.options || []}
-          // ✅ USAR SABORES REORDENADOS (SELECCIONADO PRIMERO)
           initialFlavors={editingProduct.reorderedFlavors || editingProduct.flavors || []}
-          // ✅ EXTRAS SELECCIONADOS EN LA ORDEN (solo si está editando item específico)
           initialExtras={editingItem?.extras ? editingItem.extras.map(extra => ({
             id_extra: extra.id_extra,
             name: extra.name,
             price: extra.actual_price,
             quantity: extra.quantity || 1
           })) : []}
-          // ✅ SALSAS SELECCIONADAS EN LA ORDEN (solo si está editando item específico)
           initialSauces={editingItem?.sauces ? editingItem.sauces.map(sauce => ({
             id_sauce: sauce.id_sauce,
             name: sauce.name,
             image: sauce.image
           })) : []}
-          // ✅ COMENTARIO INICIAL
           initialComment={editingItem?.comment || ''}
-          // ✅ PROPS PARA MANEJO DUAL DE EDICIÓN - SIN MODAL
-          onSave={isEditingOrderMode ? null : handleSaveItemChanges} // Solo para editar producto individual
-          onSaveToOrder={isEditingOrderMode ? handleAddAnotherToOrder : null} // Solo para agregar a orden
-          isEditing={!isEditingOrderMode} // True si está editando, False si está agregando
-          isEditingOrder={isEditingOrderMode} // ✅ Nueva prop para distinguir modo
+          onSave={isEditingOrderMode ? null : handleSaveItemChanges}
+          onSaveToOrder={isEditingOrderMode ? handleAddAnotherToOrder : null}
+          isEditing={!isEditingOrderMode}
+          isEditingOrder={isEditingOrderMode}
         />
       )}
 
-      {/* ✅ MODAL DE CLIENTE Y PAGO - SOLO PARA EDITAR DATOS DE ORDEN */}
       <ClientPaymentModal
         isOpen={showClientPaymentModal}
         onClose={handleClientPaymentClose}

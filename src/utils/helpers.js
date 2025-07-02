@@ -512,6 +512,18 @@ export const calculateCartTotal = (cartItems) => {
   }, 0);
 };
 
+  // ✅ Función helper para iconos
+export const getPaymentMethodIcon = (methodName) => {
+    const name = methodName.toLowerCase();
+    if (name.includes('efectivo')) return '💵';
+    if (name.includes('tarjeta')) return '💳';
+    if (name.includes('clabe') || name.includes('transfer')) return '🏦';
+    if (name.includes('qr')) return '📱';
+    if (name.includes('link')) return '🔗';
+    return '💵';
+};
+
+
 // ======================================
 // 📊 EXPORT DEFAULT OBJECT
 // ======================================
@@ -548,5 +560,8 @@ export default {
 
   // Performance
   debounce,
-  throttle
+  throttle,
+
+  //payment icons
+  getPaymentMethodIcon
 };
