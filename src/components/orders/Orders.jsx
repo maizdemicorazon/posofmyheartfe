@@ -26,6 +26,7 @@ import {
 } from '@heroicons/react/24/outline';
 import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../modals/ProductModal';
+import ClientPaymentModal from '../modals/ClientPaymentModal';
 import Swal from 'sweetalert2';
 import { getOrders, getOrdersByPeriod, updateOrder, getOrderById } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog } from '../../utils/helpers';
@@ -69,6 +70,11 @@ function Orders({ onBack }) {
   // ✅ NUEVO ESTADO: Para distinguir entre editar producto vs agregar a orden
   const [isEditingOrderMode, setIsEditingOrderMode] = useState(false);
 
+  // ✅ ESTADOS PARA EL MODAL DE CLIENTE Y PAGO
+  const [showClientPaymentModal, setShowClientPaymentModal] = useState(false);
+  const [modalOrderData, setModalOrderData] = useState(null);
+  const [modalContext, setModalContext] = useState(''); // 'edit-order-data', 'save-item-changes', etc.
+
   // Estados para edición completa de orden
   const [isEditingFullOrder, setIsEditingFullOrder] = useState(false);
   const [fullOrderEdit, setFullOrderEdit] = useState({
@@ -85,193 +91,120 @@ function Orders({ onBack }) {
     return resultado;
   };
 
-  // ✅ MODAL COMBINADO PARA CLIENTE Y MÉTODO DE PAGO (IGUAL QUE EN CART)
-  const showClientAndPaymentModal = async (initialClientName = '', initialPaymentMethod = null) => {
-    if (!paymentMethods || paymentMethods.length === 0) {
-      await Swal.fire({
+  // ✅ NUEVA FUNCIÓN: Editar datos de la orden (cliente y método de pago)
+  const handleEditOrderData = async (order) => {
+    setModalOrderData(order);
+    setModalContext('edit-order-data');
+    setShowClientPaymentModal(true);
+  };
+
+  // ✅ FUNCIÓN PARA MANEJAR CONFIRMACIÓN DEL MODAL
+  const handleClientPaymentConfirm = async (modalData) => {
+    setShowClientPaymentModal(false);
+
+    try {
+      setLoading(true);
+
+      if (modalContext === 'edit-order-data') {
+        // ✅ ACTUALIZAR DATOS DE LA ORDEN
+        debugLog('ORDERS', 'Updating order data:', {
+          orderId: modalOrderData.id_order,
+          newClientName: modalData.clientName,
+          newPaymentMethod: modalData.selectedPaymentMethod
+        });
+
+        // ✅ CONSTRUIR PAYLOAD PARA ACTUALIZAR SOLO DATOS DE LA ORDEN
+        const currentItems = modalOrderData.items || [];
+
+        // ✅ MAPEAR PRODUCTOS EXISTENTES SIN CAMBIOS
+        const existingItems = currentItems.map(item => ({
+          id_product: item.id_product,
+          id_variant: item.id_variant,
+          comment: item.comment || '',
+          quantity: item.quantity || 1,
+          updated_extras: (item.extras || []).map(extra => ({
+            id_extra: extra.id_extra,
+            quantity: extra.quantity || 1
+          })),
+          updated_sauces: (item.sauces || []).map(sauce => ({
+            id_sauce: sauce.id_sauce
+          })),
+          ...(item.flavor && {
+            flavor: item.flavor.id_flavor
+          })
+        }));
+
+        const orderUpdateData = {
+          id_payment_method: modalData.selectedPaymentMethod,
+          client_name: modalData.clientName || 'Cliente POS',
+          updated_items: existingItems
+        };
+
+        console.log('📤 Enviando actualización de datos de orden:', orderUpdateData);
+
+        await updateOrder(modalOrderData.id_order, orderUpdateData);
+
+        // ✅ Actualizar el estado local
+        setOrders(prevOrders =>
+          prevOrders.map(ord =>
+            ord.id_order === modalOrderData.id_order
+              ? {
+                  ...ord,
+                  client_name: modalData.clientName || ord.client_name,
+                  id_payment_method: modalData.selectedPaymentMethod,
+                  payment_name: paymentMethods.find(pm => pm.id_payment_method === modalData.selectedPaymentMethod)?.name || ord.payment_name
+                }
+              : ord
+          )
+        );
+
+        setMessage({
+          text: 'Datos de la orden actualizados exitosamente',
+          type: 'success'
+        });
+
+        await Swal.fire({
+          title: '¡Datos actualizados!',
+          text: 'Los datos de la orden se han actualizado correctamente',
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false,
+          toast: true,
+          position: 'top-end',
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+
+      } else if (modalContext === 'save-item-changes') {
+        // ✅ GUARDAR CAMBIOS DE PRODUCTO INDIVIDUAL
+        await handleSaveItemChangesWithData(modalData);
+      }
+
+    } catch (error) {
+      debugLog('ERROR', 'Failed to handle modal confirmation:', error);
+      handleApiError(error, setMessage);
+
+      Swal.fire({
         title: 'Error',
-        text: 'No hay métodos de pago disponibles',
+        text: 'No se pudo completar la operación. Inténtalo de nuevo.',
         icon: 'error',
         confirmButtonText: 'Entendido',
         background: theme === 'dark' ? '#1f2937' : '#ffffff',
         color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
-      return null;
+    } finally {
+      setLoading(false);
+      // ✅ Limpiar estados del modal
+      setModalOrderData(null);
+      setModalContext('');
     }
+  };
 
-    // Variable para almacenar la selección
-    let selectedPaymentMethodId = initialPaymentMethod || null;
-
-    // HTML personalizado para el modal
-    const modalHtml = `
-      <div class="space-y-6">
-        <!-- Sección de Cliente -->
-        <div>
-          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
-            👤 Nombre del Cliente (Opcional)
-          </label>
-          <input
-            id="swal-client-name"
-            type="text"
-            placeholder="Ej: Juan Pérez"
-            value="${initialClientName || ''}"
-            class="w-full px-4 py-3 rounded-lg border text-center ${theme === 'dark'
-              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
-              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'}
-              focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          />
-        </div>
-
-        <!-- Sección de Métodos de Pago -->
-        <div>
-          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
-            💳 Método de Pago <span class="text-red-500">*</span>
-          </label>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="payment-methods-grid">
-            ${paymentMethods.map(method => `
-              <button
-                type="button"
-                data-payment-id="${method.id_payment_method}"
-                class="payment-method-btn relative flex flex-col items-center gap-2 p-3 border-2 rounded-lg transition-all min-h-[4rem] ${
-                  (initialPaymentMethod && initialPaymentMethod == method.id_payment_method)
-                    ? `border-green-500 ${theme === 'dark' ? 'bg-green-900/30' : 'bg-green-50'}`
-                    : `border-gray-300 ${theme === 'dark' ? 'border-gray-600 hover:border-gray-500 active:bg-gray-700' : 'hover:border-gray-400 active:bg-gray-50'}`
-                }"
-              >
-                <div class="payment-icon w-8 h-8 rounded-lg flex items-center justify-center ${
-                  (initialPaymentMethod && initialPaymentMethod == method.id_payment_method)
-                    ? 'bg-green-500 text-white'
-                    : theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200'
-                }">
-                  ${method.name.toLowerCase().includes('efectivo') ? '💵' :
-                    method.name.toLowerCase().includes('tarjeta') ? '💳' :
-                    method.name.toLowerCase().includes('clabe') ? '🏦' :
-                    method.name.toLowerCase().includes('qr') ? '📱' :
-                    method.name.toLowerCase().includes('link') ? '🔗' : '💵'}
-                </div>
-                <div class="text-center">
-                  <div class="font-medium text-xs leading-tight">${method.name}</div>
-                </div>
-                <div class="payment-check absolute -top-1 -right-1 ${
-                  (initialPaymentMethod && initialPaymentMethod == method.id_payment_method) ? '' : 'hidden'
-                }">
-                  <div class="w-5 h-5 bg-green-500 text-white rounded-full flex items-center justify-center">
-                    <span class="text-xs">✓</span>
-                  </div>
-                </div>
-              </button>
-            `).join('')}
-          </div>
-          <div id="payment-error" class="text-red-500 text-sm mt-2 hidden">
-            Selecciona un método de pago
-          </div>
-        </div>
-      </div>
-    `;
-
-    const result = await Swal.fire({
-      title: '🔄 Actualizar Orden',
-      html: modalHtml,
-      showCancelButton: true,
-      confirmButtonText: '✅ Actualizar',
-      cancelButtonText: '❌ Cancelar',
-      background: theme === 'dark' ? '#1f2937' : '#ffffff',
-      color: theme === 'dark' ? '#f9fafb' : '#111827',
-      customClass: {
-        confirmButton: `px-6 py-3 ${theme === 'dark'
-          ? 'bg-blue-600 hover:bg-blue-700'
-          : 'bg-blue-500 hover:bg-blue-600'} text-white rounded-lg font-medium transition-colors`,
-        cancelButton: `px-6 py-3 ${theme === 'dark'
-          ? 'bg-gray-600 hover:bg-gray-700'
-          : 'bg-gray-500 hover:bg-gray-600'} text-white rounded-lg font-medium transition-colors mr-3`,
-        popup: 'max-w-md sm:max-w-lg'
-      },
-      buttonsStyling: false,
-      allowOutsideClick: false,
-      allowEscapeKey: true,
-      didOpen: () => {
-        // Configurar listeners para métodos de pago
-        const paymentButtons = document.querySelectorAll('.payment-method-btn');
-        const paymentError = document.getElementById('payment-error');
-
-        function selectPaymentMethod(button, paymentId) {
-          // Deseleccionar todos
-          paymentButtons.forEach(btn => {
-            btn.classList.remove('border-green-500');
-            btn.classList.add('border-gray-300');
-            if (theme === 'dark') {
-              btn.classList.add('border-gray-600');
-              btn.classList.remove('bg-green-900/30');
-            } else {
-              btn.classList.remove('bg-green-50');
-            }
-            const icon = btn.querySelector('.payment-icon');
-            const check = btn.querySelector('.payment-check');
-            icon.classList.remove('bg-green-500', 'text-white');
-            icon.classList.add(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
-            check.classList.add('hidden');
-          });
-
-          // Seleccionar actual
-          button.classList.remove('border-gray-300');
-          if (theme === 'dark') {
-            button.classList.remove('border-gray-600');
-            button.classList.add('bg-green-900/30');
-          } else {
-            button.classList.add('bg-green-50');
-          }
-          button.classList.add('border-green-500');
-          const icon = button.querySelector('.payment-icon');
-          const check = button.querySelector('.payment-check');
-          icon.classList.remove(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
-          icon.classList.add('bg-green-500', 'text-white');
-          check.classList.remove('hidden');
-
-          selectedPaymentMethodId = parseInt(paymentId);
-          paymentError.classList.add('hidden');
-
-          console.log('✅ Payment method selected:', selectedPaymentMethodId);
-        }
-
-        paymentButtons.forEach(button => {
-          button.addEventListener('click', () => {
-            const paymentId = button.getAttribute('data-payment-id');
-            selectPaymentMethod(button, paymentId);
-          });
-        });
-
-        console.log('🔧 Modal opened with initial payment method:', selectedPaymentMethodId);
-      },
-      preConfirm: () => {
-        const clientName = document.getElementById('swal-client-name').value.trim();
-        const paymentError = document.getElementById('payment-error');
-
-        console.log('🔍 Validating payment method:', selectedPaymentMethodId);
-
-        // Validar método de pago
-        if (!selectedPaymentMethodId) {
-          paymentError.classList.remove('hidden');
-          console.log('❌ No payment method selected');
-          return false;
-        }
-
-        console.log('✅ Validation passed, returning:', {
-          clientName,
-          selectedPaymentMethod: selectedPaymentMethodId
-        });
-
-        return {
-          clientName,
-          selectedPaymentMethod: selectedPaymentMethodId
-        };
-      }
-    });
-
-    if (result.isConfirmed) {
-      return result.value;
-    }
-
-    return null;
+  // ✅ FUNCIÓN PARA CERRAR MODAL
+  const handleClientPaymentClose = () => {
+    setShowClientPaymentModal(false);
+    setModalOrderData(null);
+    setModalContext('');
   };
 
   // Cargar órdenes al montar el componente
@@ -629,27 +562,24 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS CON MODAL - MODIFICADA
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS CON MODAL - ACTUALIZADA
   const handleSaveItemChanges = async (itemData) => {
+    // Configurar modal para guardar cambios
+    setModalOrderData({ itemData, order: editingOrder });
+    setModalContext('save-item-changes');
+    setShowClientPaymentModal(true);
+  };
+
+  // ✅ FUNCIÓN AUXILIAR PARA GUARDAR CAMBIOS CON DATOS DEL MODAL
+  const handleSaveItemChangesWithData = async (modalData) => {
     try {
-      // Mostrar modal para capturar cliente y método de pago
-      const modalResult = await showClientAndPaymentModal(
-        editingOrder.client_name,
-        editingOrder.id_payment_method
-      );
-
-      // Si el usuario canceló, no continúa
-      if (!modalResult) {
-        return;
-      }
-
-      setLoading(true);
+      const { itemData } = modalOrderData;
 
       debugLog('ORDERS', 'Saving item changes with modal data:', {
         orderId: editingOrder.id_order,
         itemIndex: currentItemIndex,
         itemData,
-        modalResult
+        modalData
       });
 
       // ✅ CONSTRUIR EL PAYLOAD SEGÚN EL FORMATO CORRECTO DEL BACKEND
@@ -698,8 +628,8 @@ function Orders({ onBack }) {
 
       // ✅ PAYLOAD FINAL
       const orderUpdateData = {
-        id_payment_method: modalResult.selectedPaymentMethod,
-        client_name: modalResult.clientName || 'Cliente POS',
+        id_payment_method: modalData.selectedPaymentMethod,
+        client_name: modalData.clientName || 'Cliente POS',
         updated_items: updatedItems
       };
 
@@ -713,8 +643,8 @@ function Orders({ onBack }) {
           order.id_order === editingOrder.id_order
             ? {
                 ...order,
-                client_name: modalResult.clientName || order.client_name,
-                id_payment_method: modalResult.selectedPaymentMethod,
+                client_name: modalData.clientName || order.client_name,
+                id_payment_method: modalData.selectedPaymentMethod,
                 items: order.items.map((item, index) =>
                   index === currentItemIndex
                     ? {
@@ -774,8 +704,6 @@ function Orders({ onBack }) {
         background: theme === 'dark' ? '#1f2937' : '#ffffff',
         color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1199,7 +1127,7 @@ function Orders({ onBack }) {
 
                         {/* Acciones */}
                         <div className="flex items-center gap-2">
-                          {/* ✅ NUEVO BOTÓN: Agregar producto a orden */}
+                          {/* ✅ BOTÓN: Agregar producto a orden */}
                           <button
                             onClick={() => handleAddProductToOrder(order)}
                             className={`p-2 rounded-lg transition-colors ${
@@ -1210,6 +1138,19 @@ function Orders({ onBack }) {
                             title="Agregar producto a la orden"
                           >
                             <PlusIcon className="w-5 h-5" />
+                          </button>
+
+                          {/* ✅ NUEVO BOTÓN: Editar datos de la orden */}
+                          <button
+                            onClick={() => handleEditOrderData(order)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              theme === 'dark'
+                                ? 'text-blue-400 hover:bg-blue-900/20 hover:text-blue-300'
+                                : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
+                            }`}
+                            title="Editar cliente y método de pago"
+                          >
+                            <Cog6ToothIcon className="w-5 h-5" />
                           </button>
 
                           <button
@@ -1450,6 +1391,28 @@ function Orders({ onBack }) {
           isEditingOrder={isEditingOrderMode} // ✅ Nueva prop para distinguir modo
         />
       )}
+
+      {/* ✅ MODAL DE CLIENTE Y PAGO USANDO EL COMPONENTE */}
+      <ClientPaymentModal
+        isOpen={showClientPaymentModal}
+        onClose={handleClientPaymentClose}
+        onConfirm={handleClientPaymentConfirm}
+        theme={theme}
+        paymentMethods={paymentMethods}
+        initialClientName={modalOrderData?.client_name || ''}
+        initialPaymentMethod={modalOrderData?.id_payment_method || null}
+        title={
+          modalContext === 'edit-order-data'
+            ? `🔄 Editar Orden #${modalOrderData?.id_order}`
+            : '🛒 Finalizar Cambios'
+        }
+        confirmText={
+          modalContext === 'edit-order-data'
+            ? '✅ Actualizar Datos'
+            : '✅ Guardar Cambios'
+        }
+        clientRequired={false}
+      />
     </div>
   );
 }

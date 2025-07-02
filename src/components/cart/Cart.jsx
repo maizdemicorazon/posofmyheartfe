@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useCart } from '../../context/CartContext';
 import { useTheme } from '../../context/ThemeContext';
 import { PencilIcon, TrashIcon, ArrowLeftIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
+import ClientPaymentModal from '../modals/ClientPaymentModal';
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
@@ -16,6 +17,9 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
 
   // ✅ FORZAR RE-RENDER CUANDO CAMBIE EL CARRITO
   const [cartVersion, setCartVersion] = useState(0);
+
+  // ✅ ESTADOS PARA EL MODAL DE CLIENTE Y PAGO
+  const [showClientPaymentModal, setShowClientPaymentModal] = useState(false);
 
   useEffect(() => {
     console.log('🔄 Cart changed, forcing re-render');
@@ -99,211 +103,22 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
     });
   };
 
-  // ✅ MODAL COMBINADO PARA CLIENTE Y MÉTODO DE PAGO
-  const showClientAndPaymentModal = async () => {
-    if (!paymentMethods || paymentMethods.length === 0) {
-      await Swal.fire({
-        title: 'Error',
-        text: 'No hay métodos de pago disponibles',
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-      return null;
-    }
+  // ✅ FUNCIÓN PARA MANEJAR CONFIRMACIÓN DEL MODAL
+  const handleClientPaymentConfirm = async (modalData) => {
+    setShowClientPaymentModal(false);
 
-    // Variable para almacenar la selección
-    let selectedPaymentMethodId = null;
-
-    // HTML personalizado para el modal
-    const modalHtml = `
-      <div class="space-y-6">
-        <!-- Sección de Cliente -->
-        <div>
-          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
-            👤 Nombre del Cliente (Opcional)
-          </label>
-          <input
-            id="swal-client-name"
-            type="text"
-            placeholder="Ej: Juan Pérez"
-            value=""
-            class="w-full px-4 py-3 rounded-lg border text-center ${theme === 'dark'
-              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
-              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'}
-              focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          />
-        </div>
-
-        <!-- Sección de Métodos de Pago -->
-        <div>
-          <label class="block text-sm font-semibold mb-3 text-left ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}">
-            💳 Método de Pago <span class="text-red-500">*</span>
-          </label>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="payment-methods-grid">
-            ${paymentMethods.map(method => `
-              <button
-                type="button"
-                data-payment-id="${method.id_payment_method}"
-                class="payment-method-btn relative flex flex-col items-center gap-2 p-3 border-2 rounded-lg transition-all min-h-[4rem] border-gray-300 ${theme === 'dark'
-                  ? 'border-gray-600 hover:border-gray-500 active:bg-gray-700'
-                  : 'hover:border-gray-400 active:bg-gray-50'}"
-              >
-                <div class="payment-icon w-8 h-8 rounded-lg flex items-center justify-center ${theme === 'dark'
-                  ? 'bg-gray-600'
-                  : 'bg-gray-200'}">
-                  ${method.name.toLowerCase().includes('efectivo') ? '💵' :
-                    method.name.toLowerCase().includes('tarjeta') ? '💳' :
-                    method.name.toLowerCase().includes('clabe') ? '🏦' :
-                    method.name.toLowerCase().includes('qr') ? '📱' :
-                    method.name.toLowerCase().includes('link') ? '🔗' : '💵'}
-                </div>
-                <div class="text-center">
-                  <div class="font-medium text-xs leading-tight">${method.name}</div>
-                </div>
-                <div class="payment-check absolute -top-1 -right-1 hidden">
-                  <div class="w-5 h-5 bg-green-500 text-white rounded-full flex items-center justify-center">
-                    <span class="text-xs">✓</span>
-                  </div>
-                </div>
-              </button>
-            `).join('')}
-          </div>
-          <div id="payment-error" class="text-red-500 text-sm mt-2 hidden">
-            Selecciona un método de pago
-          </div>
-        </div>
-      </div>
-    `;
-
-    const result = await Swal.fire({
-      title: '🛒 Finalizar Pedido',
-      html: modalHtml,
-      showCancelButton: true,
-      confirmButtonText: '✅ Guardar Orden',
-      cancelButtonText: '❌ Cancelar',
-      background: theme === 'dark' ? '#1f2937' : '#ffffff',
-      color: theme === 'dark' ? '#f9fafb' : '#111827',
-      customClass: {
-        confirmButton: `px-6 py-3 ${theme === 'dark'
-          ? 'bg-green-600 hover:bg-green-700'
-          : 'bg-green-500 hover:bg-green-600'} text-white rounded-lg font-medium transition-colors`,
-        cancelButton: `px-6 py-3 ${theme === 'dark'
-          ? 'bg-gray-600 hover:bg-gray-700'
-          : 'bg-gray-500 hover:bg-gray-600'} text-white rounded-lg font-medium transition-colors mr-3`,
-        popup: 'max-w-md sm:max-w-lg'
-      },
-      buttonsStyling: false,
-      allowOutsideClick: false,
-      allowEscapeKey: true,
-      didOpen: () => {
-        // Configurar listeners para métodos de pago
-        const paymentButtons = document.querySelectorAll('.payment-method-btn');
-        const paymentError = document.getElementById('payment-error');
-
-        function selectPaymentMethod(button, paymentId) {
-          // Deseleccionar todos
-          paymentButtons.forEach(btn => {
-            btn.classList.remove('border-green-500');
-            btn.classList.add('border-gray-300');
-            if (theme === 'dark') {
-              btn.classList.add('border-gray-600');
-              btn.classList.remove('bg-green-900/30');
-            } else {
-              btn.classList.remove('bg-green-50');
-            }
-            const icon = btn.querySelector('.payment-icon');
-            const check = btn.querySelector('.payment-check');
-            icon.classList.remove('bg-green-500', 'text-white');
-            icon.classList.add(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
-            check.classList.add('hidden');
-          });
-
-          // Seleccionar actual
-          button.classList.remove('border-gray-300');
-          if (theme === 'dark') {
-            button.classList.remove('border-gray-600');
-            button.classList.add('bg-green-900/30');
-          } else {
-            button.classList.add('bg-green-50');
-          }
-          button.classList.add('border-green-500');
-          const icon = button.querySelector('.payment-icon');
-          const check = button.querySelector('.payment-check');
-          icon.classList.remove(theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200');
-          icon.classList.add('bg-green-500', 'text-white');
-          check.classList.remove('hidden');
-
-          selectedPaymentMethodId = parseInt(paymentId);
-          paymentError.classList.add('hidden');
-
-          console.log('✅ Payment method selected:', selectedPaymentMethodId);
-        }
-
-        paymentButtons.forEach(button => {
-          button.addEventListener('click', () => {
-            const paymentId = button.getAttribute('data-payment-id');
-            selectPaymentMethod(button, paymentId);
-          });
-        });
-
-        console.log('🔧 Modal opened for order save');
-      },
-      preConfirm: () => {
-        const clientName = document.getElementById('swal-client-name').value.trim();
-        const paymentError = document.getElementById('payment-error');
-
-        console.log('🔍 Validating payment method:', selectedPaymentMethodId);
-
-        // Validar método de pago
-        if (!selectedPaymentMethodId) {
-          paymentError.classList.remove('hidden');
-          console.log('❌ No payment method selected');
-          return false;
-        }
-
-        console.log('✅ Validation passed, returning:', {
-          clientName,
-          selectedPaymentMethod: selectedPaymentMethodId
-        });
-
-        return {
-          clientName,
-          selectedPaymentMethod: selectedPaymentMethodId
-        };
-      }
-    });
-
-    if (result.isConfirmed) {
-      return result.value;
-    }
-
-    return null;
-  };
-
-  // ✅ HANDLER PARA GUARDAR ORDEN CON MODAL
-  const handleSaveOrder = async () => {
     try {
-      // Mostrar modal para capturar cliente y método de pago
-      const modalResult = await showClientAndPaymentModal();
-
-      // Si el usuario canceló, no continúa
-      if (!modalResult) {
-        return;
-      }
-
       console.log('💾 Saving order with modal data:', {
-        clientName: modalResult.clientName,
-        selectedPaymentMethod: modalResult.selectedPaymentMethod,
+        clientName: modalData.clientName,
+        selectedPaymentMethod: modalData.selectedPaymentMethod,
         cartItemsCount: cart.length,
         cartTotal: cartTotal
       });
 
       // ✅ PASAR CORRECTAMENTE LOS PARÁMETROS A saveOrder
       await saveOrder(
-        modalResult.clientName || '',
-        modalResult.selectedPaymentMethod
+        modalData.clientName || '',
+        modalData.selectedPaymentMethod
       );
 
       // Cerrar carrito en mobile después de guardar
@@ -322,6 +137,30 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
         color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
     }
+  };
+
+  // ✅ FUNCIÓN PARA CERRAR MODAL
+  const handleClientPaymentClose = () => {
+    setShowClientPaymentModal(false);
+  };
+
+  // ✅ HANDLER PARA GUARDAR ORDEN CON MODAL - ACTUALIZADO
+  const handleSaveOrder = async () => {
+    // Verificar que hay métodos de pago disponibles
+    if (!paymentMethods || paymentMethods.length === 0) {
+      await Swal.fire({
+        title: 'Error',
+        text: 'No hay métodos de pago disponibles',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+      return;
+    }
+
+    // Mostrar modal usando el componente
+    setShowClientPaymentModal(true);
   };
 
   const handleClearCart = async () => {
@@ -401,417 +240,433 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
   };
 
   return (
-   <div className={`max-w-2xl mx-auto p-3 sm:p-2 lg:p-4 ${
-      theme === 'dark' ? 'text-white' : 'text-black'
-    }`}>
-      {/* Header con botón de regresar si se necesita */}
-      {showBackButton && (
-        <div className={`flex items-center gap-4 mb-6 pb-4 border-b ${
-          theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-        }`}>
-          <button
-            onClick={onCloseCart}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-          >
-            <ArrowLeftIcon className="w-5 h-5" />
-            <span className="font-medium">Volver a Productos</span>
-          </button>
-          <div>
-            <h1 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-              Mi Carrito
-            </h1>
-            <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-              Revisa tus productos seleccionados
-            </p>
-          </div>
-        </div>
-      )}
-
-      {cart.length === 0 ? (
-           <div className="flex-grow flex flex-col items-center justify-center text-center p-4 overflow-hidden">
-                <div className="text-center py-8 lg:py-12">
-                  <div className="mb-4 flex justify-center">
-                    <div className={`${isMobile ? 'w-24 h-24' : 'w-32 h-32 lg:w-36 lg:h-36'} rounded-full ${
-                      theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
-                    } flex items-center justify-center mx-auto`}>
-                    <ShoppingCartIcon className={`w-16 h-16 ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} />
-                  </div>
-                </div>
-               <p className={`font-semibold text-gray-700 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} ${isMobile ? 'text-base' : 'text-lg'}`}>
-                 Tu carrito está vacío
-               </p>
-               <p className={`mt-1 text-gray-500 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2 ${isMobile ? 'text-sm' : 'text-sm'}`}>
-                 Agrega algunos productos para comenzar
-               </p>
-               <img
-                   src="/images/maizmicorazon.png"
-                   alt="Marca de agua"
-                   className="h-250 object-contain opacity-20 -mt-50"
-                 />
-           </div>
-          {isMobile && (
+    <>
+      <div className={`max-w-2xl mx-auto p-3 sm:p-2 lg:p-4 ${
+        theme === 'dark' ? 'text-white' : 'text-black'
+      }`}>
+        {/* Header con botón de regresar si se necesita */}
+        {showBackButton && (
+          <div className={`flex items-center gap-4 mb-6 pb-4 border-b ${
+            theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+          }`}>
             <button
               onClick={onCloseCart}
-              className="mt-6 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
             >
-              Ver Productos
+              <ArrowLeftIcon className="w-5 h-5" />
+              <span className="font-medium">Volver a Productos</span>
             </button>
-          )}
-        </div>
-      ) : (
-        <div>
-          {/* Lista de productos */}
-          <div className="space-y-4 mb-6">
-            {cart.map((cartItem, idx) => {
-              // ✅ FIX CRÍTICO: Usar ID único del carrito, NO id_product que puede duplicarse
-              const uniqueCartKey = cartItem.id || `cart-${idx}-${Date.now()}`;
+            <div>
+              <h1 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Mi Carrito
+              </h1>
+              <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                Revisa tus productos seleccionados
+              </p>
+            </div>
+          </div>
+        )}
 
-              // ✅ BUSCAR NOMBRE EN MÚLTIPLES UBICACIONES
-              const productName = cartItem.product_name ||
-                                 cartItem.name ||
-                                 cartItem.product?.name ||
-                                 'Producto sin nombre';
-
-              console.log(`📦 Rendering cart item ${idx}:`, {
-                uniqueCartKey,
-                cartItemId: cartItem.id,
-                idProduct: cartItem.id_product,
-                productName,
-                clientName: cartItem.clientName,
-                hasProductImage: !!cartItem.product_image,
-                hasImage: !!cartItem.image,
-                hasNestedImage: !!cartItem.product?.image
-              });
-
-              return (
-                <div key={uniqueCartKey} className={`flex items-start gap-3 lg:gap-4 border-b pb-4 ${
-                  theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-                }`}>
-                  {/* ✅ IMAGEN DEL PRODUCTO CORREGIDA */}
-                  <div className="relative flex-shrink-0">
-                    <img
-                      ref={el => imageRefs.current[uniqueCartKey] = el}
-                      src={getOptimizedProductImage(cartItem, idx)}
-                      alt={productName}
-                      className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} rounded-full object-cover border ${
-                        theme === 'dark' ? 'border-gray-600' : 'border-gray-300'
-                      }`}
-                      loading="lazy"
-                      onError={() => handleImageError(uniqueCartKey, productName, idx)}
-                    />
-
-                    {/* Overlay con error de imagen */}
-                    {imageStates[uniqueCartKey]?.hasError && (
-                      <div className={`absolute inset-0 ${
-                        theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
-                      } rounded-full flex flex-col items-center justify-center`}>
-                        <svg className={`w-4 h-4 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}
-                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                        </svg>
-                      </div>
-                    )}
+        {cart.length === 0 ? (
+             <div className="flex-grow flex flex-col items-center justify-center text-center p-4 overflow-hidden">
+                  <div className="text-center py-8 lg:py-12">
+                    <div className="mb-4 flex justify-center">
+                      <div className={`${isMobile ? 'w-24 h-24' : 'w-32 h-32 lg:w-36 lg:h-36'} rounded-full ${
+                        theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+                      } flex items-center justify-center mx-auto`}>
+                      <ShoppingCartIcon className={`w-16 h-16 ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} />
+                    </div>
                   </div>
+                 <p className={`font-semibold text-gray-700 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} ${isMobile ? 'text-base' : 'text-lg'}`}>
+                   Tu carrito está vacío
+                 </p>
+                 <p className={`mt-1 text-gray-500 dark:text-gray-400 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2 ${isMobile ? 'text-sm' : 'text-sm'}`}>
+                   Agrega algunos productos para comenzar
+                 </p>
+                 <img
+                     src="/images/maizmicorazon.png"
+                     alt="Marca de agua"
+                     className="h-250 object-contain opacity-20 -mt-50"
+                   />
+             </div>
+            {isMobile && (
+              <button
+                onClick={onCloseCart}
+                className="mt-6 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
+              >
+                Ver Productos
+              </button>
+            )}
+          </div>
+        ) : (
+          <div>
+            {/* Lista de productos */}
+            <div className="space-y-4 mb-6">
+              {cart.map((cartItem, idx) => {
+                // ✅ FIX CRÍTICO: Usar ID único del carrito, NO id_product que puede duplicarse
+                const uniqueCartKey = cartItem.id || `cart-${idx}-${Date.now()}`;
 
-                  <div className="flex-1 min-w-0">
-                    <h4 className={`font-semibold ${isMobile ? 'text-sm' : 'text-base'} mb-2 ${
-                      theme === 'dark' ? 'text-white' : 'text-gray-900'
-                    }`}>
-                      {productName}
-                    </h4>
+                // ✅ BUSCAR NOMBRE EN MÚLTIPLES UBICACIONES
+                const productName = cartItem.product_name ||
+                                   cartItem.name ||
+                                   cartItem.product?.name ||
+                                   'Producto sin nombre';
 
-                    {/* ✅ SECCIÓN DE DETALLES MEJORADA Y ORGANIZADA - INCLUYE CLIENTE */}
-                    <div className="space-y-2">
+                console.log(`📦 Rendering cart item ${idx}:`, {
+                  uniqueCartKey,
+                  cartItemId: cartItem.id,
+                  idProduct: cartItem.id_product,
+                  productName,
+                  clientName: cartItem.clientName,
+                  hasProductImage: !!cartItem.product_image,
+                  hasImage: !!cartItem.image,
+                  hasNestedImage: !!cartItem.product?.image
+                });
 
-                      {/* ✅ NOMBRE DEL CLIENTE */}
-                      {cartItem.clientName && (
-                        <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-cyan-400' : 'bg-cyan-500'}`}></div>
-                          <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Cliente:
-                          </span>
-                          <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
-                            theme === 'dark'
-                              ? 'bg-cyan-900/30 text-cyan-300 border border-cyan-700/50'
-                              : 'bg-cyan-100 text-cyan-700 border border-cyan-200'
-                          }`}>
-                            👤 {cartItem.clientName}
-                          </span>
+                return (
+                  <div key={uniqueCartKey} className={`flex items-start gap-3 lg:gap-4 border-b pb-4 ${
+                    theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+                  }`}>
+                    {/* ✅ IMAGEN DEL PRODUCTO CORREGIDA */}
+                    <div className="relative flex-shrink-0">
+                      <img
+                        ref={el => imageRefs.current[uniqueCartKey] = el}
+                        src={getOptimizedProductImage(cartItem, idx)}
+                        alt={productName}
+                        className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} rounded-full object-cover border ${
+                          theme === 'dark' ? 'border-gray-600' : 'border-gray-300'
+                        }`}
+                        loading="lazy"
+                        onError={() => handleImageError(uniqueCartKey, productName, idx)}
+                      />
+
+                      {/* Overlay con error de imagen */}
+                      {imageStates[uniqueCartKey]?.hasError && (
+                        <div className={`absolute inset-0 ${
+                          theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
+                        } rounded-full flex flex-col items-center justify-center`}>
+                          <svg className={`w-4 h-4 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}
+                               fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                          </svg>
                         </div>
                       )}
+                    </div>
 
-                      {/* Método de Pago */}
-                      {(cartItem.selectedPaymentMethod || cartItem.payment_method_id) && (
-                        <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
-                          <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Pago:
-                          </span>
-                          <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
-                            theme === 'dark'
-                              ? 'bg-green-900/30 text-green-300 border border-green-700/50'
-                              : 'bg-green-100 text-green-700 border border-green-200'
-                          }`}>
-                            {/* Ícono del método de pago */}
-                            {(() => {
-                              const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
-                              if (paymentId === 1) return '💵'; // Efectivo
-                              if (paymentId === 2) return '💳'; // Tarjeta
-                              if (paymentId === 3) return '🏦'; // Transferencia
-                              if (paymentId === 4) return '📱'; // QR
-                              if (paymentId === 5) return '🔗'; // Link
-                              return '💰'; // Genérico
-                            })()}
-                            {(() => {
-                              // Mapear ID a nombre
-                              const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
-                              const paymentNames = {
-                                1: 'Efectivo',
-                                2: 'Tarjeta',
-                                3: 'Transferencia',
-                                4: 'QR',
-                                5: 'Link de Pago'
-                              };
-                              return paymentNames[paymentId] || `Método ${paymentId}`;
-                            })()}
-                          </span>
-                        </div>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <h4 className={`font-semibold ${isMobile ? 'text-sm' : 'text-base'} mb-2 ${
+                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                      }`}>
+                        {productName}
+                      </h4>
 
-                      {/* Variante/Tamaño */}
-                      {(cartItem.variant_name || cartItem.selectedOption?.size) && (
-                        <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-blue-400' : 'bg-blue-500'}`}></div>
-                          <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Tamaño:
-                          </span>
-                          <span className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {cartItem.variant_name || cartItem.selectedOption?.size}
-                          </span>
-                        </div>
-                      )}
+                      {/* ✅ SECCIÓN DE DETALLES MEJORADA Y ORGANIZADA - INCLUYE CLIENTE */}
+                      <div className="space-y-2">
 
-                      {/* Sabor */}
-                      {(() => {
-                        // ✅ BUSCAR SABOR EN MÚLTIPLES UBICACIONES
-                        const flavorToShow = cartItem.selectedFlavor?.name ||
-                                           cartItem.flavor?.name ||
-                                           cartItem.selectedFlavor ||
-                                           cartItem.flavor;
-
-                        console.log(`🍋 Flavor lookup for item ${idx}:`, {
-                          selectedFlavor: cartItem.selectedFlavor,
-                          flavor: cartItem.flavor,
-                          flavorToShow
-                        });
-
-                        return flavorToShow ? (
+                        {/* ✅ NOMBRE DEL CLIENTE */}
+                        {cartItem.clientName && (
                           <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-yellow-400' : 'bg-yellow-500'}`}></div>
+                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-cyan-400' : 'bg-cyan-500'}`}></div>
                             <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                              Sabor:
+                              Cliente:
                             </span>
-                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                            <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
                               theme === 'dark'
-                                ? 'bg-yellow-900/30 text-yellow-300 border border-yellow-700/50'
-                                : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                ? 'bg-cyan-900/30 text-cyan-300 border border-cyan-700/50'
+                                : 'bg-cyan-100 text-cyan-700 border border-cyan-200'
                             }`}>
-                              {flavorToShow}
+                              👤 {cartItem.clientName}
                             </span>
                           </div>
-                        ) : null;
-                      })()}
+                        )}
 
-                      {/* Extras */}
-                      {cartItem.extras && cartItem.extras.length > 0 && (
-                        <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-orange-400' : 'bg-orange-500'}`}></div>
+                        {/* Método de Pago */}
+                        {(cartItem.selectedPaymentMethod || cartItem.payment_method_id) && (
+                          <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
                             <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                              Extras:
+                              Pago:
+                            </span>
+                            <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
+                              theme === 'dark'
+                                ? 'bg-green-900/30 text-green-300 border border-green-700/50'
+                                : 'bg-green-100 text-green-700 border border-green-200'
+                            }`}>
+                              {/* Ícono del método de pago */}
+                              {(() => {
+                                const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
+                                if (paymentId === 1) return '💵'; // Efectivo
+                                if (paymentId === 2) return '💳'; // Tarjeta
+                                if (paymentId === 3) return '🏦'; // Transferencia
+                                if (paymentId === 4) return '📱'; // QR
+                                if (paymentId === 5) return '🔗'; // Link
+                                return '💰'; // Genérico
+                              })()}
+                              {(() => {
+                                // Mapear ID a nombre
+                                const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
+                                const paymentNames = {
+                                  1: 'Efectivo',
+                                  2: 'Tarjeta',
+                                  3: 'Transferencia',
+                                  4: 'QR',
+                                  5: 'Link de Pago'
+                                };
+                                return paymentNames[paymentId] || `Método ${paymentId}`;
+                              })()}
                             </span>
                           </div>
-                          <div className="flex flex-wrap gap-1 ml-4">
-                            {cartItem.extras.map((extra, extraIdx) => (
-                              <span
-                                key={`extra-${extraIdx}`}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
-                                  theme === 'dark'
-                                    ? 'bg-orange-900/30 text-orange-300 border border-orange-700/50'
-                                    : 'bg-orange-100 text-orange-700 border border-orange-200'
-                                }`}
-                              >
-                                <span>{extra.name}</span>
-                                {extra.quantity && extra.quantity > 1 && (
-                                  <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                                    theme === 'dark'
-                                      ? 'bg-orange-700 text-orange-200'
-                                      : 'bg-orange-600 text-white'
-                                  }`}>
-                                    ×{extra.quantity}
-                                  </span>
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Salsas */}
-                      {cartItem.sauces && cartItem.sauces.length > 0 && (
-                        <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-red-400' : 'bg-red-500'}`}></div>
+                        {/* Variante/Tamaño */}
+                        {(cartItem.variant_name || cartItem.selectedOption?.size) && (
+                          <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-blue-400' : 'bg-blue-500'}`}></div>
                             <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                              Salsas:
+                              Tamaño:
+                            </span>
+                            <span className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                              {cartItem.variant_name || cartItem.selectedOption?.size}
                             </span>
                           </div>
-                          <div className="flex flex-wrap gap-1 ml-4">
-                            {cartItem.sauces.map((sauce, sauceIdx) => (
-                              <span
-                                key={`sauce-${sauceIdx}`}
-                                className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium ${
-                                  theme === 'dark'
-                                    ? 'bg-red-900/30 text-red-300 border border-red-700/50'
-                                    : 'bg-red-100 text-red-700 border border-red-200'
-                                }`}
-                              >
-                                🌶️ {sauce.name}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Cantidad */}
-                      <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                        <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-purple-400' : 'bg-purple-500'}`}></div>
-                        <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                          Cantidad:
-                        </span>
-                        <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                          theme === 'dark'
-                            ? 'bg-purple-900/30 text-purple-300 border border-purple-700/50'
-                            : 'bg-purple-100 text-purple-700 border border-purple-200'
-                        }`}>
-                          {cartItem.quantity} {cartItem.quantity === 1 ? 'unidad' : 'unidades'}
-                        </span>
-                      </div>
+                        {/* Sabor */}
+                        {(() => {
+                          // ✅ BUSCAR SABOR EN MÚLTIPLES UBICACIONES
+                          const flavorToShow = cartItem.selectedFlavor?.name ||
+                                             cartItem.flavor?.name ||
+                                             cartItem.selectedFlavor ||
+                                             cartItem.flavor;
 
-                      {/* Comentario */}
-                      {cartItem.comment && (
-                        <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          <div className="flex items-start gap-2">
-                            <div className={`w-2 h-2 rounded-full mt-1 ${theme === 'dark' ? 'bg-gray-400' : 'bg-gray-500'}`}></div>
-                            <div>
+                          console.log(`🍋 Flavor lookup for item ${idx}:`, {
+                            selectedFlavor: cartItem.selectedFlavor,
+                            flavor: cartItem.flavor,
+                            flavorToShow
+                          });
+
+                          return flavorToShow ? (
+                            <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                              <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-yellow-400' : 'bg-yellow-500'}`}></div>
                               <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                                Comentario:
+                                Sabor:
                               </span>
-                              <p className={`mt-1 px-3 py-2 rounded-lg italic ${
+                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
                                 theme === 'dark'
-                                  ? 'bg-gray-800/50 text-gray-400 border border-gray-700/50'
-                                  : 'bg-gray-50 text-gray-600 border border-gray-200'
+                                  ? 'bg-yellow-900/30 text-yellow-300 border border-yellow-700/50'
+                                  : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
                               }`}>
-                                "{cartItem.comment}"
-                              </p>
+                                {flavorToShow}
+                              </span>
+                            </div>
+                          ) : null;
+                        })()}
+
+                        {/* Extras */}
+                        {cartItem.extras && cartItem.extras.length > 0 && (
+                          <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-orange-400' : 'bg-orange-500'}`}></div>
+                              <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Extras:
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 ml-4">
+                              {cartItem.extras.map((extra, extraIdx) => (
+                                <span
+                                  key={`extra-${extraIdx}`}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
+                                    theme === 'dark'
+                                      ? 'bg-orange-900/30 text-orange-300 border border-orange-700/50'
+                                      : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                  }`}
+                                >
+                                  <span>{extra.name}</span>
+                                  {extra.quantity && extra.quantity > 1 && (
+                                    <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                                      theme === 'dark'
+                                        ? 'bg-orange-700 text-orange-200'
+                                        : 'bg-orange-600 text-white'
+                                    }`}>
+                                      ×{extra.quantity}
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
                             </div>
                           </div>
+                        )}
+
+                        {/* Salsas */}
+                        {cartItem.sauces && cartItem.sauces.length > 0 && (
+                          <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-red-400' : 'bg-red-500'}`}></div>
+                              <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Salsas:
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 ml-4">
+                              {cartItem.sauces.map((sauce, sauceIdx) => (
+                                <span
+                                  key={`sauce-${sauceIdx}`}
+                                  className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium ${
+                                    theme === 'dark'
+                                      ? 'bg-red-900/30 text-red-300 border border-red-700/50'
+                                      : 'bg-red-100 text-red-700 border border-red-200'
+                                  }`}
+                                >
+                                  🌶️ {sauce.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cantidad */}
+                        <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                          <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-purple-400' : 'bg-purple-500'}`}></div>
+                          <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Cantidad:
+                          </span>
+                          <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
+                            theme === 'dark'
+                              ? 'bg-purple-900/30 text-purple-300 border border-purple-700/50'
+                              : 'bg-purple-100 text-purple-700 border border-purple-200'
+                          }`}>
+                            {cartItem.quantity} {cartItem.quantity === 1 ? 'unidad' : 'unidades'}
+                          </span>
                         </div>
-                      )}
+
+                        {/* Comentario */}
+                        {cartItem.comment && (
+                          <div className={`${isMobile ? 'text-xs' : 'text-sm'}`}>
+                            <div className="flex items-start gap-2">
+                              <div className={`w-2 h-2 rounded-full mt-1 ${theme === 'dark' ? 'bg-gray-400' : 'bg-gray-500'}`}></div>
+                              <div>
+                                <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                                  Comentario:
+                                </span>
+                                <p className={`mt-1 px-3 py-2 rounded-lg italic ${
+                                  theme === 'dark'
+                                    ? 'bg-gray-800/50 text-gray-400 border border-gray-700/50'
+                                    : 'bg-gray-50 text-gray-600 border border-gray-200'
+                                }`}>
+                                  "{cartItem.comment}"
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 🚨 BOTONES DE ACCIÓN - CRÍTICO */}
+                      <div className="flex gap-2 mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                          className={`flex items-center gap-1 px-3 py-2 border border-red-500 rounded-lg transition-all duration-200 hover:scale-105 ${
+                            theme === 'dark'
+                              ? 'hover:bg-red-900/20 text-red-400'
+                              : 'hover:bg-red-50 text-red-600'
+                          }`}
+                          onClick={() => handleRemoveProduct(idx, productName)}
+                          title="Eliminar producto"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                          <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium`}>
+                            Eliminar
+                          </span>
+                        </button>
+
+                        {/* 🚨 BOTÓN EDITAR - AQUÍ ESTÁ EL FIX CRÍTICO */}
+                        <button
+                          className={`flex items-center gap-1 px-3 py-2 border border-blue-500 rounded-lg transition-all duration-200 hover:scale-105 ${
+                            theme === 'dark'
+                              ? 'hover:bg-blue-900/20 text-blue-400'
+                              : 'hover:bg-blue-50 text-blue-600'
+                          }`}
+                          onClick={() => handleEditProduct(cartItem, idx)}
+                          title="Editar producto"
+                        >
+                          <PencilIcon className="w-4 h-4" />
+                          <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium`}>
+                            Editar
+                          </span>
+                        </button>
+                      </div>
                     </div>
 
-                    {/* 🚨 BOTONES DE ACCIÓN - CRÍTICO */}
-                    <div className="flex gap-2 mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <button
-                        className={`flex items-center gap-1 px-3 py-2 border border-red-500 rounded-lg transition-all duration-200 hover:scale-105 ${
-                          theme === 'dark'
-                            ? 'hover:bg-red-900/20 text-red-400'
-                            : 'hover:bg-red-50 text-red-600'
-                        }`}
-                        onClick={() => handleRemoveProduct(idx, productName)}
-                        title="Eliminar producto"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                        <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium`}>
-                          Eliminar
-                        </span>
-                      </button>
+                    {/* Precio */}
+                    <div className="text-right flex-shrink-0">
+                      <p className={`${isMobile ? 'text-sm' : 'text-base'} font-bold text-green-600`}>
+                        ${(() => {
+                          // ✅ CALCULAR PRECIO DINÁMICAMENTE EN CADA RENDER
+                          const calculatedPrice = calculateProductPrice(cartItem);
+                          console.log(`💰 Price for item ${idx}:`, {
+                            cartItemId: cartItem.id,
+                            productName: cartItem.product_name || cartItem.name,
+                            clientName: cartItem.clientName,
+                            totalPrice: cartItem.totalPrice,
+                            calculatedPrice,
+                            usingCalculated: !cartItem.totalPrice || cartItem.totalPrice === 0
+                          });
 
-                      {/* 🚨 BOTÓN EDITAR - AQUÍ ESTÁ EL FIX CRÍTICO */}
-                      <button
-                        className={`flex items-center gap-1 px-3 py-2 border border-blue-500 rounded-lg transition-all duration-200 hover:scale-105 ${
-                          theme === 'dark'
-                            ? 'hover:bg-blue-900/20 text-blue-400'
-                            : 'hover:bg-blue-50 text-blue-600'
-                        }`}
-                        onClick={() => handleEditProduct(cartItem, idx)}
-                        title="Editar producto"
-                      >
-                        <PencilIcon className="w-4 h-4" />
-                        <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium`}>
-                          Editar
-                        </span>
-                      </button>
+                          // Usar precio calculado si no hay totalPrice o si es 0
+                          const finalPrice = cartItem.totalPrice && cartItem.totalPrice > 0
+                            ? cartItem.totalPrice
+                            : calculatedPrice;
+
+                          return finalPrice.toFixed(2);
+                        })()}
+                      </p>
                     </div>
                   </div>
-
-                  {/* Precio */}
-                  <div className="text-right flex-shrink-0">
-                    <p className={`${isMobile ? 'text-sm' : 'text-base'} font-bold text-green-600`}>
-                      ${(() => {
-                        // ✅ CALCULAR PRECIO DINÁMICAMENTE EN CADA RENDER
-                        const calculatedPrice = calculateProductPrice(cartItem);
-                        console.log(`💰 Price for item ${idx}:`, {
-                          cartItemId: cartItem.id,
-                          productName: cartItem.product_name || cartItem.name,
-                          clientName: cartItem.clientName,
-                          totalPrice: cartItem.totalPrice,
-                          calculatedPrice,
-                          usingCalculated: !cartItem.totalPrice || cartItem.totalPrice === 0
-                        });
-
-                        // Usar precio calculado si no hay totalPrice o si es 0
-                        const finalPrice = cartItem.totalPrice && cartItem.totalPrice > 0
-                          ? cartItem.totalPrice
-                          : calculatedPrice;
-
-                        return finalPrice.toFixed(2);
-                      })()}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Total y botones */}
-          <div className="pt-4">
-            <div className={`flex justify-between items-center font-bold ${isMobile ? 'text-lg' : 'text-xl'} mb-4`}>
-              <span>Total:</span>
-              <span className="text-green-600">${cartTotal.toFixed(2)}</span>
+                );
+              })}
             </div>
 
-            <div className="space-y-3">
-              {/* ✅ BOTÓN MODIFICADO PARA USAR EL MODAL */}
-              <button
-                className={`w-full bg-green-600 text-white rounded-lg ${isMobile ? 'py-3 text-base' : 'py-4 text-lg'} font-semibold hover:bg-green-700 transition-colors`}
-                onClick={handleSaveOrder}
-              >
-                Guardar Orden
-              </button>
+            {/* Total y botones */}
+            <div className="pt-4">
+              <div className={`flex justify-between items-center font-bold ${isMobile ? 'text-lg' : 'text-xl'} mb-4`}>
+                <span>Total:</span>
+                <span className="text-green-600">${cartTotal.toFixed(2)}</span>
+              </div>
 
-              <button
-                className={`w-full bg-red-600 text-white rounded-lg ${isMobile ? 'py-3 text-base' : 'py-4 text-lg'} font-semibold hover:bg-red-700 transition-colors`}
-                onClick={handleClearCart}
-              >
-                Limpiar Carrito
-              </button>
+              <div className="space-y-3">
+                {/* ✅ BOTÓN MODIFICADO PARA USAR EL COMPONENTE MODAL */}
+                <button
+                  className={`w-full bg-green-600 text-white rounded-lg ${isMobile ? 'py-3 text-base' : 'py-4 text-lg'} font-semibold hover:bg-green-700 transition-colors`}
+                  onClick={handleSaveOrder}
+                >
+                  Guardar Orden
+                </button>
+
+                <button
+                  className={`w-full bg-red-600 text-white rounded-lg ${isMobile ? 'py-3 text-base' : 'py-4 text-lg'} font-semibold hover:bg-red-700 transition-colors`}
+                  onClick={handleClearCart}
+                >
+                  Limpiar Carrito
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+
+      {/* ✅ MODAL DE CLIENTE Y PAGO USANDO EL COMPONENTE */}
+      <ClientPaymentModal
+        isOpen={showClientPaymentModal}
+        onClose={handleClientPaymentClose}
+        onConfirm={handleClientPaymentConfirm}
+        theme={theme}
+        paymentMethods={paymentMethods}
+        initialClientName=""
+        initialPaymentMethod={null}
+        title="🛒 Finalizar Pedido"
+        confirmText="✅ Guardar Orden"
+        clientRequired={false}
+      />
+    </>
   );
 }
 
