@@ -70,10 +70,9 @@ function Orders({ onBack }) {
   // ✅ NUEVO ESTADO: Para distinguir entre editar producto vs agregar a orden
   const [isEditingOrderMode, setIsEditingOrderMode] = useState(false);
 
-  // ✅ ESTADOS PARA EL MODAL DE CLIENTE Y PAGO
+  // ✅ ESTADOS PARA EL MODAL DE CLIENTE Y PAGO - SOLO PARA EDITAR DATOS DE ORDEN
   const [showClientPaymentModal, setShowClientPaymentModal] = useState(false);
-  const [modalOrderData, setModalOrderData] = useState(null);
-  const [modalContext, setModalContext] = useState(''); // 'edit-order-data', 'save-item-changes', etc.
+  const [editingOrderData, setEditingOrderData] = useState(null);
 
   // Estados para edición completa de orden
   const [isEditingFullOrder, setIsEditingFullOrder] = useState(false);
@@ -91,102 +90,94 @@ function Orders({ onBack }) {
     return resultado;
   };
 
-  // ✅ NUEVA FUNCIÓN: Editar datos de la orden (cliente y método de pago)
+  // ✅ FUNCIÓN PARA EDITAR DATOS DE LA ORDEN (cliente y método de pago) - SIMPLIFICADA
   const handleEditOrderData = async (order) => {
-    setModalOrderData(order);
-    setModalContext('edit-order-data');
+    setEditingOrderData(order);
     setShowClientPaymentModal(true);
   };
 
-  // ✅ FUNCIÓN PARA MANEJAR CONFIRMACIÓN DEL MODAL
+  // ✅ FUNCIÓN PARA MANEJAR CONFIRMACIÓN DEL MODAL - SOLO PARA DATOS DE ORDEN
   const handleClientPaymentConfirm = async (modalData) => {
     setShowClientPaymentModal(false);
 
     try {
       setLoading(true);
 
-      if (modalContext === 'edit-order-data') {
-        // ✅ ACTUALIZAR DATOS DE LA ORDEN
-        debugLog('ORDERS', 'Updating order data:', {
-          orderId: modalOrderData.id_order,
-          newClientName: modalData.clientName,
-          newPaymentMethod: modalData.selectedPaymentMethod
-        });
+      debugLog('ORDERS', 'Updating order data:', {
+        orderId: editingOrderData.id_order,
+        newClientName: modalData.clientName,
+        newPaymentMethod: modalData.selectedPaymentMethod
+      });
 
-        // ✅ CONSTRUIR PAYLOAD PARA ACTUALIZAR SOLO DATOS DE LA ORDEN
-        const currentItems = modalOrderData.items || [];
+      // ✅ CONSTRUIR PAYLOAD PARA ACTUALIZAR SOLO DATOS DE LA ORDEN
+      const currentItems = editingOrderData.items || [];
 
-        // ✅ MAPEAR PRODUCTOS EXISTENTES SIN CAMBIOS
-        const existingItems = currentItems.map(item => ({
-          id_product: item.id_product,
-          id_variant: item.id_variant,
-          comment: item.comment || '',
-          quantity: item.quantity || 1,
-          updated_extras: (item.extras || []).map(extra => ({
-            id_extra: extra.id_extra,
-            quantity: extra.quantity || 1
-          })),
-          updated_sauces: (item.sauces || []).map(sauce => ({
-            id_sauce: sauce.id_sauce
-          })),
-          ...(item.flavor && {
-            flavor: item.flavor.id_flavor
-          })
-        }));
+      // ✅ MAPEAR PRODUCTOS EXISTENTES SIN CAMBIOS
+      const existingItems = currentItems.map(item => ({
+        id_product: item.id_product,
+        id_variant: item.id_variant,
+        comment: item.comment || '',
+        quantity: item.quantity || 1,
+        updated_extras: (item.extras || []).map(extra => ({
+          id_extra: extra.id_extra,
+          quantity: extra.quantity || 1
+        })),
+        updated_sauces: (item.sauces || []).map(sauce => ({
+          id_sauce: sauce.id_sauce
+        })),
+        ...(item.flavor && {
+          flavor: item.flavor.id_flavor
+        })
+      }));
 
-        const orderUpdateData = {
-          id_payment_method: modalData.selectedPaymentMethod,
-          client_name: modalData.clientName || 'Cliente POS',
-          updated_items: existingItems
-        };
+      const orderUpdateData = {
+        id_payment_method: modalData.selectedPaymentMethod,
+        client_name: modalData.clientName || 'Cliente POS',
+        updated_items: existingItems
+      };
 
-        console.log('📤 Enviando actualización de datos de orden:', orderUpdateData);
+      console.log('📤 Enviando actualización de datos de orden:', orderUpdateData);
 
-        await updateOrder(modalOrderData.id_order, orderUpdateData);
+      await updateOrder(editingOrderData.id_order, orderUpdateData);
 
-        // ✅ Actualizar el estado local
-        setOrders(prevOrders =>
-          prevOrders.map(ord =>
-            ord.id_order === modalOrderData.id_order
-              ? {
-                  ...ord,
-                  client_name: modalData.clientName || ord.client_name,
-                  id_payment_method: modalData.selectedPaymentMethod,
-                  payment_name: paymentMethods.find(pm => pm.id_payment_method === modalData.selectedPaymentMethod)?.name || ord.payment_name
-                }
-              : ord
-          )
-        );
+      // ✅ Actualizar el estado local
+      setOrders(prevOrders =>
+        prevOrders.map(ord =>
+          ord.id_order === editingOrderData.id_order
+            ? {
+                ...ord,
+                client_name: modalData.clientName || ord.client_name,
+                id_payment_method: modalData.selectedPaymentMethod,
+                payment_name: paymentMethods.find(pm => pm.id_payment_method === modalData.selectedPaymentMethod)?.name || ord.payment_name
+              }
+            : ord
+        )
+      );
 
-        setMessage({
-          text: 'Datos de la orden actualizados exitosamente',
-          type: 'success'
-        });
+      setMessage({
+        text: 'Datos de la orden actualizados exitosamente',
+        type: 'success'
+      });
 
-        await Swal.fire({
-          title: '¡Datos actualizados!',
-          text: 'Los datos de la orden se han actualizado correctamente',
-          icon: 'success',
-          timer: 2000,
-          showConfirmButton: false,
-          toast: true,
-          position: 'top-end',
-          background: theme === 'dark' ? '#1f2937' : '#ffffff',
-          color: theme === 'dark' ? '#f9fafb' : '#111827'
-        });
-
-      } else if (modalContext === 'save-item-changes') {
-        // ✅ GUARDAR CAMBIOS DE PRODUCTO INDIVIDUAL
-        await handleSaveItemChangesWithData(modalData);
-      }
+      await Swal.fire({
+        title: '¡Datos actualizados!',
+        text: 'Los datos de la orden se han actualizado correctamente',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
 
     } catch (error) {
-      debugLog('ERROR', 'Failed to handle modal confirmation:', error);
+      debugLog('ERROR', 'Failed to update order data:', error);
       handleApiError(error, setMessage);
 
       Swal.fire({
         title: 'Error',
-        text: 'No se pudo completar la operación. Inténtalo de nuevo.',
+        text: 'No se pudo actualizar los datos de la orden. Inténtalo de nuevo.',
         icon: 'error',
         confirmButtonText: 'Entendido',
         background: theme === 'dark' ? '#1f2937' : '#ffffff',
@@ -194,17 +185,14 @@ function Orders({ onBack }) {
       });
     } finally {
       setLoading(false);
-      // ✅ Limpiar estados del modal
-      setModalOrderData(null);
-      setModalContext('');
+      setEditingOrderData(null);
     }
   };
 
-  // ✅ FUNCIÓN PARA CERRAR MODAL
+  // ✅ FUNCIÓN PARA CERRAR MODAL DE DATOS DE ORDEN
   const handleClientPaymentClose = () => {
     setShowClientPaymentModal(false);
-    setModalOrderData(null);
-    setModalContext('');
+    setEditingOrderData(null);
   };
 
   // Cargar órdenes al montar el componente
@@ -578,24 +566,15 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS CON MODAL - ACTUALIZADA
+  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS DE PRODUCTO INDIVIDUAL - SIN MODAL
   const handleSaveItemChanges = async (itemData) => {
-    // Configurar modal para guardar cambios
-    setModalOrderData({ itemData, order: editingOrder });
-    setModalContext('save-item-changes');
-    setShowClientPaymentModal(true);
-  };
-
-  // ✅ FUNCIÓN AUXILIAR PARA GUARDAR CAMBIOS CON DATOS DEL MODAL
-  const handleSaveItemChangesWithData = async (modalData) => {
     try {
-      const { itemData } = modalOrderData;
+      setLoading(true);
 
-      debugLog('ORDERS', 'Saving item changes with modal data:', {
+      debugLog('ORDERS', 'Saving item changes directly:', {
         orderId: editingOrder.id_order,
         itemIndex: currentItemIndex,
-        itemData,
-        modalData
+        itemData
       });
 
       // ✅ CONSTRUIR EL PAYLOAD SEGÚN EL FORMATO CORRECTO DEL BACKEND
@@ -618,7 +597,7 @@ function Orders({ onBack }) {
               id_sauce: sauce.id_sauce
             })),
             ...(itemData.selectedFlavor && {
-              flavor: itemData.selectedFlavor.id_flavor // ✅ Sin prefijo "id_"
+              flavor: itemData.selectedFlavor.id_flavor
             })
           };
         } else {
@@ -636,20 +615,20 @@ function Orders({ onBack }) {
               id_sauce: sauce.id_sauce
             })),
             ...(item.flavor && {
-              flavor: item.flavor.id_flavor // ✅ Sin prefijo "id_"
+              flavor: item.flavor.id_flavor
             })
           };
         }
       });
 
-      // ✅ PAYLOAD FINAL
+      // ✅ PAYLOAD FINAL - MANTENER DATOS ACTUALES DE CLIENTE Y PAGO
       const orderUpdateData = {
-        id_payment_method: modalData.selectedPaymentMethod,
-        client_name: modalData.clientName || 'Cliente POS',
+        id_payment_method: editingOrder.id_payment_method,
+        client_name: editingOrder.client_name || 'Cliente POS',
         updated_items: updatedItems
       };
 
-      console.log('📤 Enviando datos de actualización (formato correcto):', orderUpdateData);
+      console.log('📤 Enviando datos de actualización de producto (sin modal):', orderUpdateData);
 
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
@@ -659,8 +638,6 @@ function Orders({ onBack }) {
           order.id_order === editingOrder.id_order
             ? {
                 ...order,
-                client_name: modalData.clientName || order.client_name,
-                id_payment_method: modalData.selectedPaymentMethod,
                 items: order.items.map((item, index) =>
                   index === currentItemIndex
                     ? {
@@ -674,7 +651,7 @@ function Orders({ onBack }) {
                           id_extra: extra.id_extra,
                           name: extra.name,
                           actual_price: extra.price,
-                          price: extra.price, // ✅ Asegurar que el precio esté disponible en ambos campos
+                          price: extra.price,
                           quantity: extra.quantity || 1
                         })) : item.extras,
                         sauces: itemData.selectedSauces ? itemData.selectedSauces.map(sauce => ({
@@ -736,6 +713,8 @@ function Orders({ onBack }) {
         background: theme === 'dark' ? '#1f2937' : '#ffffff',
         color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -767,7 +746,7 @@ function Orders({ onBack }) {
           id_sauce: sauce.id_sauce
         })),
         ...(item.flavor && {
-          flavor: item.flavor.id_flavor // ✅ Sin prefijo "id_"
+          flavor: item.flavor.id_flavor
         })
       }));
 
@@ -785,7 +764,7 @@ function Orders({ onBack }) {
           id_sauce: sauce.id_sauce
         })),
         ...(itemData.selectedFlavor && {
-          flavor: itemData.selectedFlavor.id_flavor // ✅ Sin prefijo "id_"
+          flavor: itemData.selectedFlavor.id_flavor
         })
       };
 
@@ -1221,7 +1200,7 @@ function Orders({ onBack }) {
                             <PlusIcon className="w-5 h-5" />
                           </button>
 
-                          {/* ✅ NUEVO BOTÓN: Editar datos de la orden */}
+                          {/* ✅ BOTÓN: Editar datos de la orden - SOLO ESTE MUESTRA EL MODAL */}
                           <button
                             onClick={() => handleEditOrderData(order)}
                             className={`p-2 rounded-lg transition-colors ${
@@ -1294,7 +1273,7 @@ function Orders({ onBack }) {
                             {/* ✅ VERIFICACIÓN DE TOTAL CALCULADO */}
                             {(() => {
                               const calculatedTotal = order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0;
-                              const backendTotal = parseFloat(order.total_amount || order.bill || order.calculated_total || 0);
+                              const backendTotal = parseFloat(order.bill);
                               const difference = Math.abs(calculatedTotal - backendTotal);
 
                               if (difference > 0.01 && backendTotal > 0) { // Si hay diferencia mayor a 1 centavo y hay total del backend
@@ -1496,7 +1475,7 @@ function Orders({ onBack }) {
           })) : []}
           // ✅ COMENTARIO INICIAL
           initialComment={editingItem?.comment || ''}
-          // ✅ PROPS PARA MANEJO DUAL DE EDICIÓN
+          // ✅ PROPS PARA MANEJO DUAL DE EDICIÓN - SIN MODAL
           onSave={isEditingOrderMode ? null : handleSaveItemChanges} // Solo para editar producto individual
           onSaveToOrder={isEditingOrderMode ? handleAddAnotherToOrder : null} // Solo para agregar a orden
           isEditing={!isEditingOrderMode} // True si está editando, False si está agregando
@@ -1504,25 +1483,17 @@ function Orders({ onBack }) {
         />
       )}
 
-      {/* ✅ MODAL DE CLIENTE Y PAGO USANDO EL COMPONENTE */}
+      {/* ✅ MODAL DE CLIENTE Y PAGO - SOLO PARA EDITAR DATOS DE ORDEN */}
       <ClientPaymentModal
         isOpen={showClientPaymentModal}
         onClose={handleClientPaymentClose}
         onConfirm={handleClientPaymentConfirm}
         theme={theme}
         paymentMethods={paymentMethods}
-        initialClientName={modalOrderData?.client_name || ''}
-        initialPaymentMethod={modalOrderData?.id_payment_method || null}
-        title={
-          modalContext === 'edit-order-data'
-            ? `🔄 Editar Orden #${modalOrderData?.id_order}`
-            : '🛒 Finalizar Cambios'
-        }
-        confirmText={
-          modalContext === 'edit-order-data'
-            ? '✅ Actualizar Datos'
-            : '✅ Guardar Cambios'
-        }
+        initialClientName={editingOrderData?.client_name || ''}
+        initialPaymentMethod={editingOrderData?.id_payment_method || null}
+        title={`🔄 Editar Orden #${editingOrderData?.id_order}`}
+        confirmText="✅ Actualizar Datos"
         clientRequired={false}
       />
     </div>
