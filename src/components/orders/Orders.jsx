@@ -21,7 +21,8 @@ import {
   MagnifyingGlassIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../modals/ProductModal';
@@ -64,6 +65,9 @@ function Orders({ onBack }) {
   const [editingItem, setEditingItem] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
   const [currentItemIndex, setCurrentItemIndex] = useState(null);
+
+  // ✅ NUEVO ESTADO: Para distinguir entre editar producto vs agregar a orden
+  const [isEditingOrderMode, setIsEditingOrderMode] = useState(false);
 
   // Estados para edición completa de orden
   const [isEditingFullOrder, setIsEditingFullOrder] = useState(false);
@@ -555,9 +559,70 @@ function Orders({ onBack }) {
       setCurrentItemIndex(itemIndex);
       setEditingItem(item);
       setEditingProduct(finalProduct);
+      setIsEditingOrderMode(false); // ✅ Modo editar producto individual
 
     } catch (error) {
       debugLog('ERROR', 'Failed to load product for editing:', error);
+      handleApiError(error, setMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ NUEVA FUNCIÓN: Agregar producto a orden existente
+  const handleAddProductToOrder = async (order) => {
+    try {
+      setLoading(true);
+      debugLog('ORDERS', 'Adding product to existing order:', {
+        orderId: order.id_order,
+        availableProductsCount: products?.length || 0
+      });
+
+      // ✅ VERIFICAR QUE HAY PRODUCTOS DISPONIBLES
+      if (!products || products.length === 0) {
+        await Swal.fire({
+          title: 'No hay productos disponibles',
+          text: 'No se encontraron productos en el sistema. Verifica que los productos estén cargados.',
+          icon: 'warning',
+          confirmButtonText: 'Entendido',
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+        return;
+      }
+
+      // ✅ DEBUG: Mostrar estructura de productos disponibles
+      console.log('🛒 Available products for order:', {
+        productsCount: products.length,
+        firstProduct: products[0],
+        productsWithPrices: products.filter(p => p.product_price > 0 || p.options?.some(opt => opt.product_price > 0)),
+        productsStructure: products.slice(0, 3).map(p => ({
+          id: p.id_product,
+          name: p.name,
+          price: p.product_price,
+          optionsCount: p.options?.length || 0,
+          hasImage: !!p.image
+        }))
+      });
+
+      // ✅ CREAR UN PRODUCTO GENÉRICO PARA SELECCIONAR
+      const genericProduct = {
+        id_product: null, // Se seleccionará en el modal
+        name: 'Seleccionar Producto',
+        image: null,
+        price: 0,
+        options: [],
+        flavors: []
+      };
+
+      setEditingOrder(order);
+      setCurrentItemIndex(null); // No hay item específico, es nuevo
+      setEditingItem(null); // No hay item específico
+      setEditingProduct(genericProduct);
+      setIsEditingOrderMode(true); // ✅ Modo agregar a orden
+
+    } catch (error) {
+      debugLog('ERROR', 'Failed to prepare add product to order:', error);
       handleApiError(error, setMessage);
     } finally {
       setLoading(false);
@@ -587,30 +652,58 @@ function Orders({ onBack }) {
         modalResult
       });
 
-      // ✅ CONSTRUIR EL PAYLOAD CORRECTO PARA LA API
+      // ✅ CONSTRUIR EL PAYLOAD SEGÚN EL FORMATO CORRECTO DEL BACKEND
+      const currentItems = editingOrder.items || [];
+
+      // ✅ MAPEAR TODOS LOS PRODUCTOS DE LA ORDEN
+      const updatedItems = currentItems.map((item, index) => {
+        if (index === currentItemIndex) {
+          // ✅ PRODUCTO QUE SE ESTÁ EDITANDO
+          return {
+            id_product: item.id_product,
+            id_variant: itemData.selectedOption?.id_variant || item.id_variant,
+            comment: itemData.comment || item.comment || '',
+            quantity: itemData.quantity || item.quantity || 1,
+            updated_extras: (itemData.selectedExtras || []).map(extra => ({
+              id_extra: extra.id_extra,
+              quantity: extra.quantity || 1
+            })),
+            updated_sauces: (itemData.selectedSauces || []).map(sauce => ({
+              id_sauce: sauce.id_sauce
+            })),
+            ...(itemData.selectedFlavor && {
+              flavor: itemData.selectedFlavor.id_flavor // ✅ Sin prefijo "id_"
+            })
+          };
+        } else {
+          // ✅ PRODUCTOS SIN CAMBIOS
+          return {
+            id_product: item.id_product,
+            id_variant: item.id_variant,
+            comment: item.comment || '',
+            quantity: item.quantity || 1,
+            updated_extras: (item.extras || []).map(extra => ({
+              id_extra: extra.id_extra,
+              quantity: extra.quantity || 1
+            })),
+            updated_sauces: (item.sauces || []).map(sauce => ({
+              id_sauce: sauce.id_sauce
+            })),
+            ...(item.flavor && {
+              flavor: item.flavor.id_flavor // ✅ Sin prefijo "id_"
+            })
+          };
+        }
+      });
+
+      // ✅ PAYLOAD FINAL
       const orderUpdateData = {
         id_payment_method: modalResult.selectedPaymentMethod,
         client_name: modalResult.clientName || 'Cliente POS',
-        updated_items: [{
-          id_order_detail: editingItem.id_order_detail || editingItem.id_product,
-          id_product: editingItem.id_product,
-          id_variant: itemData.selectedOption?.id_variant || editingItem.id_variant,
-          comment: itemData.comment || editingOrder.comment,
-          quantity: itemData.quantity || 1,
-          updated_extras: (itemData.selectedExtras || []).map(extra => ({
-            id_extra: extra.id_extra,
-            quantity: extra.quantity || 1
-          })),
-          updated_sauces: (itemData.selectedSauces || []).map(sauce => ({
-            id_sauce: sauce.id_sauce
-          })),
-          ...(itemData.selectedFlavor && {
-            id_flavor: itemData.selectedFlavor.id_flavor
-          })
-        }]
+        updated_items: updatedItems
       };
 
-      console.log('📤 Enviando datos de actualización:', orderUpdateData);
+      console.log('📤 Enviando datos de actualización (formato correcto):', orderUpdateData);
 
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
@@ -686,11 +779,114 @@ function Orders({ onBack }) {
     }
   };
 
+  // ✅ NUEVA FUNCIÓN: Agregar producto adicional a la orden
+  const handleAddAnotherToOrder = async (itemData) => {
+    try {
+      setLoading(true);
+
+      debugLog('ORDERS', 'Adding another product to order:', {
+        orderId: editingOrder.id_order,
+        itemData
+      });
+
+      // ✅ CONSTRUIR PAYLOAD SEGÚN EL FORMATO CORRECTO DEL BACKEND
+      // Todos los productos (existentes + nuevos) van en updated_items
+      const currentItems = editingOrder.items || [];
+
+      // ✅ MAPEAR PRODUCTOS EXISTENTES (sin cambios)
+      const existingItems = currentItems.map(item => ({
+        id_product: item.id_product,
+        id_variant: item.id_variant,
+        comment: item.comment || '',
+        quantity: item.quantity || 1,
+        updated_extras: (item.extras || []).map(extra => ({
+          id_extra: extra.id_extra,
+          quantity: extra.quantity || 1
+        })),
+        updated_sauces: (item.sauces || []).map(sauce => ({
+          id_sauce: sauce.id_sauce
+        })),
+        ...(item.flavor && {
+          flavor: item.flavor.id_flavor // ✅ Sin prefijo "id_"
+        })
+      }));
+
+      // ✅ AGREGAR EL NUEVO PRODUCTO
+      const newProduct = {
+        id_product: itemData.selectedProduct?.id_product,
+        id_variant: itemData.selectedOption?.id_variant,
+        comment: itemData.comment || '',
+        quantity: itemData.quantity || 1,
+        updated_extras: (itemData.selectedExtras || []).map(extra => ({
+          id_extra: extra.id_extra,
+          quantity: extra.quantity || 1
+        })),
+        updated_sauces: (itemData.selectedSauces || []).map(sauce => ({
+          id_sauce: sauce.id_sauce
+        })),
+        ...(itemData.selectedFlavor && {
+          flavor: itemData.selectedFlavor.id_flavor // ✅ Sin prefijo "id_"
+        })
+      };
+
+      // ✅ PAYLOAD FINAL SEGÚN EL FORMATO DEL BACKEND
+      const orderUpdateData = {
+        id_payment_method: editingOrder.id_payment_method,
+        client_name: editingOrder.client_name || 'Cliente POS',
+        updated_items: [
+          ...existingItems,
+          newProduct
+        ]
+      };
+
+      console.log('📤 Enviando datos para agregar producto (formato correcto):', orderUpdateData);
+
+      await updateOrder(editingOrder.id_order, orderUpdateData);
+
+      // ✅ Recargar la orden actualizada
+      await loadOrdersByPeriod();
+
+      // ✅ Mostrar notificación de éxito
+      await Swal.fire({
+        title: '✅ Producto agregado',
+        text: `El producto se agregó a la orden #${editingOrder.id_order}. Configura el siguiente producto.`,
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        position: 'top-end',
+        toast: true,
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+
+      // ✅ El modal se reseteará automáticamente por el ProductModal
+      return true;
+
+    } catch (error) {
+      debugLog('ERROR', 'Failed to add product to order:', error);
+      handleApiError(error, setMessage);
+
+      Swal.fire({
+        title: 'Error',
+        text: 'No se pudo agregar el producto a la orden. Inténtalo de nuevo.',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCloseEditModal = () => {
     setEditingProduct(null);
     setEditingItem(null);
     setEditingOrder(null);
     setCurrentItemIndex(null);
+    setIsEditingOrderMode(false); // ✅ Reset modo edición
     debugLog('ORDERS', 'Edit modal closed');
   };
 
@@ -1003,6 +1199,19 @@ function Orders({ onBack }) {
 
                         {/* Acciones */}
                         <div className="flex items-center gap-2">
+                          {/* ✅ NUEVO BOTÓN: Agregar producto a orden */}
+                          <button
+                            onClick={() => handleAddProductToOrder(order)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              theme === 'dark'
+                                ? 'text-green-400 hover:bg-green-900/20 hover:text-green-300'
+                                : 'text-green-600 hover:bg-green-50 hover:text-green-700'
+                            }`}
+                            title="Agregar producto a la orden"
+                          >
+                            <PlusIcon className="w-5 h-5" />
+                          </button>
+
                           <button
                             onClick={() => toggleOrderExpansion(order.id_order)}
                             className={`p-2 rounded-lg transition-colors ${
@@ -1054,23 +1263,6 @@ function Orders({ onBack }) {
                     {/* Detalles expandidos mejorados */}
                     {isExpanded && (
                       <div className={`border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-                        {/* Comentarios de la orden */}
-                        {order.items?.map((item, index) => (
-                          <div className="px-4 py-3 bg-opacity-50">
-                            <div className="flex items-start gap-2">
-                              <ChatBubbleLeftRightIcon className={`w-4 h-4 mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
-                              <div>
-                                <p className={`text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                                  Comentarios:
-                                </p>
-                                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                  {item.comment}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-
                         {/* Lista detallada de productos mejorada */}
                         <div className="p-4">
                           <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -1109,6 +1301,18 @@ function Orders({ onBack }) {
                                           </div>
                                         )}
                                       </div>
+                                      {/* Comentarios de la orden */}
+                                      <div className="flex items-start gap-2">
+                                        <ChatBubbleLeftRightIcon className={`w-4 h-4 mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`} />
+                                        <div>
+                                          <p className={`text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                                              Comentarios:
+                                          </p>
+                                          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                              {item.comment}
+                                          </p>
+                                        </div>
+                                     </div>
                                     </div>
                                   </div>
                                 </div>
@@ -1213,34 +1417,37 @@ function Orders({ onBack }) {
         )}
       </div>
 
-      {/* ✅ Modal de edición de producto individual CON OPCIONES Y SABORES COMPLETOS */}
-      {editingProduct && editingItem && editingOrder && (
+      {/* ✅ MODAL DE EDICIÓN CON MANEJO DUAL: EDITAR PRODUCTO vs AGREGAR A ORDEN */}
+      {editingProduct && editingOrder && (
         <ProductModal
           isOpen={true}
           onClose={handleCloseEditModal}
           product={editingProduct}
-          initialQuantity={editingItem.quantity || 1}
+          initialQuantity={editingItem?.quantity || 1}
           // ✅ USAR OPCIONES REORDENADAS (SELECCIONADA PRIMERO)
           initialOptions={editingProduct.reorderedOptions || editingProduct.options || []}
           // ✅ USAR SABORES REORDENADOS (SELECCIONADO PRIMERO)
           initialFlavors={editingProduct.reorderedFlavors || editingProduct.flavors || []}
-          // ✅ EXTRAS SELECCIONADOS EN LA ORDEN
-          initialExtras={editingItem.extras ? editingItem.extras.map(extra => ({
+          // ✅ EXTRAS SELECCIONADOS EN LA ORDEN (solo si está editando item específico)
+          initialExtras={editingItem?.extras ? editingItem.extras.map(extra => ({
             id_extra: extra.id_extra,
             name: extra.name,
             price: extra.actual_price,
             quantity: extra.quantity || 1
           })) : []}
-          // ✅ SALSAS SELECCIONADAS EN LA ORDEN
-          initialSauces={editingItem.sauces ? editingItem.sauces.map(sauce => ({
+          // ✅ SALSAS SELECCIONADAS EN LA ORDEN (solo si está editando item específico)
+          initialSauces={editingItem?.sauces ? editingItem.sauces.map(sauce => ({
             id_sauce: sauce.id_sauce,
             name: sauce.name,
             image: sauce.image
           })) : []}
           // ✅ COMENTARIO INICIAL
-          initialComment={editingItem.comment || ''}
-          onSave={handleSaveItemChanges}
-          isEditing={true}
+          initialComment={editingItem?.comment || ''}
+          // ✅ PROPS PARA MANEJO DUAL DE EDICIÓN
+          onSave={isEditingOrderMode ? null : handleSaveItemChanges} // Solo para editar producto individual
+          onSaveToOrder={isEditingOrderMode ? handleAddAnotherToOrder : null} // Solo para agregar a orden
+          isEditing={!isEditingOrderMode} // True si está editando, False si está agregando
+          isEditingOrder={isEditingOrderMode} // ✅ Nueva prop para distinguir modo
         />
       )}
     </div>

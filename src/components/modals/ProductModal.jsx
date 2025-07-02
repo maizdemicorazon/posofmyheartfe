@@ -28,11 +28,13 @@ function ProductModal({
   initialSauces = [],
   initialComment = '',
   onSave,
+  onSaveToOrder, // ✅ NUEVA PROP: Para guardar en orden existente
   isEditing = false,
+  isEditingOrder = false, // ✅ NUEVA PROP: Distinguir entre editar producto vs agregar a orden
   onAddedToCart
 }) {
   const { theme } = useTheme();
-  const { addToCart, extras, sauces, paymentMethods } = useCart();
+  const { addToCart, extras, sauces, paymentMethods, products } = useCart();
 
   // Estados para el producto
   const [quantity, setQuantity] = useState(1);
@@ -43,6 +45,9 @@ function ProductModal({
   const [comment, setComment] = useState('');
   const [errors, setErrors] = useState({});
 
+  // ✅ NUEVO ESTADO: Para selección de producto cuando se agrega a orden
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
   // Estado para manejo de imagen del producto
   const [productImageState, setProductImageState] = useState({
     hasError: false,
@@ -50,38 +55,75 @@ function ProductModal({
     finalImageSrc: null
   });
 
+  // ✅ FUNCIÓN MEJORADA: Resetear modal a valores iniciales
+  const resetModalToInitial = () => {
+    setQuantity(1);
+    setSelectedOption(null);
+    setSelectedFlavor(null);
+    setSelectedExtras([]);
+    setSelectedSauces([]);
+    setComment('');
+    setErrors({});
+    setSelectedProduct(null);
+    setProductImageState({
+      hasError: false,
+      errorCount: 0,
+      finalImageSrc: null
+    });
+
+    // ✅ SI ESTÁ EN MODO AGREGAR A ORDEN, NO SELECCIONAR NADA AUTOMÁTICAMENTE
+    if (!isEditingOrder) {
+      // ✅ CONFIGURAR OPCIONES Y SABORES POR DEFECTO SOLO EN MODO NORMAL
+      const availableOptions = product?.options || product?.product?.options || initialOptions || [];
+      const availableFlavors = product?.flavors || product?.product?.flavors || initialFlavors || [];
+
+      // Seleccionar primera opción por defecto
+      if (availableOptions.length > 0) {
+        setSelectedOption(availableOptions[0]);
+      }
+
+      // Seleccionar primer sabor por defecto
+      if (availableFlavors.length > 0) {
+        setSelectedFlavor(availableFlavors[0]);
+      }
+    }
+
+    console.log('🔄 Modal reset to initial values');
+  };
+
   // ✅ FUNCIÓN MEJORADA PARA OBTENER IMAGEN DEL PRODUCTO
   const getOptimizedProductImage = () => {
     const isDark = theme === 'dark';
+    const currentProduct = selectedProduct || product;
 
     // ✅ BUSCAR IMAGEN EN MÚLTIPLES UBICACIONES POSIBLES
     let imageUrl = null;
 
     // Prioridad 1: Imagen directa del producto
-    if (product?.image) {
-      imageUrl = product.image;
+    if (currentProduct?.image) {
+      imageUrl = currentProduct.image;
     }
     // Prioridad 2: Imagen anidada en product
-    else if (product?.product?.image) {
-      imageUrl = product.product.image;
+    else if (currentProduct?.product?.image) {
+      imageUrl = currentProduct.product.image;
     }
     // Prioridad 3: product_image (para compatibilidad con órdenes)
-    else if (product?.product_image) {
-      imageUrl = product.product_image;
+    else if (currentProduct?.product_image) {
+      imageUrl = currentProduct.product_image;
     }
 
     console.log('🖼️ ProductModal image lookup:', {
-      productName: product?.name || product?.product_name,
-      directImage: product?.image,
-      nestedImage: product?.product?.image,
-      productImage: product?.product_image,
+      productName: currentProduct?.name || currentProduct?.product_name,
+      directImage: currentProduct?.image,
+      nestedImage: currentProduct?.product?.image,
+      productImage: currentProduct?.product_image,
       finalImageUrl: imageUrl
     });
 
     // Si no hay imagen, usar placeholder
     if (!imageUrl) {
       const placeholderUrl = generatePlaceholderUrl(
-        product?.name || product?.product_name || 'Producto',
+        currentProduct?.name || currentProduct?.product_name || 'Producto',
         300,
         isDark
       );
@@ -94,7 +136,7 @@ function ProductModal({
     console.log('✅ Using optimized image:', optimizedUrl);
 
     return optimizedUrl || generatePlaceholderUrl(
-      product?.name || product?.product_name || 'Producto',
+      currentProduct?.name || currentProduct?.product_name || 'Producto',
       300,
       isDark
     );
@@ -110,7 +152,8 @@ function ProductModal({
         return prev;
       }
 
-      const productName = product?.name || product?.product_name || 'Producto';
+      const currentProduct = selectedProduct || product;
+      const productName = currentProduct?.name || currentProduct?.product_name || 'Producto';
       const placeholderSrc = generatePlaceholderUrl(productName, 300, theme === 'dark');
 
       console.log('🔄 Setting fallback image:', placeholderSrc);
@@ -159,40 +202,49 @@ function ProductModal({
 
       console.log('🔄 Mapped initial data:', {
         isEditing,
+        isEditingOrder,
         paymentMethodsLength: paymentMethods?.length || 0,
         extrasWithQuantities,
         initialSauces
       });
 
-      // 4. ✅ CONFIGURAR OPCIONES Y SABORES
-      // Para opciones (tamaños)
-      let optionToSelect = null;
-      if (initialOptions && initialOptions.length > 0) {
-        optionToSelect = initialOptions[0];
-      } else if (product.options && product.options.length > 0) {
-        optionToSelect = product.options[0];
-      } else if (product.product?.options && product.product.options.length > 0) {
-        optionToSelect = product.product.options[0];
-      }
-      setSelectedOption(optionToSelect);
+      // 4. ✅ CONFIGURAR SEGÚN EL MODO
+      if (isEditingOrder) {
+        // ✅ MODO AGREGAR A ORDEN: Configurar selector de productos
+        setSelectedProduct(null);
+        setSelectedOption(null);
+        setSelectedFlavor(null);
+      } else {
+        // ✅ MODO NORMAL: Configurar opciones y sabores
+        // Para opciones (tamaños)
+        let optionToSelect = null;
+        if (initialOptions && initialOptions.length > 0) {
+          optionToSelect = initialOptions[0];
+        } else if (product.options && product.options.length > 0) {
+          optionToSelect = product.options[0];
+        } else if (product.product?.options && product.product.options.length > 0) {
+          optionToSelect = product.product.options[0];
+        }
+        setSelectedOption(optionToSelect);
 
-      // Para sabores
-      let flavorToSelect = null;
-      if (initialFlavors && initialFlavors.length > 0) {
-        flavorToSelect = initialFlavors[0];
-      } else if (product.flavors && product.flavors.length > 0) {
-        flavorToSelect = product.flavors[0];
-      } else if (product.product?.flavors && product.product.flavors.length > 0) {
-        flavorToSelect = product.product.flavors[0];
-      }
-      setSelectedFlavor(flavorToSelect);
+        // Para sabores
+        let flavorToSelect = null;
+        if (initialFlavors && initialFlavors.length > 0) {
+          flavorToSelect = initialFlavors[0];
+        } else if (product.flavors && product.flavors.length > 0) {
+          flavorToSelect = product.flavors[0];
+        } else if (product.product?.flavors && product.product.flavors.length > 0) {
+          flavorToSelect = product.product.flavors[0];
+        }
+        setSelectedFlavor(flavorToSelect);
 
-      console.log('✅ ProductModal initialized with options and flavors:', {
-        selectedOption: optionToSelect,
-        selectedFlavor: flavorToSelect,
-        productHasOptions: !!(product.options || product.product?.options),
-        productHasFlavors: !!(product.flavors || product.product?.flavors)
-      });
+        console.log('✅ ProductModal initialized with options and flavors:', {
+          selectedOption: optionToSelect,
+          selectedFlavor: flavorToSelect,
+          productHasOptions: !!(product.options || product.product?.options),
+          productHasFlavors: !!(product.flavors || product.product?.flavors)
+        });
+      }
 
     } else if (!isOpen) {
       // Reset cuando se cierra
@@ -203,9 +255,10 @@ function ProductModal({
       setSelectedSauces([]);
       setComment('');
       setErrors({});
+      setSelectedProduct(null);
       setProductImageState({ hasError: false, errorCount: 0, finalImageSrc: null });
     }
-  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, isEditing, paymentMethods]);
+  }, [isOpen, product, initialQuantity, initialOptions, initialFlavors, initialExtras, initialSauces, initialComment, isEditing, isEditingOrder, paymentMethods]);
 
   // ✅ MANEJADORES DE CAMBIO PARA EXTRAS CON CANTIDAD
   const handleExtraQuantityChange = (extra, newQuantity) => {
@@ -235,13 +288,42 @@ function ProductModal({
     });
   };
 
+  // ✅ MANEJADOR PARA SELECCIÓN DE PRODUCTO (MODO AGREGAR A ORDEN)
+  const handleProductSelection = (productFromList) => {
+    setSelectedProduct(productFromList);
+
+    // ✅ CONFIGURAR OPCIONES Y SABORES DEL PRODUCTO SELECCIONADO
+    if (productFromList.options && productFromList.options.length > 0) {
+      setSelectedOption(productFromList.options[0]);
+    } else {
+      setSelectedOption(null);
+    }
+
+    if (productFromList.flavors && productFromList.flavors.length > 0) {
+      setSelectedFlavor(productFromList.flavors[0]);
+    } else {
+      setSelectedFlavor(null);
+    }
+
+    // Limpiar extras y salsas
+    setSelectedExtras([]);
+    setSelectedSauces([]);
+    setComment('');
+    setErrors({});
+
+    console.log('✅ Product selected for order:', productFromList);
+  };
+
   // ✅ CALCULAR PRECIO TOTAL CON CANTIDADES DE EXTRAS
   const calculateTotalPrice = () => {
+    const currentProduct = selectedProduct || product;
     let total = 0;
 
     // Precio base del producto según opción seleccionada
     if (selectedOption) {
       total += Number(selectedOption.price || 0);
+    } else if (currentProduct?.price) {
+      total += Number(currentProduct.price);
     }
 
     // Sumar extras con sus cantidades
@@ -256,13 +338,19 @@ function ProductModal({
     return total * quantity;
   };
 
-  // ✅ VALIDACIÓN ANTES DE AGREGAR AL CARRITO (SIN MÉTODO DE PAGO)
+  // ✅ VALIDACIÓN ANTES DE AGREGAR AL CARRITO
   const validateForm = () => {
     const newErrors = {};
+    const currentProduct = selectedProduct || product;
 
-    // ✅ OBTENER OPCIONES Y SABORES DE MÚLTIPLES UBICACIONES
-    const availableOptions = product.options || product.product?.options || initialOptions || [];
-    const availableFlavors = product.flavors || product.product?.flavors || initialFlavors || [];
+    // ✅ VALIDAR PRODUCTO SELECCIONADO (EN MODO AGREGAR A ORDEN)
+    if (isEditingOrder && !selectedProduct) {
+      newErrors.product = 'Selecciona un producto';
+    }
+
+    // ✅ OBTENER OPCIONES Y SABORES DEL PRODUCTO ACTUAL
+    const availableOptions = currentProduct?.options || currentProduct?.product?.options || initialOptions || [];
+    const availableFlavors = currentProduct?.flavors || currentProduct?.product?.flavors || initialFlavors || [];
 
     // Validar opción si hay opciones disponibles
     if (availableOptions.length > 0 && !selectedOption) {
@@ -278,26 +366,29 @@ function ProductModal({
     return Object.keys(newErrors).length === 0;
   };
 
-  // ✅ GENERAR ÍCONO DEL MÉTODO DE PAGO (PARA EXPORTAR)
-  const getPaymentMethodIcon = (methodName) => {
-    const name = methodName.toLowerCase();
-    if (name.includes(PAYMENT_METHODS.EFECTIVO)) {
-      return <CurrencyDollarIcon className="w-4 h-4" />;
-    } else if (name.includes(PAYMENT_METHODS.TB)) {
-      return <CreditCardIcon className="w-4 h-4" />;
-    } else if (name.includes(PAYMENT_METHODS.CLABE)) {
-      return <BanknotesIcon className="w-4 h-4" />;
-    } else if (name.includes(PAYMENT_METHODS.QR)) {
-      return <QrCodeIcon className="w-4 h-4" />;
-    } else if (name.includes(PAYMENT_METHODS.LINK)) {
-      return <LinkIcon className="w-4 h-4" />;
-    } else {
-      return <CurrencyDollarIcon className="w-4 h-4" />;
-    }
+  // ✅ FUNCIÓN COMÚN PARA PREPARAR DATOS DEL PRODUCTO
+  const prepareProductData = () => {
+    const currentProduct = selectedProduct || product;
+
+    return {
+      id_product: currentProduct?.id_product || currentProduct?.product?.id_product,
+      product_name: currentProduct?.name || currentProduct?.product_name || currentProduct?.product?.name,
+      product_image: currentProduct?.image || currentProduct?.product_image || currentProduct?.product?.image,
+      quantity,
+      selectedOption,
+      selectedFlavor,
+      selectedExtras,
+      selectedSauces,
+      selectedProduct: selectedProduct, // ✅ Para modo orden
+      comment: comment.trim(),
+      totalPrice: calculateTotalPrice(),
+      // ✅ MANTENER REFERENCIA AL PRODUCTO COMPLETO
+      product: currentProduct
+    };
   };
 
-  // ✅ MANEJAR AGREGAR AL CARRITO (SIN MODAL DE  E/PAGO)
-  const handleAddToCart = async () => {
+  // ✅ FUNCIÓN COMÚN PARA AGREGAR AL CARRITO (MODO NORMAL)
+  const addProductToCart = async () => {
     if (!validateForm()) {
       const firstErrorKey = Object.keys(errors)[0];
       if (firstErrorKey) {
@@ -306,56 +397,24 @@ function ProductModal({
           errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }
-      return;
+      return false;
     }
 
     try {
-      const productToAdd = {
-        id_product: product.id_product || product.product?.id_product,
-        product_name: product.name || product.product_name || product.product?.name,
-        product_image: product.image || product.product_image || product.product?.image,
-        quantity,
-        selectedOption,
-        selectedFlavor,
-        selectedExtras,
-        selectedSauces,
-        comment: comment.trim(),
-        totalPrice: calculateTotalPrice(),
-        // ✅ MANTENER REFERENCIA AL PRODUCTO COMPLETO
-        product: product
-      };
+      const productToAdd = prepareProductData();
 
       console.log('🛒 Adding to cart with product data:', productToAdd);
 
       if (isEditing && onSave) {
         await onSave(productToAdd);
-        await Swal.fire({
-          title: '✅ Producto actualizado',
-          text: `${product.name || product.product_name} ha sido actualizado en el carrito`,
-          icon: 'success',
-          timer: 1500,
-          showConfirmButton: false,
-          background: theme === 'dark' ? '#1f2937' : '#ffffff',
-          color: theme === 'dark' ? '#f9fafb' : '#111827'
-        });
       } else {
         addToCart(productToAdd);
-        await Swal.fire({
-          title: '✅ Agregado al carrito',
-          text: `${product.name || product.product_name} ha sido agregado al carrito`,
-          icon: 'success',
-          timer: 1500,
-          showConfirmButton: false,
-          background: theme === 'dark' ? '#1f2937' : '#ffffff',
-          color: theme === 'dark' ? '#f9fafb' : '#111827'
-        });
-
         if (onAddedToCart) {
           onAddedToCart();
         }
       }
 
-      onClose();
+      return true;
     } catch (error) {
       console.error('❌ Error al agregar al carrito:', error);
       await Swal.fire({
@@ -366,24 +425,145 @@ function ProductModal({
         background: theme === 'dark' ? '#1f2937' : '#ffffff',
         color: theme === 'dark' ? '#f9fafb' : '#111827'
       });
+      return false;
+    }
+  };
+
+  // ✅ FUNCIÓN COMÚN PARA AGREGAR A ORDEN (MODO ORDEN)
+  const addProductToOrder = async () => {
+    if (!validateForm()) {
+      const firstErrorKey = Object.keys(errors)[0];
+      if (firstErrorKey) {
+        const errorElement = document.querySelector(`[data-error="${firstErrorKey}"]`);
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+      return false;
+    }
+
+    try {
+      const productToAdd = prepareProductData();
+
+      console.log('🛒 Adding to order with product data:', productToAdd);
+
+      if (onSaveToOrder) {
+        return await onSaveToOrder(productToAdd);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ Error al agregar a la orden:', error);
+      await Swal.fire({
+        title: 'Error',
+        text: 'Error al agregar el producto a la orden',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+      return false;
+    }
+  };
+
+  // ✅ MANEJAR AGREGAR AL CARRITO/ORDEN (BOTÓN NORMAL)
+  const handleAddToCart = async () => {
+    let success = false;
+
+    if (isEditingOrder) {
+      success = await addProductToOrder();
+    } else {
+      success = await addProductToCart();
+    }
+
+    if (success) {
+      if (isEditing) {
+        await Swal.fire({
+          title: '✅ Producto actualizado',
+          text: `${(selectedProduct || product)?.name || (selectedProduct || product)?.product_name} ha sido actualizado`,
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false,
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+      } else if (isEditingOrder) {
+        await Swal.fire({
+          title: '✅ Producto agregado a la orden',
+          text: `${selectedProduct?.name} ha sido agregado a la orden`,
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false,
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+      } else {
+        await Swal.fire({
+          title: '✅ Agregado al carrito',
+          text: `${product?.name || product?.product_name} ha sido agregado al carrito`,
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false,
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+      }
+      onClose();
+    }
+  };
+
+  // ✅ NUEVA FUNCIÓN: Manejar agregar otro producto
+  const handleAddAnother = async () => {
+    let success = false;
+
+    if (isEditingOrder) {
+      success = await addProductToOrder();
+    } else {
+      success = await addProductToCart();
+    }
+
+    if (success) {
+      // Mostrar notificación de éxito como toast
+      const productName = (selectedProduct || product)?.name || (selectedProduct || product)?.product_name;
+      const message = isEditingOrder
+        ? `${productName} se agregó a la orden. Configura el siguiente producto.`
+        : `${productName} se agregó al carrito. Configura el siguiente producto.`;
+
+      await Swal.fire({
+        title: '✅ Producto agregado',
+        text: message,
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        position: 'top-end',
+        toast: true,
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+
+      // Resetear el modal para el siguiente producto
+      resetModalToInitial();
     }
   };
 
   if (!isOpen || !product) return null;
 
-  // ✅ OBTENER OPCIONES Y SABORES DE MÚLTIPLES UBICACIONES
-  const availableOptions = product.options || product.product?.options || initialOptions || [];
-  const availableFlavors = product.flavors || product.product?.flavors || initialFlavors || [];
+  // ✅ OBTENER DATOS SEGÚN EL MODO
+  const currentProduct = selectedProduct || product;
+  const availableOptions = currentProduct?.options || currentProduct?.product?.options || initialOptions || [];
+  const availableFlavors = currentProduct?.flavors || currentProduct?.product?.flavors || initialFlavors || [];
   const availableExtras = extras || [];
   const availableSauces = sauces || [];
 
   console.log('🔍 ProductModal render data:', {
-    productName: product.name || product.product_name,
+    isEditingOrder,
+    selectedProductName: selectedProduct?.name,
+    productName: product?.name || product?.product_name,
     availableOptionsCount: availableOptions.length,
     availableFlavorsCount: availableFlavors.length,
     availableExtrasCount: availableExtras.length,
     availableSaucesCount: availableSauces.length,
-    hasImage: !!(product.image || product.product_image || product.product?.image)
+    hasImage: !!(currentProduct?.image || currentProduct?.product_image || currentProduct?.product?.image)
   });
 
   return (
@@ -402,7 +582,7 @@ function ProductModal({
           <div className="h-32 xs:h-36 sm:h-40 md:h-48 lg:h-52 overflow-hidden relative">
             <img
               src={getOptimizedProductImage()}
-              alt={product.name || product.product_name || 'Producto'}
+              alt={currentProduct?.name || currentProduct?.product_name || 'Producto'}
               className="w-full h-full object-cover"
               onError={handleProductImageError}
               loading="lazy"
@@ -415,10 +595,11 @@ function ProductModal({
             <div className="flex items-end justify-between">
               <div className="flex-1 min-w-0 pr-2">
                 <h2 className="text-lg xs:text-xl sm:text-2xl md:text-3xl font-bold text-white truncate">
-                  {product.name || product.product_name || 'Producto'}
+                  {currentProduct?.name || currentProduct?.product_name || 'Seleccionar Producto'}
                 </h2>
                 <p className="text-white/80 text-xs sm:text-sm">
-                  {isEditing ? 'Editar producto' : 'Personalizar producto'}
+                  {isEditingOrder ? 'Agregar a orden existente' :
+                   isEditing ? 'Editar producto' : 'Personalizar producto'}
                 </p>
               </div>
             </div>
@@ -440,6 +621,47 @@ function ProductModal({
         {/* CONTENIDO SCROLLEABLE */}
         <div className="flex-1 px-3 sm:px-4 py-2 sm:py-3 overflow-y-auto min-h-0">
           <div className="space-y-3 sm:space-y-4 pb-4">
+
+            {/* ✅ SELECTOR DE PRODUCTOS (SOLO EN MODO AGREGAR A ORDEN) */}
+            {isEditingOrder && (
+              <div data-error="product">
+                <h3 className="text-sm sm:text-base font-semibold mb-3 flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-purple-400' : 'bg-purple-500'}`}></div>
+                  Seleccionar Producto
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto">
+                  {products && products.map((productOption) => (
+                    <button
+                      key={productOption.id_product}
+                      onClick={() => handleProductSelection(productOption)}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                        selectedProduct?.id_product === productOption.id_product
+                          ? `border-purple-500 ${theme === 'dark' ? 'bg-purple-900/30' : 'bg-purple-50'}`
+                          : `border-gray-300 ${theme === 'dark' ? 'border-gray-600 hover:border-gray-500' : 'hover:border-gray-400'}`
+                      }`}
+                    >
+                      {productOption.image && (
+                        <img
+                          src={optimizeGoogleDriveImageUrl(productOption.image, 60)}
+                          alt={productOption.name}
+                          className="w-12 h-12 rounded-lg object-cover"
+                          loading="lazy"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{productOption.name}</div>
+                      </div>
+                      {selectedProduct?.id_product === productOption.id_product && (
+                        <CheckIcon className="w-5 h-5 text-purple-500 flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {errors.product && (
+                  <p className="text-red-500 text-xs sm:text-sm mt-2">{errors.product}</p>
+                )}
+              </div>
+            )}
 
             {/* TAMAÑOS/OPCIONES MEJORADOS */}
             {availableOptions.length > 0 && (
@@ -663,7 +885,7 @@ function ProductModal({
           </div>
         </div>
 
-        {/* FOOTER CON PRECIO Y BOTÓN */}
+        {/* ✅ FOOTER CON PRECIO Y BOTONES - ADAPTADO PARA AMBOS MODOS */}
         <div className={`flex-shrink-0 p-3 sm:p-4 border-t ${theme === 'dark' ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'}`}>
           {/* Contenedor principal con mejor distribución */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
@@ -671,21 +893,21 @@ function ProductModal({
             {/* Sección del precio - Más prominente */}
             <div className="flex-1 text-center sm:text-left">
               <div className={`text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} font-medium`}>
-                Total a pagar
+                {isEditingOrder ? 'Total del producto' : 'Total a pagar'}
               </div>
               <div className="text-2xl sm:text-3xl font-bold text-green-500">
                 ${calculateTotalPrice().toFixed(2)}
               </div>
             </div>
 
-            {/* Sección de botones con mejor espaciado */}
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:min-w-[280px]">
+            {/* ✅ SECCIÓN DE BOTONES ADAPTADA PARA AMBOS MODOS */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:min-w-[360px]">
 
               {/* Botón Cancelar - Más discreto */}
               <button
                 onClick={onClose}
                 className={`
-                  flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg font-medium text-sm
+                  flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg font-semibold text-sm sm:text-base
                   transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] touch-manipulation
                   ${theme === 'dark'
                     ? 'bg-gray-700/50 hover:bg-gray-600/60 text-gray-300 hover:text-gray-200 border border-gray-600/50 hover:border-gray-500/60'
@@ -700,11 +922,32 @@ function ProductModal({
                 <span>Cancelar</span>
               </button>
 
-              {/* Botón Agregar - Más prominente */}
+              {/* ✅ BOTÓN AGREGAR OTRO - ADAPTADO PARA AMBOS MODOS */}
+              {!isEditing && (
+                <button
+                  onClick={handleAddAnother}
+                  className={`
+                    flex items-center justify-center gap-2 px-4 sm:px-4 py-2 sm:py-2.5 rounded-lg font-semibold text-white text-sm
+                    transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] touch-manipulation
+                    ${theme === 'dark'
+                      ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600'
+                      : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500'
+                    }
+                    text-white shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-green-400/50 focus:ring-offset-2
+                    ${theme === 'dark' ? 'focus:ring-offset-gray-800' : 'focus:ring-offset-white'}
+                    sm:flex-2
+                  `}
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  <span>{isEditingOrder ? 'Agregar Otro' : 'Agregar Otro'}</span>
+                </button>
+              )}
+
+              {/* Botón Principal - Adaptado según el modo */}
               <button
                 onClick={handleAddToCart}
                 className={`
-                  flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-3.5 rounded-lg font-semibold text-white text-sm sm:text-base
+                  flex items-center justify-center gap-2 px-4 sm:px-4 py-2 sm:py-2.5 rounded-lg font-semibold text-white text-sm
                   transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] touch-manipulation
                   ${theme === 'dark'
                     ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600'
@@ -716,7 +959,10 @@ function ProductModal({
                 `}
               >
                 <ShoppingCartIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span>{isEditing ? 'Actualizar' : 'Agregar'}</span>
+                <span>
+                  {isEditing ? 'Actualizar' :
+                   isEditingOrder ? 'Agregar a Orden' : 'Agregar'}
+                </span>
               </button>
             </div>
           </div>
