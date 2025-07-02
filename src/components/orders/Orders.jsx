@@ -297,14 +297,18 @@ function Orders({ onBack }) {
 
     // Filtro por rango de montos
     if (filters.minAmount) {
-      filtered = filtered.filter(order =>
-        parseFloat(order.total_amount || order.bill || 0) >= parseFloat(filters.minAmount)
-      );
+      filtered = filtered.filter(order => {
+        const orderTotal = order.total_amount || order.bill || order.calculated_total ||
+          (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+        return parseFloat(orderTotal) >= parseFloat(filters.minAmount);
+      });
     }
     if (filters.maxAmount) {
-      filtered = filtered.filter(order =>
-        parseFloat(order.total_amount || order.bill || 0) <= parseFloat(filters.maxAmount)
-      );
+      filtered = filtered.filter(order => {
+        const orderTotal = order.total_amount || order.bill || order.calculated_total ||
+          (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+        return parseFloat(orderTotal) <= parseFloat(filters.maxAmount);
+      });
     }
 
     // Ordenamiento
@@ -315,9 +319,21 @@ function Orders({ onBack }) {
         case 'oldest':
           return new Date(a.order_date) - new Date(b.order_date);
         case 'highest':
-          return parseFloat(b.total_amount || b.bill || 0) - parseFloat(a.total_amount || a.bill || 0);
+          return (() => {
+            const totalA = a.total_amount || a.bill || a.calculated_total ||
+              (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+            const totalB = b.total_amount || b.bill || b.calculated_total ||
+              (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+            return parseFloat(totalB) - parseFloat(totalA);
+          })();
         case 'lowest':
-          return parseFloat(a.total_amount || a.bill || 0) - parseFloat(b.total_amount || b.bill || 0);
+          return (() => {
+            const totalA = a.total_amount || a.bill || a.calculated_total ||
+              (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+            const totalB = b.total_amount || b.bill || b.calculated_total ||
+              (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+            return parseFloat(totalA) - parseFloat(totalB);
+          })();
         case 'client':
           return (a.client_name || '').localeCompare(b.client_name || '');
         default:
@@ -658,6 +674,7 @@ function Orders({ onBack }) {
                           id_extra: extra.id_extra,
                           name: extra.name,
                           actual_price: extra.price,
+                          price: extra.price, // ✅ Asegurar que el precio esté disponible en ambos campos
                           quantity: extra.quantity || 1
                         })) : item.extras,
                         sauces: itemData.selectedSauces ? itemData.selectedSauces.map(sauce => ({
@@ -667,7 +684,22 @@ function Orders({ onBack }) {
                         })) : item.sauces
                       }
                     : item
-                )
+                ),
+                // ✅ Recalcular total si no viene del backend
+                ...((!order.total_amount && !order.bill) && {
+                  calculated_total: order.items.reduce((sum, item, index) => {
+                    if (index === currentItemIndex) {
+                      // Calcular precio del item editado
+                      const editedItem = {
+                        ...item,
+                        product_price: itemData.selectedOption?.price || item.product_price,
+                        extras: itemData.selectedExtras || item.extras
+                      };
+                      return sum + calculateOrderItemPrice(editedItem);
+                    }
+                    return sum + calculateOrderItemPrice(item);
+                  }, 0)
+                })
               }
             : order
         )
@@ -809,6 +841,45 @@ function Orders({ onBack }) {
     }
   };
 
+  // ✅ FUNCIÓN PARA CALCULAR PRECIO TOTAL DE UN ITEM DE ORDEN
+  const calculateOrderItemPrice = (item) => {
+    try {
+      // Precio base del producto/variante
+      let totalPrice = parseFloat(item.product_price || 0);
+
+      // Agregar precio de extras
+      let extrasTotal = 0;
+      if (item.extras && Array.isArray(item.extras)) {
+        extrasTotal = item.extras.reduce((sum, extra) => {
+          const extraPrice = parseFloat(extra.actual_price || extra.price || 0);
+          const extraQuantity = parseInt(extra.quantity || 1);
+          const extraSubtotal = extraPrice * extraQuantity;
+          return sum + extraSubtotal;
+        }, 0);
+        totalPrice += extrasTotal;
+      }
+
+      // Multiplicar por cantidad del item
+      const itemQuantity = parseInt(item.quantity || 1);
+      totalPrice *= itemQuantity;
+
+      console.log(`💰 Order item price calculation:`, {
+        productName: item.product_name,
+        basePrice: parseFloat(item.product_price || 0),
+        extrasTotal,
+        extrasCount: item.extras?.length || 0,
+        quantity: itemQuantity,
+        subtotalBeforeQuantity: parseFloat(item.product_price || 0) + extrasTotal,
+        finalPrice: totalPrice
+      });
+
+      return totalPrice;
+    } catch (error) {
+      console.error('Error calculating order item price:', error);
+      return parseFloat(item.product_price || 0) * parseInt(item.quantity || 1);
+    }
+  };
+
   const handleCloseEditModal = () => {
     setEditingProduct(null);
     setEditingItem(null);
@@ -824,9 +895,16 @@ function Orders({ onBack }) {
   const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
-  // ✅ ESTADÍSTICAS MEJORADAS
+  // ✅ ESTADÍSTICAS MEJORADAS CON CÁLCULO CORRECTO
   const getFilterStats = () => {
-    const total = filteredOrders.reduce((sum, order) => sum + parseFloat(order.total_amount || order.bill || 0), 0);
+    // Calcular total usando el cálculo correcto de items
+    const total = filteredOrders.reduce((sum, order) => {
+      // Priorizar total_amount del backend, pero si no existe, calcular desde items
+      const orderTotal = order.total_amount || order.bill || order.calculated_total ||
+        (order.items ? order.items.reduce((itemSum, item) => itemSum + calculateOrderItemPrice(item), 0) : 0);
+      return sum + parseFloat(orderTotal);
+    }, 0);
+
     const uniqueClients = new Set(filteredOrders.map(order => order.client_name).filter(Boolean)).size;
     const paymentMethodsUsed = new Set(filteredOrders.map(order => order.payment_name).filter(Boolean)).size;
 
@@ -1078,7 +1156,10 @@ function Orders({ onBack }) {
             <div className="grid gap-4 mb-6">
               {paginatedOrders.map((order) => {
                 const isExpanded = expandedOrders.has(order.id_order);
-                const orderTotal = parseFloat(order.total_amount || order.bill || 0);
+
+                // ✅ CALCULAR TOTAL CORRECTO INCLUYENDO EXTRAS
+                const orderTotal = order.total_amount || order.bill || order.calculated_total ||
+                  (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
 
                 return (
                   <div
@@ -1118,7 +1199,7 @@ function Orders({ onBack }) {
                         {/* Total */}
                         <div className="text-right">
                           <div className="text-2xl font-bold text-green-600">
-                            {formatPrice(orderTotal)}
+                            {formatPrice(parseFloat(orderTotal))}
                           </div>
                           <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                             {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
@@ -1206,9 +1287,28 @@ function Orders({ onBack }) {
                       <div className={`border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
                         {/* Lista detallada de productos mejorada */}
                         <div className="p-4">
-                          <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Productos de la orden:
-                          </h4>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className={`text-sm font-semibold ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                              Productos de la orden:
+                            </h4>
+                            {/* ✅ VERIFICACIÓN DE TOTAL CALCULADO */}
+                            {(() => {
+                              const calculatedTotal = order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0;
+                              const backendTotal = parseFloat(order.total_amount || order.bill || order.calculated_total || 0);
+                              const difference = Math.abs(calculatedTotal - backendTotal);
+
+                              if (difference > 0.01 && backendTotal > 0) { // Si hay diferencia mayor a 1 centavo y hay total del backend
+                                return (
+                                  <div className={`text-xs px-2 py-1 rounded ${
+                                    theme === 'dark' ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-700'
+                                  }`}>
+                                    ⚠️ Calculado: {formatPrice(calculatedTotal)} | Backend: {formatPrice(backendTotal)}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                           <div className="space-y-2">
                             {order.items?.map((item, index) => (
                               <div key={index} className={`flex items-center justify-between p-3 rounded-lg ${
@@ -1230,16 +1330,25 @@ function Orders({ onBack }) {
                                         {item.product_name || 'Producto'} • {item.variant_name}
                                       </h5>
                                       <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} space-y-0.5`}>
+                                        {/* Desglose de precio */}
+                                        <div className="flex items-center gap-2">
+                                          <span>Precio base:</span>
+                                          <span className="font-medium">{formatPrice(parseFloat(item.product_price || 0))}</span>
+                                          {item.quantity > 1 && <span>× {item.quantity}</span>}
+                                        </div>
+
                                         {/* Extras y salsas */}
-                                        {((item.extras && item.extras.length > 0) || (item.sauces && item.sauces.length > 0)) && (
+                                        {item.extras && item.extras.length > 0 && (
                                           <div>
-                                            {item.extras && item.extras.length > 0 && (
-                                              <div>Extras: {item.extras.map(e => e.name).join(', ')}</div>
-                                            )}
-                                            {item.sauces && item.sauces.length > 0 && (
-                                              <div>Salsas: {item.sauces.map(s => s.name).join(', ')}</div>
-                                            )}
+                                            <div>Extras: {item.extras.map(e => {
+                                              const extraPrice = parseFloat(e.actual_price || e.price || 0);
+                                              const extraQty = parseInt(e.quantity || 1);
+                                              return `${e.name} (${formatPrice(extraPrice)}${extraQty > 1 ? ` ×${extraQty}` : ''})`;
+                                            }).join(', ')}</div>
                                           </div>
+                                        )}
+                                        {item.sauces && item.sauces.length > 0 && (
+                                          <div>Salsas: {item.sauces.map(s => s.name).join(', ')}</div>
                                         )}
                                       </div>
                                       {/* Comentarios de la orden */}
@@ -1261,7 +1370,10 @@ function Orders({ onBack }) {
                                 <div className="flex items-center gap-3">
                                   <div className="text-right">
                                     <div className="font-semibold text-green-600">
-                                      {formatPrice(item.product_price)}
+                                      {formatPrice(calculateOrderItemPrice(item))}
+                                    </div>
+                                    <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                                      {item.quantity > 1 && `${item.quantity}x ${formatPrice(parseFloat(item.product_price || 0))}`}
                                     </div>
                                   </div>
                                   <button
