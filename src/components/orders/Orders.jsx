@@ -105,6 +105,7 @@ function Orders({ onBack }) {
 
       debugLog('ORDERS', 'Updating order data:', {
         orderId: editingOrderData.id_order,
+        id_order_detail: editingOrderData.id_order_detail,
         newClientName: modalData.clientName,
         newPaymentMethod: modalData.selectedPaymentMethod
       });
@@ -146,6 +147,7 @@ function Orders({ onBack }) {
           ord.id_order === editingOrderData.id_order
             ? {
                 ...ord,
+                id_order_detail: ord.id_order_detail,
                 client_name: modalData.clientName || ord.client_name,
                 id_payment_method: modalData.selectedPaymentMethod,
                 payment_name: paymentMethods.find(pm => pm.id_payment_method === modalData.selectedPaymentMethod)?.name || ord.payment_name
@@ -587,6 +589,7 @@ function Orders({ onBack }) {
           return {
             id_product: item.id_product,
             id_variant: itemData.selectedOption?.id_variant || item.id_variant,
+            id_order_detail: itemData.selectedOption?.id_order_detail || item.id_order_detail,
             comment: itemData.comment || item.comment || '',
             quantity: itemData.quantity || item.quantity || 1,
             updated_extras: (itemData.selectedExtras || []).map(extra => ({
@@ -605,6 +608,7 @@ function Orders({ onBack }) {
           return {
             id_product: item.id_product,
             id_variant: item.id_variant,
+            id_order_detail: item.id_order_detail,
             comment: item.comment || '',
             quantity: item.quantity || 1,
             updated_extras: (item.extras || []).map(extra => ({
