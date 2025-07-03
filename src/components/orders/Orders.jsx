@@ -1286,7 +1286,6 @@ function Orders({ onBack }) {
                                     theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'
                                   }`}>
                                     <div className="flex items-start gap-3">
-                                      <ExclamationTriangleIcon className="w-7 h-7 text-slate-600 dark:text-slate-400 mt-0.5 flex-shrink-0" />
                                       <div className="flex-1">
                                         <span className={`text-lg font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
                                           ⚠️ INSTRUCCIONES ESPECIALES:
