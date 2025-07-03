@@ -30,8 +30,10 @@ import {
 import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../modals/ProductModal';
 import ClientPaymentModal from '../modals/ClientPaymentModal';
+import DeleteConfirmationModal from '../modals/DeleteConfirmationModal';
+import DeleteOrderConfirmationModal from '../modals/DeleteOrderConfirmationModal';
 import Swal from 'sweetalert2';
-import { getOrders, getOrdersByPeriod, updateOrder, getOrderById } from '../../utils/api';
+import { getOrders, getOrdersByPeriod, updateOrder, getOrderById, deleteOrder } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog, getPaymentMethodIcon } from '../../utils/helpers';
 import { startOfToday, subDays, subMonths } from 'date-fns';
 import { PAYMENT_METHODS } from '../../utils/constants';
@@ -80,6 +82,15 @@ function Orders({ onBack }) {
   // ✅ NUEVO ESTADO: Para controlar el auto-refresh
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  // ✅ NUEVOS ESTADOS PARA EL MODAL DE ELIMINACIÓN
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingItem, setDeletingItem] = useState(null);
+  const [deletingOrder, setDeletingOrder] = useState(null);
+  const [deletingItemIndex, setDeletingItemIndex] = useState(null);
+
+  // ✅ NUEVO ESTADO PARA EL MODAL DE ORDEN COMPLETA
+  const [showDeleteOrderModal, setShowDeleteOrderModal] = useState(false);
 
   // Estados para edición completa de orden
   const [isEditingFullOrder, setIsEditingFullOrder] = useState(false);
@@ -188,7 +199,7 @@ function Orders({ onBack }) {
           id_sauce: sauce.id_sauce
         })),
         ...(item.flavor && {
-          flavor: item.flavor.id_flavor
+          updated_flavor: item.flavor
         })
       }));
 
@@ -256,6 +267,221 @@ function Orders({ onBack }) {
   const handleClientPaymentClose = () => {
     setShowClientPaymentModal(false);
     setEditingOrderData(null);
+  };
+
+  // ✅ FUNCIÓN SIMPLIFICADA PARA ELIMINAR PRODUCTO
+  const handleDeleteOrderItem = async (order, itemIndex) => {
+    const item = order.items[itemIndex];
+    if (!item) {
+      setMessage({
+        text: 'No se puede eliminar este producto',
+        type: 'error'
+      });
+      return;
+    }
+
+    // ✅ CONFIGURAR DATOS PARA EL MODAL
+    setDeletingItem(item);
+    setDeletingOrder(order);
+    setDeletingItemIndex(itemIndex);
+    setShowDeleteModal(true);
+  };
+
+  // ✅ FUNCIÓN PARA CONFIRMAR ELIMINACIÓN - CON LÓGICA CONDICIONAL
+  const handleConfirmDelete = async () => {
+    try {
+      setShowDeleteModal(false);
+      setLoading(true);
+
+      const currentItems = deletingOrder.items || [];
+      const isLastProduct = currentItems.length === 1;
+
+      debugLog('ORDERS', 'Deleting order item:', {
+        orderId: deletingOrder.id_order,
+        itemIndex: deletingItemIndex,
+        productName: deletingItem.product_name,
+        totalItemsBefore: currentItems.length,
+        isLastProduct
+      });
+
+      if (isLastProduct) {
+        // ✅ CASO 1: ES EL ÚLTIMO PRODUCTO - MOSTRAR MODAL REACT PERSONALIZADO
+        console.log('🗑️ Eliminando último producto - se eliminará toda la orden');
+        setShowDeleteOrderModal(true);
+        setLoading(false); // Detener loading mientras esperamos confirmación
+        return; // ✅ SALIR AQUÍ - EL MODAL REACT SE ENCARGARÁ DEL RESTO
+      } else {
+        // ✅ CASO 2: HAY MÁS PRODUCTOS - SOLO ELIMINAR EL PRODUCTO
+        await handleDeleteSingleProduct();
+      }
+
+    } catch (error) {
+      debugLog('ERROR', 'Failed to delete order item:', error);
+      handleApiError(error, setMessage);
+
+      const errorAction = deletingOrder.items?.length === 1 ? 'eliminar la orden' : 'eliminar el producto';
+      Swal.fire({
+        title: 'Error al eliminar',
+        text: `No se pudo ${errorAction}. Inténtalo de nuevo.`,
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+    } finally {
+      setLoading(false);
+      // ✅ LIMPIAR ESTADOS
+      setDeletingItem(null);
+      setDeletingOrder(null);
+      setDeletingItemIndex(null);
+    }
+  };
+
+   // ✅ NUEVA FUNCIÓN: Eliminar solo el producto (múltiples productos)
+    const handleDeleteSingleProduct = async () => {
+      try {
+        const currentItems = deletingOrder.items || [];
+
+        console.log('📝 Eliminando producto - quedarán', currentItems.length - 1, 'productos');
+
+        // ✅ FILTRAR TODOS LOS PRODUCTOS EXCEPTO EL QUE SE VA A ELIMINAR
+        const remainingItems = currentItems
+          .filter((_, index) => index !== deletingItemIndex)
+          .map(item => ({
+            id_product: item.id_product,
+            id_variant: item.id_variant,
+            comment: item.comment || '',
+            quantity: item.quantity || 1,
+            updated_extras: (item.extras || []).map(extra => ({
+              id_extra: extra.id_extra,
+              quantity: extra.quantity || 1
+            })),
+            updated_sauces: (item.sauces || []).map(sauce => ({
+              id_sauce: sauce.id_sauce
+            })),
+            ...(item.flavor && {
+              updated_flavor: item.flavor
+            })
+          }));
+
+        // ✅ PAYLOAD FINAL - MANTENER DATOS ACTUALES DE CLIENTE Y PAGO
+        const orderUpdateData = {
+          id_payment_method: deletingOrder.id_payment_method,
+          client_name: deletingOrder.client_name || 'Cliente POS',
+          updated_items: remainingItems
+        };
+
+        console.log('📤 Enviando datos para eliminar producto:', {
+          orderId: deletingOrder.id_order,
+          itemsRemaining: remainingItems.length,
+          payload: orderUpdateData
+        });
+
+        await updateOrder(deletingOrder.id_order, orderUpdateData);
+
+        // ✅ Actualizar el estado local - SOLO FILTRAR EL PRODUCTO
+        setOrders(prevOrders =>
+          prevOrders.map(ord =>
+            ord.id_order === deletingOrder.id_order
+              ? {
+                  ...ord,
+                  items: ord.items.filter((_, index) => index !== deletingItemIndex),
+                  // ✅ Recalcular total si no viene del backend
+                  ...((!ord.total_amount && !ord.bill) && {
+                    calculated_total: ord.items
+                      .filter((_, index) => index !== deletingItemIndex)
+                      .reduce((sum, item) => sum + calculateOrderItemPrice(item), 0)
+                  })
+                }
+              : ord
+          )
+        );
+
+        setMessage({
+          text: 'Producto eliminado exitosamente',
+          type: 'success'
+        });
+
+        await Swal.fire({
+          title: '🗑️ ¡Producto eliminado!',
+          text: `${deletingItem.product_name} ha sido eliminado de la orden #${deletingOrder.id_order}`,
+          icon: 'success',
+          timer: 2500,
+          showConfirmButton: false,
+          toast: true,
+          position: 'top-end',
+          background: theme === 'dark' ? '#1f2937' : '#ffffff',
+          color: theme === 'dark' ? '#f9fafb' : '#111827'
+        });
+
+      } catch (error) {
+        throw error; // Re-lanzar para que lo maneje handleConfirmDelete
+      }
+    };
+
+ // ✅ NUEVA FUNCIÓN: Confirmar eliminación de orden completa desde el modal React
+  const handleConfirmDeleteOrder = async () => {
+    try {
+      setShowDeleteOrderModal(false);
+      setLoading(true);
+
+      // Eliminar orden completa
+      console.log('📤 Eliminando orden completa:', deletingOrder.id_order);
+      await deleteOrder(deletingOrder.id_order);
+
+      // ✅ Actualizar estado local - REMOVER LA ORDEN COMPLETA
+      setOrders(prevOrders =>
+        prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
+      );
+
+      setMessage({
+        text: `Orden #${deletingOrder.id_order} eliminada completamente`,
+        type: 'success'
+      });
+
+      await Swal.fire({
+        title: '🗑️ ¡Orden eliminada!',
+        text: `La orden #${deletingOrder.id_order} y el producto "${deletingItem.product_name}" han sido eliminados completamente`,
+        icon: 'success',
+        timer: 3000,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+
+    } catch (error) {
+      debugLog('ERROR', 'Failed to delete complete order:', error);
+      handleApiError(error, setMessage);
+
+      Swal.fire({
+        title: 'Error al eliminar orden',
+        text: 'No se pudo eliminar la orden completa. Inténtalo de nuevo.',
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        background: theme === 'dark' ? '#1f2937' : '#ffffff',
+        color: theme === 'dark' ? '#f9fafb' : '#111827'
+      });
+    } finally {
+      setLoading(false);
+      // ✅ LIMPIAR ESTADOS
+      setDeletingItem(null);
+      setDeletingOrder(null);
+      setDeletingItemIndex(null);
+    }
+  };
+
+  // ✅ FUNCIÓN PARA CANCELAR ELIMINACIÓN DE ORDEN COMPLETA
+  const handleCancelDeleteOrder = () => {
+    setShowDeleteOrderModal(false);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setDeletingItem(null);
+    setDeletingOrder(null);
+    setDeletingItemIndex(null);
   };
 
   // Cargar órdenes al montar el componente
@@ -661,7 +887,7 @@ function Orders({ onBack }) {
               id_sauce: sauce.id_sauce
             })),
             ...(itemData.selectedFlavor && {
-              flavor: itemData.selectedFlavor.id_flavor
+              updated_flavor: itemData.selectedFlavor
             })
           };
         } else {
@@ -680,7 +906,7 @@ function Orders({ onBack }) {
               id_sauce: sauce.id_sauce
             })),
             ...(item.flavor && {
-              flavor: item.flavor.id_flavor
+              updated_flavor: item.flavor
             })
           };
         }
@@ -711,7 +937,7 @@ function Orders({ onBack }) {
                         variant_name: itemData.selectedOption?.size || item.variant_name,
                         comment: itemData.comment || item.comment,
                         product_price: itemData.selectedOption?.price || item.product_price,
-                        flavor: itemData.selectedFlavor || item.flavor,
+                        updated_flavor: itemData.selectedFlavor || item.flavor,
                         extras: itemData.selectedExtras ? itemData.selectedExtras.map(extra => ({
                           id_extra: extra.id_extra,
                           name: extra.name,
@@ -811,7 +1037,7 @@ function Orders({ onBack }) {
           id_sauce: sauce.id_sauce
         })),
         ...(item.flavor && {
-          flavor: item.flavor.id_flavor
+          updated_flavor: item.flavor
         })
       }));
 
@@ -829,7 +1055,7 @@ function Orders({ onBack }) {
           id_sauce: sauce.id_sauce
         })),
         ...(itemData.selectedFlavor && {
-          flavor: itemData.selectedFlavor.id_flavor
+          updated_flavor: itemData.selectedFlavor
         })
       };
 
@@ -970,7 +1196,6 @@ function Orders({ onBack }) {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-
       {/* Header simplificado para cocina */}
       <div className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-sm border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -990,7 +1215,7 @@ function Orders({ onBack }) {
                 <ShoppingBagIcon className={`w-6 h-6 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
                 <div>
                   <h1 className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                    📋 Órdenes de Cocina
+                    📋 LISTADO DE PEDIDOS
                   </h1>
                   <p className={`text-base font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                     {stats.count} órdenes activas • Actualizado: {lastRefresh.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
@@ -1299,24 +1524,41 @@ function Orders({ onBack }) {
                                 )}
                               </div>
 
-                              {/* Precio y botón editar */}
+                              {/* ✅ PRECIO Y BOTONES DE ACCIÓN - INCLUYE BOTÓN ELIMINAR */}
                               <div className="flex items-start gap-4 ml-6">
                                 <div className="text-right">
                                   <div className="font-black text-2xl text-green-600">
                                     {formatPrice(calculateOrderItemPrice(item))}
                                   </div>
                                 </div>
-                                <button
-                                  onClick={() => handleEditOrderItem(order, index)}
-                                  className={`p-4 rounded-xl transition-all border-2 ${
-                                    theme === 'dark'
-                                      ? 'text-slate-400 hover:bg-slate-800 border-slate-600 hover:border-slate-500'
-                                      : 'text-slate-600 hover:bg-slate-50 border-slate-300 hover:border-slate-400'
-                                  }`}
-                                  title="Editar producto"
-                                >
-                                  <PencilIcon className="w-6 h-6" />
-                                </button>
+
+                                {/* Botones de acción: Editar y Eliminar */}
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    onClick={() => handleEditOrderItem(order, index)}
+                                    className={`p-4 rounded-xl transition-all border-2 ${
+                                      theme === 'dark'
+                                        ? 'text-blue-400 hover:bg-blue-900/20 border-blue-600 hover:border-blue-500'
+                                        : 'text-blue-600 hover:bg-blue-50 border-blue-300 hover:border-blue-400'
+                                    }`}
+                                    title="Editar producto"
+                                  >
+                                    <PencilIcon className="w-6 h-6" />
+                                  </button>
+
+                                  {/* ✅ BOTÓN ELIMINAR */}
+                                  <button
+                                    onClick={() => handleDeleteOrderItem(order, index)}
+                                    className={`p-4 rounded-xl transition-all border-2 ${
+                                      theme === 'dark'
+                                        ? 'text-red-400 hover:bg-red-900/20 border-red-600 hover:border-red-500'
+                                        : 'text-red-600 hover:bg-red-50 border-red-300 hover:border-red-400'
+                                    }`}
+                                    title="Eliminar producto"
+                                  >
+                                    <TrashIcon className="w-6 h-6" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1387,7 +1629,7 @@ function Orders({ onBack }) {
         )}
       </div>
 
-      {/* ✅ MODALES (sin cambios) */}
+      {/* ✅ MODALES */}
       {editingProduct && editingOrder && (
         <ProductModal
           isOpen={true}
@@ -1427,6 +1669,32 @@ function Orders({ onBack }) {
         confirmText="✅ Actualizar Datos"
         clientRequired={false}
       />
+
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        theme={theme}
+        item={deletingItem}
+        calculateItemPrice={calculateOrderItemPrice}
+        title={deletingItem ? `⚠️ ¿Eliminar ${deletingItem.product_name}?` : ''}
+        confirmText={deletingItem ? `Sí, eliminar ${deletingItem.product_name}` : 'Eliminar producto'}
+        warningText="⚠️ Esta acción eliminará el producto permanentemente de la orden"
+        showDetails={true}
+      />
+
+    {/* ✅ NUEVO MODAL DE ELIMINACIÓN DE ORDEN COMPLETA */}
+    <DeleteOrderConfirmationModal
+      isOpen={showDeleteOrderModal}
+      onClose={handleCancelDeleteOrder}
+      onConfirm={handleConfirmDeleteOrder}
+      theme={theme}
+      order={deletingOrder}
+      item={deletingItem}
+      title={`⚠️ ¿Eliminar orden completa #${deletingOrder?.id_order}?`}
+      confirmText="Eliminar orden completa"
+      warningText="⚠️ Esta acción eliminará la orden completa y no se puede deshacer"
+    />
     </div>
   );
 }
