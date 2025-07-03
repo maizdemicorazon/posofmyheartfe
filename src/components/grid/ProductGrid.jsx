@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useCart } from '../../context/CartContext';
 import { useLoading } from '../../context/LoadingContext';
-import { useMessage } from '../../context/MessageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
@@ -12,7 +11,6 @@ import { API_CONFIG } from '../../config/config.server';
 function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
   const { products, setProducts, setExtras, setSauces, setPaymentMethods } = useCart();
   const { setLoading } = useLoading();
-  const { setMessage } = useMessage();
   const { theme } = useTheme();
 
   // ✅ Usar useRef para evitar dobles peticiones
@@ -49,7 +47,6 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
           setExtras(response.extras || []);
           setSauces(response.sauces || []);
           setPaymentMethods(response.payment_methods || []);
-          setMessage(null);
           hasFetched.current = true; // ✅ Marcar como cargado exitosamente
         } else {
           throw new Error('No se recibieron productos');
@@ -67,14 +64,12 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         } else if (error.message.includes('HTTP error')) {
           errorMessage = `Error del servidor: ${error.message}`;
         }
-
-        setMessage({
-          text: errorMessage,
-          type: 'error'
-        });
+        showError(
+            errorMessage
+        );
       } finally {
         setLoading(false);
-        isCurrentlyFetching.current = false; // ✅ Liberar el flag
+        isCurrentlyFetching.current = false;
       }
     };
 
@@ -82,7 +77,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
     if (!hasFetched.current || products.length === 0) {
       fetchData();
     }
-  }, [products.length, setProducts, setExtras, setSauces, setLoading, setMessage]);
+  }, [products.length, setProducts, setExtras, setSauces, setLoading]);
 
   // ✅ Filtrado optimizado con useMemo
   const filteredProducts = useMemo(() => {

@@ -10,6 +10,7 @@ import Orders from './components/orders/Orders';
 import DailyEarnings from './components/metrics/DailyEarnings';
 import EarningsChart from './components/metrics/EarningsChart';
 import SalesReport from './components/reports/SalesReport';
+import { NotificationProvider } from './context/NotificationContext';
 
 function AppContent() {
   const { editingProduct, saveEditProduct, cancelEditProduct } = useCart();
@@ -59,7 +60,9 @@ function App() {
         <LoadingProvider>
           <MessageProvider>
             <CartProvider>
-              <AppContent />
+              <NotificationProvider>
+                <AppContent />
+              </NotificationProvider>
             </CartProvider>
           </MessageProvider>
         </LoadingProvider>

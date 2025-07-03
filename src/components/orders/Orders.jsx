@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLoading } from '../../context/LoadingContext';
-import { useMessage } from '../../context/MessageContext';
 import { useCart } from '../../context/CartContext';
 import {
   ShoppingBagIcon,
@@ -30,19 +29,17 @@ import {
 import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../modals/ProductModal';
 import ClientPaymentModal from '../modals/ClientPaymentModal';
-import DeleteConfirmationModal from '../modals/DeleteConfirmationModal';
-import DeleteOrderConfirmationModal from '../modals/DeleteOrderConfirmationModal';
-import Swal from 'sweetalert2';
+import DeleteModal from '../modals/DeleteModal';
 import { getOrders, getOrdersByPeriod, updateOrder, getOrderById, deleteOrder } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog, getPaymentMethodIcon } from '../../utils/helpers';
 import { startOfToday, subDays, subMonths } from 'date-fns';
 import { PAYMENT_METHODS } from '../../utils/constants';
+import { useNotification } from '../../context/NotificationContext';
 
 function Orders({ onBack }) {
   const { theme } = useTheme();
   const { setLoading } = useLoading();
-  const { setMessage } = useMessage();
-  const { paymentMethods, products, extras, sauces } = useCart(); // ✅ OBTENER PRODUCTOS, EXTRAS Y SALSAS
+  const { paymentMethods, products, extras, sauces } = useCart();
 
   // Estados principales
   const [orders, setOrders] = useState([]);
@@ -72,25 +69,23 @@ function Orders({ onBack }) {
   const [editingOrder, setEditingOrder] = useState(null);
   const [currentItemIndex, setCurrentItemIndex] = useState(null);
 
-  // ✅ NUEVO ESTADO: Para distinguir entre editar producto vs agregar a orden
-  const [isEditingOrderMode, setIsEditingOrderMode] = useState(false);
-
-  // ✅ ESTADOS PARA EL MODAL DE CLIENTE Y PAGO - SOLO PARA EDITAR DATOS DE ORDEN
+  // Estados para el modal de cliente y pago
   const [showClientPaymentModal, setShowClientPaymentModal] = useState(false);
   const [editingOrderData, setEditingOrderData] = useState(null);
 
-  // ✅ NUEVO ESTADO: Para controlar el auto-refresh
+  // Estado para distinguir entre editar producto vs agregar a orden
+  const [isEditingOrderMode, setIsEditingOrderMode] = useState(false);
+
+  // Estado para el auto-refresh
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // ✅ NUEVOS ESTADOS PARA EL MODAL DE ELIMINACIÓN
+  // ✅ ESTADOS UNIFICADOS PARA EL MODAL DE ELIMINACIÓN
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deletingItem, setDeletingItem] = useState(null);
   const [deletingOrder, setDeletingOrder] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
   const [deletingItemIndex, setDeletingItemIndex] = useState(null);
-
-  // ✅ NUEVO ESTADO PARA EL MODAL DE ORDEN COMPLETA
-  const [showDeleteOrderModal, setShowDeleteOrderModal] = useState(false);
+  const [isDeletingFullOrder, setIsDeletingFullOrder] = useState(false);
 
   // Estados para edición completa de orden
   const [isEditingFullOrder, setIsEditingFullOrder] = useState(false);
@@ -102,13 +97,15 @@ function Orders({ onBack }) {
     items: []
   });
 
+  const { showSuccess, showError, showWarning } = useNotification();
+
   const subtractDays = (dias) => {
     const resultado = new Date();
     resultado.setDate(resultado.getDate() - dias);
     return resultado;
   };
 
-  // ✅ NUEVA FUNCIÓN: Refrescar órdenes del día
+  // Función para refrescar órdenes del día
   const handleRefreshToday = async () => {
     setIsRefreshing(true);
     try {
@@ -117,18 +114,24 @@ function Orders({ onBack }) {
       await loadOrdersByPeriod();
       setLastRefresh(new Date());
 
-      setMessage({
-        text: 'Órdenes actualizadas correctamente',
-        type: 'success'
-      });
+      showSuccess(
+         '🔄 ¡Órdenes actualizadas!',
+         'Las órdenes se han actualizado correctamente',
+         2000
+       );
+
     } catch (error) {
-      handleApiError(error, setMessage);
+     showError(
+        'No se pudieron actualizar las órdenes. Inténtalo de nuevo.'
+      );
+
+      handleApiError(error);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  // ✅ FUNCIÓN PARA OBTENER TIEMPO TRANSCURRIDO DESDE LA ORDEN
+  // Función para obtener tiempo transcurrido desde la orden
   const getTimeElapsed = (orderDate) => {
     try {
       const now = new Date();
@@ -147,28 +150,28 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN PARA DETERMINAR URGENCIA DE LA ORDEN
+  // Función para determinar urgencia de la orden
   const getOrderUrgency = (orderDate) => {
     try {
       const now = new Date();
       const orderTime = new Date(orderDate);
       const diffInMinutes = Math.floor((now - orderTime) / (1000 * 60));
 
-      if (diffInMinutes > 30) return 'urgent'; // Más de 30 min = urgente
-      if (diffInMinutes > 15) return 'warning'; // Más de 15 min = advertencia
-      return 'normal'; // Menos de 15 min = normal
+      if (diffInMinutes > 30) return 'urgent';
+      if (diffInMinutes > 15) return 'warning';
+      return 'normal';
     } catch (error) {
       return 'normal';
     }
   };
 
-  // ✅ FUNCIÓN PARA EDITAR DATOS DE LA ORDEN (cliente y método de pago) - SIMPLIFICADA
+  // Función para editar datos de la orden (cliente y método de pago)
   const handleEditOrderData = async (order) => {
     setEditingOrderData(order);
     setShowClientPaymentModal(true);
   };
 
-  // ✅ FUNCIÓN PARA MANEJAR CONFIRMACIÓN DEL MODAL - SOLO PARA DATOS DE ORDEN
+  // Función para manejar confirmación del modal de cliente y pago
   const handleClientPaymentConfirm = async (modalData) => {
     setShowClientPaymentModal(false);
 
@@ -182,10 +185,10 @@ function Orders({ onBack }) {
         newPaymentMethod: modalData.selectedPaymentMethod
       });
 
-      // ✅ CONSTRUIR PAYLOAD PARA ACTUALIZAR SOLO DATOS DE LA ORDEN
+      // Construir payload para actualizar solo datos de la orden
       const currentItems = editingOrderData.items || [];
 
-      // ✅ MAPEAR PRODUCTOS EXISTENTES SIN CAMBIOS
+      // Mapear productos existentes sin cambios
       const existingItems = currentItems.map(item => ({
         id_product: item.id_product,
         id_variant: item.id_variant,
@@ -213,7 +216,7 @@ function Orders({ onBack }) {
 
       await updateOrder(editingOrderData.id_order, orderUpdateData);
 
-      // ✅ Actualizar el estado local
+      // Actualizar el estado local
       setOrders(prevOrders =>
         prevOrders.map(ord =>
           ord.id_order === editingOrderData.id_order
@@ -228,123 +231,156 @@ function Orders({ onBack }) {
         )
       );
 
-      setMessage({
-        text: 'Datos de la orden actualizados exitosamente',
-        type: 'success'
-      });
-
-      await Swal.fire({
-        title: '¡Datos actualizados!',
-        text: 'Los datos de la orden se han actualizado correctamente',
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
+      showSuccess(
+        '✅ ¡Datos actualizados!',
+        'Los datos de la orden se han actualizado correctamente',
+        2000
+      );
 
     } catch (error) {
       debugLog('ERROR', 'Failed to update order data:', error);
-      handleApiError(error, setMessage);
+      handleApiError(error);
 
-      Swal.fire({
-        title: 'Error',
-        text: 'No se pudo actualizar los datos de la orden. Inténtalo de nuevo.',
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
+      showError(
+        'No se pudo actualizar los datos de la orden. Inténtalo de nuevo.'
+      );
     } finally {
       setLoading(false);
       setEditingOrderData(null);
     }
   };
 
-  // ✅ FUNCIÓN PARA CERRAR MODAL DE DATOS DE ORDEN
+  // Función para cerrar modal de datos de orden
   const handleClientPaymentClose = () => {
     setShowClientPaymentModal(false);
     setEditingOrderData(null);
   };
 
+    // ✅ FUNCIÓN SIMPLIFICADA PARA ELIMINAR PRODUCTO
+    const handleDeleteOrderFull = async (order) => {
+      if (!order || !order.id_order) {
+        showError(
+            'No se puede eliminar esta orden'
+        );
+        return;
+      }
+
+      // Configurar datos para el modal unificado
+      setDeletingOrder(order);
+      setDeletingItem(null); // No hay item específico
+      setDeletingItemIndex(null); // No hay index específico
+      setIsDeletingFullOrder(true); // ✅ Marcar como eliminación completa
+      setShowDeleteModal(true);
+    };
+
   // ✅ FUNCIÓN SIMPLIFICADA PARA ELIMINAR PRODUCTO
   const handleDeleteOrderItem = async (order, itemIndex) => {
     const item = order.items[itemIndex];
     if (!item) {
-      setMessage({
-        text: 'No se puede eliminar este producto',
-        type: 'error'
-      });
+      showError(
+          'No se puede eliminar este item'
+      );
       return;
     }
 
-    // ✅ CONFIGURAR DATOS PARA EL MODAL
-    setDeletingItem(item);
+    // Configurar datos para el modal unificado
     setDeletingOrder(order);
+    setDeletingItem(item);
     setDeletingItemIndex(itemIndex);
     setShowDeleteModal(true);
   };
 
-  // ✅ FUNCIÓN PARA CONFIRMAR ELIMINACIÓN - CON LÓGICA CONDICIONAL
-  const handleConfirmDelete = async () => {
-    try {
-      setShowDeleteModal(false);
-      setLoading(true);
+    // ✅ FUNCIÓN UNIFICADA PARA CONFIRMAR ELIMINACIÓN - CON NOTIFICACIONES PERSONALIZADAS
+    const handleDeleteConfirm = async () => {
+      try {
+        setShowDeleteModal(false);
+        setLoading(true);
 
-      const currentItems = deletingOrder.items || [];
-      const isLastProduct = currentItems.length === 1;
+        debugLog('ORDERS', 'Delete confirmation:', {
+          orderId: deletingOrder.id_order,
+          isDeletingFullOrder,
+          itemIndex: deletingItemIndex,
+          productName: deletingItem?.product_name,
+          hasItem: !!deletingItem
+        });
 
-      debugLog('ORDERS', 'Deleting order item:', {
-        orderId: deletingOrder.id_order,
-        itemIndex: deletingItemIndex,
-        productName: deletingItem.product_name,
-        totalItemsBefore: currentItems.length,
-        isLastProduct
-      });
+        if (isDeletingFullOrder) {
+          // ✅ CASO 1: ELIMINAR ORDEN COMPLETA DIRECTAMENTE
+          console.log('🗑️ Eliminando orden completa directamente:', deletingOrder.id_order);
+          await deleteOrder(deletingOrder.id_order);
 
-      if (isLastProduct) {
-        // ✅ CASO 1: ES EL ÚLTIMO PRODUCTO - MOSTRAR MODAL REACT PERSONALIZADO
-        console.log('🗑️ Eliminando último producto - se eliminará toda la orden');
-        setShowDeleteOrderModal(true);
-        setLoading(false); // Detener loading mientras esperamos confirmación
-        return; // ✅ SALIR AQUÍ - EL MODAL REACT SE ENCARGARÁ DEL RESTO
-      } else {
-        // ✅ CASO 2: HAY MÁS PRODUCTOS - SOLO ELIMINAR EL PRODUCTO
-        await handleDeleteSingleProduct();
+          // Actualizar estado local - remover la orden completa
+          setOrders(prevOrders =>
+            prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
+          );
+
+          // ✅ NUEVA NOTIFICACIÓN PERSONALIZADA - ORDEN COMPLETA
+          showSuccess(
+            '🗑️ ¡Orden eliminada!',
+            `La orden #${deletingOrder.id_order} ha sido eliminada completamente con todos sus productos`,
+            3000
+          );
+
+        } else {
+          // ✅ CASO 2: ELIMINAR PRODUCTO ESPECÍFICO
+          const currentItems = deletingOrder.items || [];
+          const isLastProduct = currentItems.length === 1;
+
+          if (isLastProduct) {
+            // Es el último producto, eliminar orden completa
+            console.log('🗑️ Eliminando orden completa (último producto):', deletingOrder.id_order);
+            await deleteOrder(deletingOrder.id_order);
+
+            // Actualizar estado local - remover la orden completa
+            setOrders(prevOrders =>
+              prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
+            );
+
+            // ✅ NUEVA NOTIFICACIÓN PERSONALIZADA - ÚLTIMO PRODUCTO
+            const productName = deletingItem?.product_name || 'producto';
+            showSuccess(
+              '🗑️ ¡Orden eliminada!',
+              `La orden #${deletingOrder.id_order} y el producto "${productName}" han sido eliminados completamente`,
+              3000
+            );
+
+          } else {
+            // Hay más productos, eliminar solo el producto específico
+            await handleDeleteSingleProduct();
+          }
+        }
+
+      } catch (error) {
+        debugLog('ERROR', 'Failed to delete order/item:', error);
+        handleApiError(error);
+
+        const errorAction = isDeletingFullOrder ? 'eliminar la orden completa' :
+                            (deletingOrder.items?.length === 1 ? 'eliminar la orden' : 'eliminar el producto');
+
+        // ✅ NOTIFICACIÓN DE ERROR PERSONALIZADA
+        showError(
+          `No se pudo ${errorAction}. Inténtalo de nuevo.`
+        );
+
+      } finally {
+        setLoading(false);
+        // Limpiar estados
+        setDeletingItem(null);
+        setDeletingOrder(null);
+        setDeletingItemIndex(null);
+        setIsDeletingFullOrder(false);
       }
+    };
 
-    } catch (error) {
-      debugLog('ERROR', 'Failed to delete order item:', error);
-      handleApiError(error, setMessage);
 
-      const errorAction = deletingOrder.items?.length === 1 ? 'eliminar la orden' : 'eliminar el producto';
-      Swal.fire({
-        title: 'Error al eliminar',
-        text: `No se pudo ${errorAction}. Inténtalo de nuevo.`,
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-    } finally {
-      setLoading(false);
-      // ✅ LIMPIAR ESTADOS
-      setDeletingItem(null);
-      setDeletingOrder(null);
-      setDeletingItemIndex(null);
-    }
-  };
-
-   // ✅ NUEVA FUNCIÓN: Eliminar solo el producto (múltiples productos)
+  // ✅ FUNCIÓN PARA ELIMINAR SOLO EL PRODUCTO - CON NOTIFICACIONES PERSONALIZADAS
     const handleDeleteSingleProduct = async () => {
       try {
         const currentItems = deletingOrder.items || [];
 
         console.log('📝 Eliminando producto - quedarán', currentItems.length - 1, 'productos');
 
-        // ✅ FILTRAR TODOS LOS PRODUCTOS EXCEPTO EL QUE SE VA A ELIMINAR
+        // Filtrar todos los productos excepto el que se va a eliminar
         const remainingItems = currentItems
           .filter((_, index) => index !== deletingItemIndex)
           .map(item => ({
@@ -364,7 +400,7 @@ function Orders({ onBack }) {
             })
           }));
 
-        // ✅ PAYLOAD FINAL - MANTENER DATOS ACTUALES DE CLIENTE Y PAGO
+        // Payload final - mantener datos actuales de cliente y pago
         const orderUpdateData = {
           id_payment_method: deletingOrder.id_payment_method,
           client_name: deletingOrder.client_name || 'Cliente POS',
@@ -379,14 +415,14 @@ function Orders({ onBack }) {
 
         await updateOrder(deletingOrder.id_order, orderUpdateData);
 
-        // ✅ Actualizar el estado local - SOLO FILTRAR EL PRODUCTO
+        // Actualizar el estado local - solo filtrar el producto
         setOrders(prevOrders =>
           prevOrders.map(ord =>
             ord.id_order === deletingOrder.id_order
               ? {
                   ...ord,
                   items: ord.items.filter((_, index) => index !== deletingItemIndex),
-                  // ✅ Recalcular total si no viene del backend
+                  // Recalcular total si no viene del backend
                   ...((!ord.total_amount && !ord.bill) && {
                     calculated_total: ord.items
                       .filter((_, index) => index !== deletingItemIndex)
@@ -397,87 +433,21 @@ function Orders({ onBack }) {
           )
         );
 
-        setMessage({
-          text: 'Producto eliminado exitosamente',
-          type: 'success'
-        });
-
-        await Swal.fire({
-          title: '🗑️ ¡Producto eliminado!',
-          text: `${deletingItem.product_name} ha sido eliminado de la orden #${deletingOrder.id_order}`,
-          icon: 'success',
-          timer: 2500,
-          showConfirmButton: false,
-          toast: true,
-          position: 'top-end',
-          background: theme === 'dark' ? '#1f2937' : '#ffffff',
-          color: theme === 'dark' ? '#f9fafb' : '#111827'
-        });
+        // ✅ NUEVA NOTIFICACIÓN PERSONALIZADA - PRODUCTO INDIVIDUAL
+        const productName = deletingItem?.product_name || 'producto';
+        showSuccess(
+          '🗑️ ¡Producto eliminado!',
+          `${productName} ha sido eliminado de la orden #${deletingOrder.id_order}`,
+          2500
+        );
 
       } catch (error) {
-        throw error; // Re-lanzar para que lo maneje handleConfirmDelete
+        throw error; // Re-lanzar para que lo maneje handleDeleteConfirm
       }
     };
 
- // ✅ NUEVA FUNCIÓN: Confirmar eliminación de orden completa desde el modal React
-  const handleConfirmDeleteOrder = async () => {
-    try {
-      setShowDeleteOrderModal(false);
-      setLoading(true);
-
-      // Eliminar orden completa
-      console.log('📤 Eliminando orden completa:', deletingOrder.id_order);
-      await deleteOrder(deletingOrder.id_order);
-
-      // ✅ Actualizar estado local - REMOVER LA ORDEN COMPLETA
-      setOrders(prevOrders =>
-        prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
-      );
-
-      setMessage({
-        text: `Orden #${deletingOrder.id_order} eliminada completamente`,
-        type: 'success'
-      });
-
-      await Swal.fire({
-        title: '🗑️ ¡Orden eliminada!',
-        text: `La orden #${deletingOrder.id_order} y el producto "${deletingItem.product_name}" han sido eliminados completamente`,
-        icon: 'success',
-        timer: 3000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-
-    } catch (error) {
-      debugLog('ERROR', 'Failed to delete complete order:', error);
-      handleApiError(error, setMessage);
-
-      Swal.fire({
-        title: 'Error al eliminar orden',
-        text: 'No se pudo eliminar la orden completa. Inténtalo de nuevo.',
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-    } finally {
-      setLoading(false);
-      // ✅ LIMPIAR ESTADOS
-      setDeletingItem(null);
-      setDeletingOrder(null);
-      setDeletingItemIndex(null);
-    }
-  };
-
-  // ✅ FUNCIÓN PARA CANCELAR ELIMINACIÓN DE ORDEN COMPLETA
-  const handleCancelDeleteOrder = () => {
-    setShowDeleteOrderModal(false);
-  };
-
-  const handleCancelDelete = () => {
+  // ✅ FUNCIÓN PARA CANCELAR ELIMINACIÓN DESDE MODAL UNIFICADO
+  const handleDeleteCancel = () => {
     setShowDeleteModal(false);
     setDeletingItem(null);
     setDeletingOrder(null);
@@ -501,10 +471,9 @@ function Orders({ onBack }) {
           today: () => today,
           week: () => subDays(today, 7),
           month: () => subMonths(today, 1),
-          all: () => new Date("2025-05-01"),//fecha de inauguración
+          all: () => new Date("2025-05-01"), // fecha de inauguración
       };
 
-      // Llama a la función del mapa o a la de 'today' por defecto
       const getStartDate = periodMap[period] || periodMap.today;
       return getStartDate();
   }
@@ -515,10 +484,8 @@ function Orders({ onBack }) {
       setIsLoading(true);
       debugLog('ORDERS', 'Loading orders with period:', filters.period);
 
-     const start = queryFormatDate(
-            getStartDateForPeriod(filters.period)
-         );
-     const end = queryFormatDate(new Date());
+      const start = queryFormatDate(getStartDateForPeriod(filters.period));
+      const end = queryFormatDate(new Date());
 
       const response = await getOrdersByPeriod(start, end);
       const ordersData = Array.isArray(response) ? response : response?.data || [];
@@ -533,7 +500,7 @@ function Orders({ onBack }) {
       setOrders(ordersData);
     } catch (error) {
       debugLog('ERROR', 'Failed to load orders:', error);
-      handleApiError(error, setMessage);
+      handleApiError(error);
       setOrders([]);
     } finally {
       setLoading(false);
@@ -541,7 +508,7 @@ function Orders({ onBack }) {
     }
   };
 
-  // ✅ FUNCIÓN MEJORADA PARA APLICAR FILTROS
+  // Función mejorada para aplicar filtros
   const applyFilters = () => {
     let filtered = [...orders];
 
@@ -619,10 +586,10 @@ function Orders({ onBack }) {
     });
 
     setFilteredOrders(filtered);
-    setCurrentPage(1); // Reset a primera página cuando se aplican filtros
+    setCurrentPage(1);
   };
 
-  // ✅ FUNCIÓN PARA LIMPIAR FILTROS
+  // Función para limpiar filtros
   const clearFilters = () => {
     setFilters({
       period: 'today',
@@ -636,7 +603,7 @@ function Orders({ onBack }) {
     });
   };
 
-  // ✅ FUNCIÓN PARA MANEJAR CAMBIOS EN FILTROS
+  // Función para manejar cambios en filtros
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({
       ...prev,
@@ -644,20 +611,19 @@ function Orders({ onBack }) {
     }));
   };
 
-    const queryFormatDate = (dateString) => {
-      if (!dateString) return 'Fecha no disponible';
-      try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-CA', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        });
-      } catch (error) {
-        return 'Fecha inválida';
-      }
-    };
-
+  const queryFormatDate = (dateString) => {
+    if (!dateString) return 'Fecha no disponible';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-CA', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    } catch (error) {
+      return 'Fecha inválida';
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Fecha no disponible';
@@ -685,15 +651,14 @@ function Orders({ onBack }) {
     setExpandedOrders(newExpanded);
   };
 
-  // ✅ FUNCIÓN PARA EDITAR PRODUCTO INDIVIDUAL - CORREGIDA PARA CARGAR OPCIONES Y SABORES
+  // Función para editar producto individual
   const handleEditOrderItem = async (order, itemIndex) => {
     try {
       const item = order.items[itemIndex];
       if (!item || !item.id_product) {
-        setMessage({
-          text: 'No se puede editar este producto',
-          type: 'error'
-        });
+        showError(
+            'No se puede editar este producto'
+        );
         return;
       }
 
@@ -704,23 +669,21 @@ function Orders({ onBack }) {
         item
       });
 
-      // ✅ CARGAR INFORMACIÓN COMPLETA DEL PRODUCTO DESDE EL CONTEXTO
+      // Cargar información completa del producto desde el contexto
       let completeProductInfo = null;
 
-      // Buscar el producto en el contexto
       if (products && products.length > 0) {
         completeProductInfo = products.find(p => p.id_product === item.id_product);
         console.log('🔍 Found product in context:', completeProductInfo);
       }
 
-      // ✅ CONSTRUIR ESTRUCTURA COMPLETA PARA EL MODAL CON TODAS LAS OPCIONES
+      // Construir estructura completa para el modal
       const completeProduct = {
         id_product: item.id_product,
         name: item.product_name,
         image: item.product_image,
         price: item.product_price,
         product_price: item.product_price,
-        // ✅ CONSTRUIR OPCIONES: usar del contexto O crear fallback
         options: completeProductInfo?.options || completeProductInfo?.variants || [
           {
             id_variant: item.id_variant,
@@ -728,7 +691,6 @@ function Orders({ onBack }) {
             price: item.product_price
           }
         ],
-        // ✅ CONSTRUIR SABORES: usar del contexto O crear fallback
         flavors: completeProductInfo?.flavors || (item.flavor ? [
           {
             id_flavor: item.flavor.id_flavor,
@@ -738,7 +700,7 @@ function Orders({ onBack }) {
         ...(completeProductInfo || {})
       };
 
-      // ✅ REORGANIZAR OPCIONES PARA QUE LA SELECCIONADA ESTÉ PRIMERA
+      // Reorganizar opciones para que la seleccionada esté primera
       let initialOptions = [...(completeProduct.options || [])];
       if (item.id_variant && initialOptions.length > 1) {
         const selectedIndex = initialOptions.findIndex(opt => opt.id_variant === item.id_variant);
@@ -748,7 +710,7 @@ function Orders({ onBack }) {
         }
       }
 
-      // ✅ REORGANIZAR SABORES PARA QUE EL SELECCIONADO ESTÉ PRIMERO
+      // Reorganizar sabores para que el seleccionado esté primero
       let initialFlavors = [...(completeProduct.flavors || [])];
       if (item.flavor?.id_flavor && initialFlavors.length > 1) {
         const selectedIndex = initialFlavors.findIndex(flavor => flavor.id_flavor === item.flavor.id_flavor);
@@ -758,7 +720,6 @@ function Orders({ onBack }) {
         }
       }
 
-      // ✅ SI NO HAY OPCIONES DEL CONTEXTO, USAR EXTRAS Y SALSAS GLOBALES
       const availableExtras = extras || [];
       const availableSauces = sauces || [];
 
@@ -772,7 +733,7 @@ function Orders({ onBack }) {
         selectedFlavor: item.flavor?.id_flavor
       });
 
-      // ✅ CREAR OBJETO FINAL CON TODA LA INFORMACIÓN
+      // Crear objeto final con toda la información
       const finalProduct = {
         ...completeProduct,
         reorderedOptions: initialOptions,
@@ -785,17 +746,17 @@ function Orders({ onBack }) {
       setCurrentItemIndex(itemIndex);
       setEditingItem(item);
       setEditingProduct(finalProduct);
-      setIsEditingOrderMode(false); // ✅ Modo editar producto individual
+      setIsEditingOrderMode(false);
 
     } catch (error) {
       debugLog('ERROR', 'Failed to load product for editing:', error);
-      handleApiError(error, setMessage);
+      handleApiError(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ NUEVA FUNCIÓN: Agregar producto a orden existente
+  // Función para agregar producto a orden existente
   const handleAddProductToOrder = async (order) => {
     try {
       setLoading(true);
@@ -804,20 +765,15 @@ function Orders({ onBack }) {
         availableProductsCount: products?.length || 0
       });
 
-      // ✅ VERIFICAR QUE HAY PRODUCTOS DISPONIBLES
       if (!products || products.length === 0) {
-        await Swal.fire({
-          title: 'No hay productos disponibles',
-          text: 'No se encontraron productos en el sistema. Verifica que los productos estén cargados.',
-          icon: 'warning',
-          confirmButtonText: 'Entendido',
-          background: theme === 'dark' ? '#1f2937' : '#ffffff',
-          color: theme === 'dark' ? '#f9fafb' : '#111827'
-        });
+          showWarning(
+              'No hay productos disponibles',
+              'No se encontraron productos en el sistema. Verifica que los productos estén cargados.',
+              4000
+              );
         return;
       }
 
-      // ✅ DEBUG: Mostrar estructura de productos disponibles
       console.log('🛒 Available products for order:', {
         productsCount: products.length,
         firstProduct: products[0],
@@ -831,9 +787,9 @@ function Orders({ onBack }) {
         }))
       });
 
-      // ✅ CREAR UN PRODUCTO GENÉRICO PARA SELECCIONAR
+      // Crear un producto genérico para seleccionar
       const genericProduct = {
-        id_product: null, // Se seleccionará en el modal
+        id_product: null,
         name: 'Seleccionar Producto',
         image: null,
         price: 0,
@@ -842,20 +798,20 @@ function Orders({ onBack }) {
       };
 
       setEditingOrder(order);
-      setCurrentItemIndex(null); // No hay item específico, es nuevo
-      setEditingItem(null); // No hay item específico
+      setCurrentItemIndex(null);
+      setEditingItem(null);
       setEditingProduct(genericProduct);
-      setIsEditingOrderMode(true); // ✅ Modo agregar a orden
+      setIsEditingOrderMode(true);
 
     } catch (error) {
       debugLog('ERROR', 'Failed to prepare add product to order:', error);
-      handleApiError(error, setMessage);
+      handleApiError(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ FUNCIÓN PARA GUARDAR CAMBIOS DE PRODUCTO INDIVIDUAL - SIN MODAL
+  // Función para guardar cambios de producto individual
   const handleSaveItemChanges = async (itemData) => {
     try {
       setLoading(true);
@@ -866,13 +822,13 @@ function Orders({ onBack }) {
         itemData
       });
 
-      // ✅ CONSTRUIR EL PAYLOAD SEGÚN EL FORMATO CORRECTO DEL BACKEND
+      // Construir el payload según el formato correcto del backend
       const currentItems = editingOrder.items || [];
 
-      // ✅ MAPEAR TODOS LOS PRODUCTOS DE LA ORDEN
+      // Mapear todos los productos de la orden
       const updatedItems = currentItems.map((item, index) => {
         if (index === currentItemIndex) {
-          // ✅ PRODUCTO QUE SE ESTÁ EDITANDO
+          // Producto que se está editando
           return {
             id_product: item.id_product,
             id_variant: itemData.selectedOption?.id_variant || item.id_variant,
@@ -891,7 +847,7 @@ function Orders({ onBack }) {
             })
           };
         } else {
-          // ✅ PRODUCTOS SIN CAMBIOS
+          // Productos sin cambios
           return {
             id_product: item.id_product,
             id_variant: item.id_variant,
@@ -912,18 +868,18 @@ function Orders({ onBack }) {
         }
       });
 
-      // ✅ PAYLOAD FINAL - MANTENER DATOS ACTUALES DE CLIENTE Y PAGO
+      // Payload final
       const orderUpdateData = {
         id_payment_method: editingOrder.id_payment_method,
         client_name: editingOrder.client_name || 'Cliente POS',
         updated_items: updatedItems
       };
 
-      console.log('📤 Enviando datos de actualización de producto (sin modal):', orderUpdateData);
+      console.log('📤 Enviando datos de actualización de producto:', orderUpdateData);
 
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
-      // ✅ Actualizar el estado local
+      // Actualizar el estado local
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id_order === editingOrder.id_order
@@ -953,11 +909,9 @@ function Orders({ onBack }) {
                       }
                     : item
                 ),
-                // ✅ Recalcular total si no viene del backend
                 ...((!order.total_amount && !order.bill) && {
                   calculated_total: order.items.reduce((sum, item, index) => {
                     if (index === currentItemIndex) {
-                      // Calcular precio del item editado
                       const editedItem = {
                         ...item,
                         product_price: itemData.selectedOption?.price || item.product_price,
@@ -975,41 +929,25 @@ function Orders({ onBack }) {
 
       handleCloseEditModal();
 
-      setMessage({
-        text: 'Producto actualizado exitosamente',
-        type: 'success'
-      });
-
-      await Swal.fire({
-        title: '¡Producto actualizado!',
-        text: 'Los cambios se han guardado correctamente',
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
+     showSuccess(
+        '✅ ¡Producto actualizado!',
+        'Los cambios se han guardado correctamente',
+        2000
+      );
 
     } catch (error) {
       debugLog('ERROR', 'Failed to update order item:', error);
-      handleApiError(error, setMessage);
+      handleApiError(error);
 
-      Swal.fire({
-        title: 'Error al actualizar',
-        text: 'No se pudo actualizar el producto. Inténtalo de nuevo.',
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
+     showError(
+         'No se pudo actualizar el producto. Inténtalo de nuevo.'
+       );
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ NUEVA FUNCIÓN: Agregar producto adicional a la orden
+  // Función para agregar producto adicional a la orden
   const handleAddAnotherToOrder = async (itemData) => {
     try {
       setLoading(true);
@@ -1019,11 +957,10 @@ function Orders({ onBack }) {
         itemData
       });
 
-      // ✅ CONSTRUIR PAYLOAD SEGÚN EL FORMATO CORRECTO DEL BACKEND
-      // Todos los productos (existentes + nuevos) van en updated_items
+      // Construir payload según el formato correcto del backend
       const currentItems = editingOrder.items || [];
 
-      // ✅ MAPEAR PRODUCTOS EXISTENTES (sin cambios)
+      // Mapear productos existentes (sin cambios)
       const existingItems = currentItems.map(item => ({
         id_product: item.id_product,
         id_variant: item.id_variant,
@@ -1041,7 +978,7 @@ function Orders({ onBack }) {
         })
       }));
 
-      // ✅ AGREGAR EL NUEVO PRODUCTO
+      // Agregar el nuevo producto
       const newProduct = {
         id_product: itemData.selectedProduct?.id_product,
         id_variant: itemData.selectedOption?.id_variant,
@@ -1059,7 +996,7 @@ function Orders({ onBack }) {
         })
       };
 
-      // ✅ PAYLOAD FINAL SEGÚN EL FORMATO DEL BACKEND
+      // Payload final según el formato del backend
       const orderUpdateData = {
         id_payment_method: editingOrder.id_payment_method,
         client_name: editingOrder.client_name || 'Cliente POS',
@@ -1069,49 +1006,35 @@ function Orders({ onBack }) {
         ]
       };
 
-      console.log('📤 Enviando datos para agregar producto (formato correcto):', orderUpdateData);
+      console.log('📤 Enviando datos para agregar producto:', orderUpdateData);
 
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
-      // ✅ Recargar la orden actualizada
+      // Recargar la orden actualizada
       await loadOrdersByPeriod();
 
-      // ✅ Mostrar notificación de éxito
-      await Swal.fire({
-        title: '✅ Producto agregado',
-        text: `El producto se agregó a la orden #${editingOrder.id_order}. Configura el siguiente producto.`,
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false,
-        position: 'top-end',
-        toast: true,
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
+      showSuccess(
+        '✅ Producto agregado',
+        `El producto se agregó a la orden #${editingOrder.id_order}. Configura el siguiente producto.`,
+        2000
+      );
 
-      // ✅ El modal se reseteará automáticamente por el ProductModal
       return true;
 
     } catch (error) {
       debugLog('ERROR', 'Failed to add product to order:', error);
-      handleApiError(error, setMessage);
+      handleApiError(error);
 
-      Swal.fire({
-        title: 'Error',
-        text: 'No se pudo agregar el producto a la orden. Inténtalo de nuevo.',
-        icon: 'error',
-        confirmButtonText: 'Entendido',
-        background: theme === 'dark' ? '#1f2937' : '#ffffff',
-        color: theme === 'dark' ? '#f9fafb' : '#111827'
-      });
-
+    showError(
+        'No se pudo agregar el producto a la orden. Inténtalo de nuevo.'
+      );
       return false;
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ FUNCIÓN PARA CALCULAR PRECIO TOTAL DE UN ITEM DE ORDEN
+  // Función para calcular precio total de un item de orden
   const calculateOrderItemPrice = (item) => {
     try {
       // Precio base del producto/variante
@@ -1145,21 +1068,19 @@ function Orders({ onBack }) {
     setEditingItem(null);
     setEditingOrder(null);
     setCurrentItemIndex(null);
-    setIsEditingOrderMode(false); // ✅ Reset modo edición
+    setIsEditingOrderMode(false);
     debugLog('ORDERS', 'Edit modal closed');
   };
 
-  // ✅ CÁLCULOS PARA PAGINACIÓN
+  // Cálculos para paginación
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
-  // ✅ ESTADÍSTICAS MEJORADAS CON CÁLCULO CORRECTO
+  // Estadísticas mejoradas
   const getFilterStats = () => {
-    // Calcular total usando el cálculo correcto de items
     const total = filteredOrders.reduce((sum, order) => {
-      // Priorizar total_amount del backend, pero si no existe, calcular desde items
       const orderTotal = order.total_amount || order.bill || order.calculated_total ||
         (order.items ? order.items.reduce((itemSum, item) => itemSum + calculateOrderItemPrice(item), 0) : 0);
       return sum + parseFloat(orderTotal);
@@ -1226,7 +1147,7 @@ function Orders({ onBack }) {
 
             {/* Controles de cocina */}
             <div className="flex items-center gap-3">
-              {/* Botón refrescar - OPTIMIZADO PARA TABLET */}
+              {/* Botón refrescar */}
               <button
                 onClick={handleRefreshToday}
                 disabled={isRefreshing}
@@ -1243,7 +1164,7 @@ function Orders({ onBack }) {
                 </span>
               </button>
 
-              {/* Botón filtros - OPTIMIZADO PARA TABLET */}
+              {/* Botón filtros */}
               <button
                 onClick={() => handleFilterChange('showFilters', !filters.showFilters)}
                 className={`flex items-center gap-3 px-5 py-4 rounded-xl transition-all ${
@@ -1260,7 +1181,7 @@ function Orders({ onBack }) {
             </div>
           </div>
 
-          {/* ✅ FILTROS SIMPLIFICADOS PARA COCINA */}
+          {/* Filtros simplificados para cocina */}
           {filters.showFilters && (
             <div className={`pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1312,7 +1233,7 @@ function Orders({ onBack }) {
         </div>
       </div>
 
-      {/* ✅ CONTENIDO OPTIMIZADO PARA COCINA Y TABLET */}
+      {/* Contenido optimizado para cocina y tablet */}
       <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -1323,7 +1244,7 @@ function Orders({ onBack }) {
           </div>
         ) : paginatedOrders.length > 0 ? (
           <>
-            {/* ✅ LISTA OPTIMIZADA PARA COCINA Y TABLET - INFORMACIÓN CLAVE VISIBLE */}
+            {/* Lista optimizada para cocina y tablet */}
             <div className="grid gap-5 mb-8">
               {paginatedOrders.map((order) => {
                 const urgency = getOrderUrgency(order.order_date);
@@ -1345,7 +1266,7 @@ function Orders({ onBack }) {
                         : 'border-600-200'
                     }`}
                   >
-                    {/* ✅ HEADER COMPACTO CON INFO CLAVE - OPTIMIZADO TABLET */}
+                    {/* Header compacto con info clave */}
                     <div className="p-4">
                       <div className="flex items-start justify-between mb-5">
                         {/* Info principal */}
@@ -1406,11 +1327,18 @@ function Orders({ onBack }) {
                             >
                               <Cog6ToothIcon className="w-6 h-6" />
                             </button>
+                            <button
+                                  onClick={() => handleDeleteOrderFull(order)}
+                                  className="p-3 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800 rounded-lg border-2 border-red-300 dark:border-red-600 transition-all hover:border-red-400 dark:hover:border-red-500"
+                                  title="Eliminar orden completa"
+                                >
+                                  <TrashIcon className="w-6 h-6" />
+                                </button>
                           </div>
                         </div>
                       </div>
 
-                      {/* ✅ PRODUCTOS VISIBLES INMEDIATAMENTE - INFORMACIÓN CLAVE PARA COCINA - OPTIMIZADO TABLET */}
+                      {/* Productos visibles inmediatamente */}
                       <div className="space-y-4">
                         {order.items?.map((item, index) => (
                           <div key={index} className={`p-5 rounded-xl border-2 ${
@@ -1457,7 +1385,7 @@ function Orders({ onBack }) {
                                   </div>
                                 </div>
 
-                                {/* ✅ EXTRAS Y SALSAS DESTACADOS PARA COCINA - COLORES SOBRIOS */}
+                                {/* Extras y salsas destacados para cocina */}
                                 {(item.extras?.length > 0 || item.sauces?.length > 0) && (
                                   <div className="space-y-3 ml-20">
                                     {/* Extras */}
@@ -1505,7 +1433,7 @@ function Orders({ onBack }) {
                                   </div>
                                 )}
 
-                                {/* ✅ COMENTARIOS DESTACADOS - COLORES SOBRIOS */}
+                                {/* Comentarios destacados */}
                                 {item.comment && (
                                   <div className={`mt-4 p-4 rounded-xl border-l-4 border-slate-500 ${
                                     theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'
@@ -1524,7 +1452,7 @@ function Orders({ onBack }) {
                                 )}
                               </div>
 
-                              {/* ✅ PRECIO Y BOTONES DE ACCIÓN - INCLUYE BOTÓN ELIMINAR */}
+                              {/* Precio y botones de acción */}
                               <div className="flex items-start gap-4 ml-6">
                                 <div className="text-right">
                                   <div className="font-black text-2xl text-green-600">
@@ -1546,7 +1474,7 @@ function Orders({ onBack }) {
                                     <PencilIcon className="w-6 h-6" />
                                   </button>
 
-                                  {/* ✅ BOTÓN ELIMINAR */}
+                                  {/* Botón eliminar */}
                                   <button
                                     onClick={() => handleDeleteOrderItem(order, index)}
                                     className={`p-4 rounded-xl transition-all border-2 ${
@@ -1670,31 +1598,17 @@ function Orders({ onBack }) {
         clientRequired={false}
       />
 
-      <DeleteConfirmationModal
+      {/* ✅ MODAL UNIFICADO DE ELIMINACIÓN */}
+      <DeleteModal
         isOpen={showDeleteModal}
-        onClose={handleCancelDelete}
-        onConfirm={handleConfirmDelete}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
         theme={theme}
+        order={deletingOrder}
         item={deletingItem}
+        itemIndex={deletingItemIndex}
         calculateItemPrice={calculateOrderItemPrice}
-        title={deletingItem ? `⚠️ ¿Eliminar ${deletingItem.product_name}?` : ''}
-        confirmText={deletingItem ? `Sí, eliminar ${deletingItem.product_name}` : 'Eliminar producto'}
-        warningText="⚠️ Esta acción eliminará el producto permanentemente de la orden"
-        showDetails={true}
       />
-
-    {/* ✅ NUEVO MODAL DE ELIMINACIÓN DE ORDEN COMPLETA */}
-    <DeleteOrderConfirmationModal
-      isOpen={showDeleteOrderModal}
-      onClose={handleCancelDeleteOrder}
-      onConfirm={handleConfirmDeleteOrder}
-      theme={theme}
-      order={deletingOrder}
-      item={deletingItem}
-      title={`⚠️ ¿Eliminar orden completa #${deletingOrder?.id_order}?`}
-      confirmText="Eliminar orden completa"
-      warningText="⚠️ Esta acción eliminará la orden completa y no se puede deshacer"
-    />
     </div>
   );
 }
