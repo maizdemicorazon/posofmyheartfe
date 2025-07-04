@@ -120,6 +120,14 @@ class ApiService {
       return response.json();
     }
 
+    /**
+     * Obtener ordenes agrupadas por estatus
+     */
+    async getOrdersGroupedByStatus() {
+      const response = await this.request(API_ENDPOINTS.ORDERS_GROUP_BY_STATUS);
+      return response.json();
+    }
+
   /**
    * Crear nueva orden
    */
@@ -363,6 +371,14 @@ export const getOrdersByDate = async (date) => {
 export const getOrdersByPeriod = async (start, end) => {
   try {
     return await apiService.getOrdersByPeriod(start, end);
+  } catch (error) {
+    console.error('❌ Error in getOrdersByPeriod:', error);
+    throw error;
+  }
+};
+export const getOrdersGroupedByStatus = async () => {
+  try {
+    return await apiService.getOrdersGroupedByStatus();
   } catch (error) {
     console.error('❌ Error in getOrdersByPeriod:', error);
     throw error;

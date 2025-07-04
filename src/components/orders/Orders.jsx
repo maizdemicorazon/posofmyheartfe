@@ -80,7 +80,7 @@ function Orders({ onBack }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // ✅ ESTADOS UNIFICADOS PARA EL MODAL DE ELIMINACIÓN
+  // Estados unificados para el modal de eliminación
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(null);
   const [deletingItem, setDeletingItem] = useState(null);
@@ -256,24 +256,24 @@ function Orders({ onBack }) {
     setEditingOrderData(null);
   };
 
-    // ✅ FUNCIÓN SIMPLIFICADA PARA ELIMINAR PRODUCTO
-    const handleDeleteOrderFull = async (order) => {
-      if (!order || !order.id_order) {
-        showError(
-            'No se puede eliminar esta orden'
-        );
-        return;
-      }
+  // Función para eliminar orden completa
+  const handleDeleteOrderFull = async (order) => {
+    if (!order || !order.id_order) {
+      showError(
+          'No se puede eliminar esta orden'
+      );
+      return;
+    }
 
-      // Configurar datos para el modal unificado
-      setDeletingOrder(order);
-      setDeletingItem(null); // No hay item específico
-      setDeletingItemIndex(null); // No hay index específico
-      setIsDeletingFullOrder(true); // ✅ Marcar como eliminación completa
-      setShowDeleteModal(true);
-    };
+    // Configurar datos para el modal unificado
+    setDeletingOrder(order);
+    setDeletingItem(null); // No hay item específico
+    setDeletingItemIndex(null); // No hay index específico
+    setIsDeletingFullOrder(true); // Marcar como eliminación completa
+    setShowDeleteModal(true);
+  };
 
-  // ✅ FUNCIÓN SIMPLIFICADA PARA ELIMINAR PRODUCTO
+  // Función para eliminar producto específico
   const handleDeleteOrderItem = async (order, itemIndex) => {
     const item = order.items[itemIndex];
     if (!item) {
@@ -287,26 +287,48 @@ function Orders({ onBack }) {
     setDeletingOrder(order);
     setDeletingItem(item);
     setDeletingItemIndex(itemIndex);
+    setIsDeletingFullOrder(false);
     setShowDeleteModal(true);
   };
 
-    // ✅ FUNCIÓN UNIFICADA PARA CONFIRMAR ELIMINACIÓN - CON NOTIFICACIONES PERSONALIZADAS
-    const handleDeleteConfirm = async () => {
-      try {
-        setShowDeleteModal(false);
-        setLoading(true);
+  // Función unificada para confirmar eliminación
+  const handleDeleteConfirm = async () => {
+    try {
+      setShowDeleteModal(false);
+      setLoading(true);
 
-        debugLog('ORDERS', 'Delete confirmation:', {
-          orderId: deletingOrder.id_order,
-          isDeletingFullOrder,
-          itemIndex: deletingItemIndex,
-          productName: deletingItem?.product_name,
-          hasItem: !!deletingItem
-        });
+      debugLog('ORDERS', 'Delete confirmation:', {
+        orderId: deletingOrder.id_order,
+        isDeletingFullOrder,
+        itemIndex: deletingItemIndex,
+        productName: deletingItem?.product_name,
+        hasItem: !!deletingItem
+      });
 
-        if (isDeletingFullOrder) {
-          // ✅ CASO 1: ELIMINAR ORDEN COMPLETA DIRECTAMENTE
-          console.log('🗑️ Eliminando orden completa directamente:', deletingOrder.id_order);
+      if (isDeletingFullOrder) {
+        // Eliminar orden completa directamente
+        console.log('🗑️ Eliminando orden completa directamente:', deletingOrder.id_order);
+        await deleteOrder(deletingOrder.id_order);
+
+        // Actualizar estado local - remover la orden completa
+        setOrders(prevOrders =>
+          prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
+        );
+
+        showSuccess(
+          '🗑️ ¡Orden eliminada!',
+          `La orden #${deletingOrder.id_order} ha sido eliminada completamente con todos sus productos`,
+          3000
+        );
+
+      } else {
+        // Eliminar producto específico
+        const currentItems = deletingOrder.items || [];
+        const isLastProduct = currentItems.length === 1;
+
+        if (isLastProduct) {
+          // Es el último producto, eliminar orden completa
+          console.log('🗑️ Eliminando orden completa (último producto):', deletingOrder.id_order);
           await deleteOrder(deletingOrder.id_order);
 
           // Actualizar estado local - remover la orden completa
@@ -314,144 +336,119 @@ function Orders({ onBack }) {
             prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
           );
 
-          // ✅ NUEVA NOTIFICACIÓN PERSONALIZADA - ORDEN COMPLETA
+          const productName = deletingItem?.product_name || 'producto';
           showSuccess(
             '🗑️ ¡Orden eliminada!',
-            `La orden #${deletingOrder.id_order} ha sido eliminada completamente con todos sus productos`,
+            `La orden #${deletingOrder.id_order} y el producto "${productName}" han sido eliminados completamente`,
             3000
           );
 
         } else {
-          // ✅ CASO 2: ELIMINAR PRODUCTO ESPECÍFICO
-          const currentItems = deletingOrder.items || [];
-          const isLastProduct = currentItems.length === 1;
-
-          if (isLastProduct) {
-            // Es el último producto, eliminar orden completa
-            console.log('🗑️ Eliminando orden completa (último producto):', deletingOrder.id_order);
-            await deleteOrder(deletingOrder.id_order);
-
-            // Actualizar estado local - remover la orden completa
-            setOrders(prevOrders =>
-              prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
-            );
-
-            // ✅ NUEVA NOTIFICACIÓN PERSONALIZADA - ÚLTIMO PRODUCTO
-            const productName = deletingItem?.product_name || 'producto';
-            showSuccess(
-              '🗑️ ¡Orden eliminada!',
-              `La orden #${deletingOrder.id_order} y el producto "${productName}" han sido eliminados completamente`,
-              3000
-            );
-
-          } else {
-            // Hay más productos, eliminar solo el producto específico
-            await handleDeleteSingleProduct();
-          }
+          // Hay más productos, eliminar solo el producto específico
+          await handleDeleteSingleProduct();
         }
-
-      } catch (error) {
-        debugLog('ERROR', 'Failed to delete order/item:', error);
-        handleApiError(error);
-
-        const errorAction = isDeletingFullOrder ? 'eliminar la orden completa' :
-                            (deletingOrder.items?.length === 1 ? 'eliminar la orden' : 'eliminar el producto');
-
-        // ✅ NOTIFICACIÓN DE ERROR PERSONALIZADA
-        showError(
-          `No se pudo ${errorAction}. Inténtalo de nuevo.`
-        );
-
-      } finally {
-        setLoading(false);
-        // Limpiar estados
-        setDeletingItem(null);
-        setDeletingOrder(null);
-        setDeletingItemIndex(null);
-        setIsDeletingFullOrder(false);
       }
-    };
 
+    } catch (error) {
+      debugLog('ERROR', 'Failed to delete order/item:', error);
+      handleApiError(error);
 
-  // ✅ FUNCIÓN PARA ELIMINAR SOLO EL PRODUCTO - CON NOTIFICACIONES PERSONALIZADAS
-    const handleDeleteSingleProduct = async () => {
-      try {
-        const currentItems = deletingOrder.items || [];
+      const errorAction = isDeletingFullOrder ? 'eliminar la orden completa' :
+                          (deletingOrder.items?.length === 1 ? 'eliminar la orden' : 'eliminar el producto');
 
-        console.log('📝 Eliminando producto - quedarán', currentItems.length - 1, 'productos');
+      showError(
+        `No se pudo ${errorAction}. Inténtalo de nuevo.`
+      );
 
-        // Filtrar todos los productos excepto el que se va a eliminar
-        const remainingItems = currentItems
-          .filter((_, index) => index !== deletingItemIndex)
-          .map(item => ({
-            id_product: item.id_product,
-            id_variant: item.id_variant,
-            comment: item.comment || '',
-            quantity: item.quantity || 1,
-            updated_extras: (item.extras || []).map(extra => ({
-              id_extra: extra.id_extra,
-              quantity: extra.quantity || 1
-            })),
-            updated_sauces: (item.sauces || []).map(sauce => ({
-              id_sauce: sauce.id_sauce
-            })),
-            ...(item.flavor && {
-              updated_flavor: item.flavor
-            })
-          }));
+    } finally {
+      setLoading(false);
+      // Limpiar estados
+      setDeletingItem(null);
+      setDeletingOrder(null);
+      setDeletingItemIndex(null);
+      setIsDeletingFullOrder(false);
+    }
+  };
 
-        // Payload final - mantener datos actuales de cliente y pago
-        const orderUpdateData = {
-          id_payment_method: deletingOrder.id_payment_method,
-          client_name: deletingOrder.client_name || 'Cliente POS',
-          updated_items: remainingItems
-        };
+  // Función para eliminar solo el producto
+  const handleDeleteSingleProduct = async () => {
+    try {
+      const currentItems = deletingOrder.items || [];
 
-        console.log('📤 Enviando datos para eliminar producto:', {
-          orderId: deletingOrder.id_order,
-          itemsRemaining: remainingItems.length,
-          payload: orderUpdateData
-        });
+      console.log('📝 Eliminando producto - quedarán', currentItems.length - 1, 'productos');
 
-        await updateOrder(deletingOrder.id_order, orderUpdateData);
+      // Filtrar todos los productos excepto el que se va a eliminar
+      const remainingItems = currentItems
+        .filter((_, index) => index !== deletingItemIndex)
+        .map(item => ({
+          id_product: item.id_product,
+          id_variant: item.id_variant,
+          comment: item.comment || '',
+          quantity: item.quantity || 1,
+          updated_extras: (item.extras || []).map(extra => ({
+            id_extra: extra.id_extra,
+            quantity: extra.quantity || 1
+          })),
+          updated_sauces: (item.sauces || []).map(sauce => ({
+            id_sauce: sauce.id_sauce
+          })),
+          ...(item.flavor && {
+            updated_flavor: item.flavor
+          })
+        }));
 
-        // Actualizar el estado local - solo filtrar el producto
-        setOrders(prevOrders =>
-          prevOrders.map(ord =>
-            ord.id_order === deletingOrder.id_order
-              ? {
-                  ...ord,
-                  items: ord.items.filter((_, index) => index !== deletingItemIndex),
-                  // Recalcular total si no viene del backend
-                  ...((!ord.total_amount && !ord.bill) && {
-                    calculated_total: ord.items
-                      .filter((_, index) => index !== deletingItemIndex)
-                      .reduce((sum, item) => sum + calculateOrderItemPrice(item), 0)
-                  })
-                }
-              : ord
-          )
-        );
+      // Payload final - mantener datos actuales de cliente y pago
+      const orderUpdateData = {
+        id_payment_method: deletingOrder.id_payment_method,
+        client_name: deletingOrder.client_name || 'Cliente POS',
+        updated_items: remainingItems
+      };
 
-        // ✅ NUEVA NOTIFICACIÓN PERSONALIZADA - PRODUCTO INDIVIDUAL
-        const productName = deletingItem?.product_name || 'producto';
-        showSuccess(
-          '🗑️ ¡Producto eliminado!',
-          `${productName} ha sido eliminado de la orden #${deletingOrder.id_order}`,
-          2500
-        );
+      console.log('📤 Enviando datos para eliminar producto:', {
+        orderId: deletingOrder.id_order,
+        itemsRemaining: remainingItems.length,
+        payload: orderUpdateData
+      });
 
-      } catch (error) {
-        throw error; // Re-lanzar para que lo maneje handleDeleteConfirm
-      }
-    };
+      await updateOrder(deletingOrder.id_order, orderUpdateData);
 
-  // ✅ FUNCIÓN PARA CANCELAR ELIMINACIÓN DESDE MODAL UNIFICADO
+      // Actualizar el estado local - solo filtrar el producto
+      setOrders(prevOrders =>
+        prevOrders.map(ord =>
+          ord.id_order === deletingOrder.id_order
+            ? {
+                ...ord,
+                items: ord.items.filter((_, index) => index !== deletingItemIndex),
+                // Recalcular total si no viene del backend
+                ...((!ord.total_amount && !ord.bill) && {
+                  calculated_total: ord.items
+                    .filter((_, index) => index !== deletingItemIndex)
+                    .reduce((sum, item) => sum + calculateOrderItemPrice(item), 0)
+                })
+              }
+            : ord
+        )
+      );
+
+      const productName = deletingItem?.product_name || 'producto';
+      showSuccess(
+        '🗑️ ¡Producto eliminado!',
+        `${productName} ha sido eliminado de la orden #${deletingOrder.id_order}`,
+        2500
+      );
+
+    } catch (error) {
+      throw error; // Re-lanzar para que lo maneje handleDeleteConfirm
+    }
+  };
+
+  // Función para cancelar eliminación
   const handleDeleteCancel = () => {
     setShowDeleteModal(false);
     setDeletingItem(null);
     setDeletingOrder(null);
     setDeletingItemIndex(null);
+    setIsDeletingFullOrder(false);
   };
 
   // Cargar órdenes al montar el componente
@@ -1117,7 +1114,7 @@ function Orders({ onBack }) {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Header simplificado para cocina */}
+      {/* Header */}
       <div className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-sm border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-3">
@@ -1136,16 +1133,16 @@ function Orders({ onBack }) {
                 <ShoppingBagIcon className={`w-6 h-6 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
                 <div>
                   <h1 className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                    📋 LISTADO DE PEDIDOS
+                    📋 GESTIÓN DE PEDIDOS
                   </h1>
                   <p className={`text-base font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {stats.count} órdenes activas • Actualizado: {lastRefresh.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                    {stats.count} órdenes • {formatPrice(stats.total)} total • Promedio: {formatPrice(stats.averageTicket)}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Controles de cocina */}
+            {/* Controles */}
             <div className="flex items-center gap-3">
               {/* Botón refrescar */}
               <button
@@ -1156,12 +1153,10 @@ function Orders({ onBack }) {
                     ? 'bg-gray-400 text-white cursor-not-allowed'
                     : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-1'
                 }`}
-                title="Actualizar órdenes del día"
+                title="Actualizar órdenes"
               >
                 <ArrowPathIcon className={`w-6 h-6 ${isRefreshing ? 'animate-spin' : ''}`} />
-                <span>
-                  {isRefreshing ? 'Actualizando...' : 'Actualizar'}
-                </span>
+                <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
               </button>
 
               {/* Botón filtros */}
@@ -1174,18 +1169,22 @@ function Orders({ onBack }) {
                       ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-2 border-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300 border-2 border-gray-300'
                 }`}
-                title="Filtros avanzados"
+                title="Filtros"
               >
                 <AdjustmentsHorizontalIcon className="w-6 h-6" />
               </button>
             </div>
           </div>
 
-          {/* Filtros simplificados para cocina */}
+          {/* Filtros avanzados */}
           {filters.showFilters && (
             <div className={`pb-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {/* Período */}
                 <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Período
+                  </label>
                   <select
                     value={filters.period}
                     onChange={(e) => handleFilterChange('period', e.target.value)}
@@ -1202,12 +1201,17 @@ function Orders({ onBack }) {
                     ))}
                   </select>
                 </div>
+
+                {/* Búsqueda general */}
                 <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Búsqueda general
+                  </label>
                   <input
                     type="text"
                     value={filters.search}
                     onChange={(e) => handleFilterChange('search', e.target.value)}
-                    placeholder="Buscar orden o cliente..."
+                    placeholder="Buscar por orden, cliente, producto..."
                     className={`w-full px-3 py-2 rounded-lg border text-sm ${
                       theme === 'dark'
                         ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
@@ -1215,7 +1219,112 @@ function Orders({ onBack }) {
                     }`}
                   />
                 </div>
+
+                {/* Cliente */}
                 <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={filters.clientName}
+                    onChange={(e) => handleFilterChange('clientName', e.target.value)}
+                    placeholder="Nombre del cliente..."
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Método de pago */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Método de pago
+                  </label>
+                  <select
+                    value={filters.paymentMethod}
+                    onChange={(e) => handleFilterChange('paymentMethod', e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    <option value="">Todos los métodos</option>
+                    {paymentMethods.map(method => (
+                      <option key={method.id_payment_method} value={method.id_payment_method}>
+                        {method.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Monto mínimo */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Monto mínimo
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.minAmount}
+                    onChange={(e) => handleFilterChange('minAmount', e.target.value)}
+                    placeholder="$0.00"
+                    min="0"
+                    step="0.01"
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Monto máximo */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Monto máximo
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.maxAmount}
+                    onChange={(e) => handleFilterChange('maxAmount', e.target.value)}
+                    placeholder="$999.99"
+                    min="0"
+                    step="0.01"
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Ordenar por */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Ordenar por
+                  </label>
+                  <select
+                    value={filters.sortBy}
+                    onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                      theme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    {sortOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Botón limpiar */}
+                <div className="flex items-end">
                   <button
                     onClick={clearFilters}
                     className={`w-full px-3 py-2 rounded-lg border text-sm transition-colors ${
@@ -1224,7 +1333,7 @@ function Orders({ onBack }) {
                         : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    Limpiar
+                    Limpiar filtros
                   </button>
                 </div>
               </div>
@@ -1233,7 +1342,7 @@ function Orders({ onBack }) {
         </div>
       </div>
 
-      {/* Contenido optimizado para cocina y tablet */}
+      {/* Contenido principal */}
       <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -1244,7 +1353,7 @@ function Orders({ onBack }) {
           </div>
         ) : paginatedOrders.length > 0 ? (
           <>
-            {/* Lista optimizada para cocina y tablet */}
+            {/* Lista de órdenes */}
             <div className="grid gap-5 mb-8">
               {paginatedOrders.map((order) => {
                 const urgency = getOrderUrgency(order.order_date);
@@ -1256,27 +1365,25 @@ function Orders({ onBack }) {
                     key={order.id_order}
                     className={`rounded-xl shadow-lg border-l-6 transition-all duration-200 hover:shadow-xl ${
                       urgency === 'urgent'
-                        ? 'border-l-red-600 bg-red-600 dark:bg-red-900/20'
+                        ? 'border-l-red-600 bg-red-50 dark:bg-red-900/20'
                         : urgency === 'warning'
-                        ? 'border-l-yellow-600 bg-green-600 dark:bg-yellow-900/10'
-                        : 'border-l-yellow-400 bg-white dark:bg-600-800'
+                        ? 'border-l-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
+                        : 'border-l-blue-600 bg-white dark:bg-gray-800'
                     } ${
-                      theme === 'dark'
-                        ? 'border-600-700'
-                        : 'border-600-200'
+                      theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
                     }`}
                   >
-                    {/* Header compacto con info clave */}
+                    {/* Header de la orden */}
                     <div className="p-4">
                       <div className="flex items-start justify-between mb-5">
                         {/* Info principal */}
                         <div className="flex items-center gap-4">
                           <div className={`text-3xl font-black px-4 py-2 rounded-xl ${
                             urgency === 'urgent'
-                              ? 'bg-red-300 text-red-900 dark:bg-red-700 dark:text-red-100 shadow-lg border-2 border-red-500'
+                              ? 'bg-red-600 text-white shadow-lg'
                               : urgency === 'warning'
-                              ? 'bg-stone-200 text-yellow-800 dark:bg-yellow-600 dark:text-yellow-200 shadow-lg border-2 border-yellow-400'
-                              : 'bg-stone-100 text-yellow-700 dark:bg-yellow-500 dark:text-yellow-100 shadow-lg border-2 border-yellow-300'
+                              ? 'bg-yellow-600 text-white shadow-lg'
+                              : 'bg-blue-600 text-white shadow-lg'
                           }`}>
                             #{order.id_order}
                           </div>
@@ -1286,9 +1393,9 @@ function Orders({ onBack }) {
                             </h3>
                             <div className="flex items-center gap-5 text-base mt-1">
                               <span className={`flex items-center gap-2 font-bold ${
-                                urgency === 'urgent' ? 'text-red-700 dark:text-red-700' :
-                                urgency === 'warning' ? 'text-yellow-700 dark:text-yellow-700' :
-                                'text-gray-700 dark:text-gray-700'
+                                urgency === 'urgent' ? 'text-red-700 dark:text-red-400' :
+                                urgency === 'warning' ? 'text-yellow-700 dark:text-yellow-400' :
+                                'text-blue-700 dark:text-blue-400'
                               }`}>
                                 <ClockIcon className="w-5 h-5" />
                                 {getTimeElapsed(order.order_date)}
@@ -1311,11 +1418,11 @@ function Orders({ onBack }) {
                             </div>
                           </div>
 
-                          {/* Botones de acción compactos */}
+                          {/* Botones de acción */}
                           <div className="flex flex-col gap-2">
                             <button
                               onClick={() => handleAddProductToOrder(order)}
-                              className="p-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 transition-all hover:border-slate-400 dark:hover:border-slate-500"
+                              className="p-3 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg border-2 border-blue-300 dark:border-blue-600 transition-all hover:border-blue-400 dark:hover:border-blue-500"
                               title="Agregar producto"
                             >
                               <PlusIcon className="w-6 h-6" />
@@ -1328,17 +1435,17 @@ function Orders({ onBack }) {
                               <Cog6ToothIcon className="w-6 h-6" />
                             </button>
                             <button
-                                  onClick={() => handleDeleteOrderFull(order)}
-                                  className="p-3 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800 rounded-lg border-2 border-red-300 dark:border-red-600 transition-all hover:border-red-400 dark:hover:border-red-500"
-                                  title="Eliminar orden completa"
-                                >
-                                  <TrashIcon className="w-6 h-6" />
-                                </button>
+                              onClick={() => handleDeleteOrderFull(order)}
+                              className="p-3 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800 rounded-lg border-2 border-red-300 dark:border-red-600 transition-all hover:border-red-400 dark:hover:border-red-500"
+                              title="Eliminar orden completa"
+                            >
+                              <TrashIcon className="w-6 h-6" />
+                            </button>
                           </div>
                         </div>
                       </div>
 
-                      {/* Productos visibles inmediatamente */}
+                      {/* Productos */}
                       <div className="space-y-4">
                         {order.items?.map((item, index) => (
                           <div key={index} className={`p-5 rounded-xl border-2 ${
@@ -1378,14 +1485,14 @@ function Orders({ onBack }) {
                                     {item.flavor && (
                                       <div className="mt-2">
                                         <span className="inline-flex items-center px-3 py-2 rounded-full text-base font-bold bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border border-slate-400">
-                                           {item.flavor.name}
+                                          🍋 {item.flavor.name}
                                         </span>
                                       </div>
                                     )}
                                   </div>
                                 </div>
 
-                                {/* Extras y salsas destacados para cocina */}
+                                {/* Extras y salsas */}
                                 {(item.extras?.length > 0 || item.sauces?.length > 0) && (
                                   <div className="space-y-3 ml-20">
                                     {/* Extras */}
@@ -1433,21 +1540,17 @@ function Orders({ onBack }) {
                                   </div>
                                 )}
 
-                                {/* Comentarios destacados */}
+                                {/* Comentarios */}
                                 {item.comment && (
                                   <div className={`mt-4 p-4 rounded-xl border-l-4 border-slate-500 ${
                                     theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'
                                   }`}>
-                                    <div className="flex items-start gap-3">
-                                      <div className="flex-1">
-                                        <span className={`text-lg font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
-                                          ⚠️ INSTRUCCIONES ESPECIALES:
-                                        </span>
-                                        <p className={`text-lg font-bold mt-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-900'} leading-relaxed`}>
-                                          "{item.comment}"
-                                        </p>
-                                      </div>
-                                    </div>
+                                    <span className={`text-lg font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                                      ⚠️ INSTRUCCIONES ESPECIALES:
+                                    </span>
+                                    <p className={`text-lg font-bold mt-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-900'} leading-relaxed`}>
+                                      "{item.comment}"
+                                    </p>
                                   </div>
                                 )}
                               </div>
@@ -1498,7 +1601,7 @@ function Orders({ onBack }) {
               })}
             </div>
 
-            {/* Paginación optimizada para tablet */}
+            {/* Paginación */}
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-4">
                 <button
@@ -1557,7 +1660,7 @@ function Orders({ onBack }) {
         )}
       </div>
 
-      {/* ✅ MODALES */}
+      {/* Modales */}
       {editingProduct && editingOrder && (
         <ProductModal
           isOpen={true}
@@ -1598,7 +1701,6 @@ function Orders({ onBack }) {
         clientRequired={false}
       />
 
-      {/* ✅ MODAL UNIFICADO DE ELIMINACIÓN */}
       <DeleteModal
         isOpen={showDeleteModal}
         onClose={handleDeleteCancel}
@@ -1608,6 +1710,7 @@ function Orders({ onBack }) {
         item={deletingItem}
         itemIndex={deletingItemIndex}
         calculateItemPrice={calculateOrderItemPrice}
+        isDeletingFullOrder={isDeletingFullOrder}
       />
     </div>
   );
