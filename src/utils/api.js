@@ -128,6 +128,17 @@ class ApiService {
       return response.json();
     }
 
+    /**
+     * Obtener ordenes agrupadas por estatus
+     */
+    async nextStatus(id, status) {
+      const response = await this.request(API_ENDPOINTS.ORDERS_NEXT_STATUS(id), {
+        method: 'PUT',
+        body: JSON.stringify({status:status})
+      });
+      return;
+    }
+
   /**
    * Crear nueva orden
    */
@@ -157,7 +168,7 @@ class ApiService {
     const response = await this.request(API_ENDPOINTS.ORDER_BY_ID(id), {
       method: 'DELETE'
     });
-    return response.ok;
+    return;
   }
 
   // ===============================================
@@ -376,9 +387,19 @@ export const getOrdersByPeriod = async (start, end) => {
     throw error;
   }
 };
+
 export const getOrdersGroupedByStatus = async () => {
   try {
     return await apiService.getOrdersGroupedByStatus();
+  } catch (error) {
+    console.error('❌ Error in getOrdersByPeriod:', error);
+    throw error;
+  }
+};
+
+export const nextStatus = async (id, status) => {
+  try {
+    return await apiService.nextStatus(id, status);
   } catch (error) {
     console.error('❌ Error in getOrdersByPeriod:', error);
     throw error;

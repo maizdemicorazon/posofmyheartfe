@@ -1,6 +1,5 @@
-// context/NotificationContext.jsx
 import { createContext, useContext, useState } from 'react';
-import CustomNotification from '../components/notifications/Notifications';
+import Notifications from '../components/notifications/Notifications';
 
 const NotificationContext = createContext();
 
@@ -34,8 +33,12 @@ export const NotificationProvider = ({ children, theme = 'light' }) => {
   };
 
   // Funciones de conveniencia para diferentes tipos
-  const showSuccess = (title, message, duration = 4000) => {
-    showNotification({ type: 'success', title, message, duration });
+  const showSuccess = (message) => {
+     showNotification({ type: 'success', title: '!Exito¡', message, duration:  5000 });
+  };
+
+  const showDeleteSuccess= (message) => {
+    showNotification({ type: 'success', title: '🗑️ ¡Eliminación exitosa!', message, duration:  5000 });
   };
 
   const showError = (message) => {
@@ -58,6 +61,7 @@ export const NotificationProvider = ({ children, theme = 'light' }) => {
   const value = {
     showNotification,
     showSuccess,
+    showDeleteSuccess,
     showError,
     showWarning,
     showInfo,
@@ -68,7 +72,7 @@ export const NotificationProvider = ({ children, theme = 'light' }) => {
   return (
     <NotificationContext.Provider value={value}>
       {children}
-      <CustomNotification
+      <Notifications
         notification={notification}
         onClose={closeNotification}
         theme={theme}

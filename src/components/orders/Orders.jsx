@@ -26,15 +26,20 @@ import {
   ClockIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
+import {
+  FireIcon,
+  CheckBadgeIcon
+} from '@heroicons/react/24/solid';
 import BusinessHeader from '../menu/BusinessHeader';
 import ProductModal from '../modals/ProductModal';
 import ClientPaymentModal from '../modals/ClientPaymentModal';
 import DeleteModal from '../modals/DeleteModal';
-import { getOrders, getOrdersByPeriod, updateOrder, getOrderById, deleteOrder } from '../../utils/api';
+import { getOrders, getOrdersByPeriod, getOrdersGroupedByStatus, getOrderById, updateOrder, deleteOrder, nextStatus } from '../../utils/api';
 import { handleApiError, formatPrice, debugLog, getPaymentMethodIcon } from '../../utils/helpers';
 import { startOfToday, subDays, subMonths } from 'date-fns';
 import { PAYMENT_METHODS } from '../../utils/constants';
 import { useNotification } from '../../context/NotificationContext';
+import StatusColumn from './StatusColumn';
 
 function Orders({ onBack }) {
   const { theme } = useTheme();
@@ -43,7 +48,8 @@ function Orders({ onBack }) {
 
   // Estados principales
   const [orders, setOrders] = useState([]);
-  const [filteredOrders, setFilteredOrders] = useState([]);
+  const [groupedOrders, setGroupedOrders] = useState({ received_orders: [], attending_orders: [], completed_orders: [] });
+  const [filteredOrders, setFilteredOrders] = useState({ received_orders: [], attending_orders: [], completed_orders: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
 
@@ -58,10 +64,6 @@ function Orders({ onBack }) {
     sortBy: 'newest',
     showFilters: false
   });
-
-  // Estados para paginación
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
 
   // Estados para edición de productos individuales
   const [editingProduct, setEditingProduct] = useState(null);
@@ -97,7 +99,7 @@ function Orders({ onBack }) {
     items: []
   });
 
-  const { showSuccess, showError, showWarning } = useNotification();
+  const { showSuccess, showDeleteSuccess, showError, showWarning } = useNotification();
 
   const subtractDays = (dias) => {
     const resultado = new Date();
@@ -111,7 +113,7 @@ function Orders({ onBack }) {
     try {
       // Forzar período a 'today' y recargar
       setFilters(prev => ({ ...prev, period: 'today' }));
-      await loadOrdersByPeriod();
+      await loadGroupedOrders();
       setLastRefresh(new Date());
 
       showSuccess(
@@ -162,6 +164,38 @@ function Orders({ onBack }) {
       return 'normal';
     } catch (error) {
       return 'normal';
+    }
+  };
+
+  // Orders.jsx
+  const handleNextStatus = async (order) => {
+    try {
+      setLoading(true);
+      const nextStateMessage = order.status === 'RECEIVED' ? 'En Preparación' : 'Completada';
+      debugLog('ORDERS', `Updating status for order #${order.id_order} to next state from ${order.status }.`);
+
+      let status = order.status;
+
+      switch(order.status){
+          case 'RECEIVED': status = 'ATTENDING'; break;
+          case 'ATTENDING': status = 'COMPLETED'; break;
+          default:
+              status = 'ATTENDING';
+              break;
+          }
+
+      await nextStatus(order.id_order, status);
+
+      showSuccess('✅ Estado Actualizado', `La orden #${order.id_order} ahora está: ${nextStateMessage}`);
+
+      // Refrescar todo el tablero para mover la tarjeta de columna
+      await handleRefresh();
+
+    } catch (error) {
+      console.log(handleApiError(error));
+      showError('❌ No se pudo actualizar el estado de la orden.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -236,7 +270,7 @@ function Orders({ onBack }) {
         'Los datos de la orden se han actualizado correctamente',
         2000
       );
-
+    await handleRefresh();
     } catch (error) {
       debugLog('ERROR', 'Failed to update order data:', error);
       handleApiError(error);
@@ -315,12 +349,10 @@ function Orders({ onBack }) {
           prevOrders.filter(ord => ord.id_order !== deletingOrder.id_order)
         );
 
-        showSuccess(
-          '🗑️ ¡Orden eliminada!',
-          `La orden #${deletingOrder.id_order} ha sido eliminada completamente con todos sus productos`,
-          3000
+        showDeleteSuccess(
+          `La orden #${deletingOrder.id_order} ha sido eliminada completamente con todos sus productos`
         );
-
+        await handleRefresh();
       } else {
         // Eliminar producto específico
         const currentItems = deletingOrder.items || [];
@@ -337,11 +369,8 @@ function Orders({ onBack }) {
           );
 
           const productName = deletingItem?.product_name || 'producto';
-          showSuccess(
-            '🗑️ ¡Orden eliminada!',
-            `La orden #${deletingOrder.id_order} y el producto "${productName}" han sido eliminados completamente`,
-            3000
-          );
+          showDeleteSuccess(`La orden #${deletingOrder.id_order} y el producto "${productName}" han sido eliminados completamente`);
+          handleRefreshToday();
 
         } else {
           // Hay más productos, eliminar solo el producto específico
@@ -431,12 +460,10 @@ function Orders({ onBack }) {
       );
 
       const productName = deletingItem?.product_name || 'producto';
-      showSuccess(
-        '🗑️ ¡Producto eliminado!',
-        `${productName} ha sido eliminado de la orden #${deletingOrder.id_order}`,
-        2500
+       showDeleteSuccess(
+        `${productName} ha sido eliminado de la orden #${deletingOrder.id_order}`
       );
-
+    await handleRefresh();
     } catch (error) {
       throw error; // Re-lanzar para que lo maneje handleDeleteConfirm
     }
@@ -451,176 +478,148 @@ function Orders({ onBack }) {
     setIsDeletingFullOrder(false);
   };
 
-  // Cargar órdenes al montar el componente
-  useEffect(() => {
-    loadOrdersByPeriod();
-  }, [filters.period]);
+     const loadGroupedOrders = async () => {
+        try {
+          if (!isRefreshing) setIsLoading(true);
+          setLoading(true);
+          debugLog('ORDERS', 'Loading orders grouped by status...');
 
-  // Aplicar filtros a las órdenes
-  useEffect(() => {
-    applyFilters();
-  }, [orders, filters]);
-
-  function getStartDateForPeriod(period) {
-      const today = startOfToday();
-
-      const periodMap = {
-          today: () => today,
-          week: () => subDays(today, 7),
-          month: () => subMonths(today, 1),
-          all: () => new Date("2025-05-01"), // fecha de inauguración
+          const response = await getOrdersGroupedByStatus();
+          const ordersData = {
+              received_orders: response.received_orders || [],
+              attending_orders: response.attending_orders || [],
+              completed_orders: response.completed_orders || [],
+          };
+          setGroupedOrders(ordersData);
+        } catch (error) {
+          handleApiError(error);
+          setGroupedOrders({ received_orders: [], attending_orders: [], completed_orders: [] });
+        } finally {
+          setIsLoading(false);
+          setLoading(false);
+          setIsRefreshing(false);
+        }
       };
 
-      const getStartDate = periodMap[period] || periodMap.today;
-      return getStartDate();
-  }
+      const handleRefresh = async () => {
+        setIsRefreshing(true);
+        await loadGroupedOrders();
+        showSuccess('🔄 ¡Órdenes actualizadas!', 'Los estados se han sincronizado.', 2000);
+      };
 
-  const loadOrdersByPeriod = async () => {
-    try {
-      setLoading(true);
-      setIsLoading(true);
-      debugLog('ORDERS', 'Loading orders with period:', filters.period);
+        useEffect(() => {
+          loadGroupedOrders();
+        }, []);
 
-      const start = queryFormatDate(getStartDateForPeriod(filters.period));
-      const end = queryFormatDate(new Date());
+        useEffect(() => {
+          applyFilters();
+        }, [groupedOrders, filters]);
 
-      const response = await getOrdersByPeriod(start, end);
-      const ordersData = Array.isArray(response) ? response : response?.data || [];
+    // Función mejorada para aplicar filtros
+// Orders.jsx
+    const applyFilters = () => {
+        const { received_orders, attending_orders, completed_orders } = groupedOrders;
 
-      debugLog('ORDERS', 'Orders loaded successfully:', {
-        count: ordersData.length,
-        period: filters.period,
-        start: start,
-        end: end
-      });
+        const filterAndSort = (orders) => {
+        // Calcula la fecha de inicio una sola vez basado en el filtro de período
+        const startDate = getStartDateForPeriod(filters.period);
 
-      setOrders(ordersData);
-    } catch (error) {
-      debugLog('ERROR', 'Failed to load orders:', error);
-      handleApiError(error);
-      setOrders([]);
-    } finally {
-      setLoading(false);
-      setIsLoading(false);
-    }
-  };
+        const filtered = orders.filter(order => {
+            // --- Filtro por Período ---
+            // Convierte la fecha de la orden y la compara con la fecha de inicio del período
+            const orderDate = new Date(order.order_date);
+            const matchesPeriod = orderDate >= startDate;
 
-  // Función mejorada para aplicar filtros
-  const applyFilters = () => {
-    let filtered = [...orders];
+            // --- Filtros Existentes (sin cambios) ---
+            const searchTerm = filters.search.toLowerCase();
+            const orderTotal = order.total_amount || order.bill || (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
 
-    // Filtro por búsqueda general
-    if (filters.search.trim()) {
-      const searchTerm = filters.search.toLowerCase();
-      filtered = filtered.filter(order =>
-        order.client_name?.toLowerCase().includes(searchTerm) ||
-        order.id_order.toString().includes(searchTerm) ||
-        order.items?.some(item =>
-          item.product_name?.toLowerCase().includes(searchTerm)
-        ) ||
-        order.comment?.toLowerCase().includes(searchTerm)
-      );
-    }
+            const matchesSearch = !searchTerm ||
+                order.client_name?.toLowerCase().includes(searchTerm) ||
+                order.id_order.toString().includes(searchTerm) ||
+                order.items?.some(item => item.product_name?.toLowerCase().includes(searchTerm));
 
-    // Filtro por nombre de cliente
-    if (filters.clientName.trim()) {
-      filtered = filtered.filter(order =>
-        order.client_name?.toLowerCase().includes(filters.clientName.toLowerCase())
-      );
-    }
+            const matchesClient = !filters.clientName || order.client_name?.toLowerCase().includes(filters.clientName.toLowerCase());
+            const matchesPayment = !filters.paymentMethod || order.id_payment_method?.toString() === filters.paymentMethod;
+            const matchesMinAmount = !filters.minAmount || parseFloat(orderTotal) >= parseFloat(filters.minAmount);
+            const matchesMaxAmount = !filters.maxAmount || parseFloat(orderTotal) <= parseFloat(filters.maxAmount);
 
-    // Filtro por método de pago
-    if (filters.paymentMethod) {
-      filtered = filtered.filter(order =>
-        order.id_payment_method?.toString() === filters.paymentMethod
-      );
-    }
+            // --- Combinación de todos los filtros ---
+            return matchesPeriod && matchesSearch && matchesClient && matchesPayment && matchesMinAmount && matchesMaxAmount;
+        });
 
-    // Filtro por rango de montos
-    if (filters.minAmount) {
-      filtered = filtered.filter(order => {
-        const orderTotal = order.total_amount || order.bill || order.calculated_total ||
-          (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-        return parseFloat(orderTotal) >= parseFloat(filters.minAmount);
-      });
-    }
-    if (filters.maxAmount) {
-      filtered = filtered.filter(order => {
-        const orderTotal = order.total_amount || order.bill || order.calculated_total ||
-          (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-        return parseFloat(orderTotal) <= parseFloat(filters.maxAmount);
-      });
-    }
+        // Ordenamiento (sin cambios)
+        return filtered.sort((a, b) => {
+            switch (filters.sortBy) {
+                case 'oldest': return new Date(a.order_date) - new Date(b.order_date);
+                case 'highest':
+                    const totalA_h = a.total_amount || a.bill || (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+                    const totalB_h = b.total_amount || b.bill || (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+                    return parseFloat(totalB_h) - parseFloat(totalA_h);
+                case 'lowest':
+                    const totalA_l = a.total_amount || a.bill || (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+                    const totalB_l = b.total_amount || b.bill || (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+                    return parseFloat(totalA_l) - parseFloat(totalB_l);
+                case 'client': return (a.client_name || '').localeCompare(b.client_name || '');
+                default: return new Date(b.order_date) - new Date(a.order_date); // newest
+            }
+        });
+    };
 
-    // Ordenamiento
-    filtered.sort((a, b) => {
-      switch (filters.sortBy) {
-        case 'newest':
-          return new Date(b.order_date) - new Date(a.order_date);
-        case 'oldest':
-          return new Date(a.order_date) - new Date(b.order_date);
-        case 'highest':
-          return (() => {
-            const totalA = a.total_amount || a.bill || a.calculated_total ||
-              (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-            const totalB = b.total_amount || b.bill || b.calculated_total ||
-              (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-            return parseFloat(totalB) - parseFloat(totalA);
-          })();
-        case 'lowest':
-          return (() => {
-            const totalA = a.total_amount || a.bill || a.calculated_total ||
-              (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-            const totalB = b.total_amount || b.bill || b.calculated_total ||
-              (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-            return parseFloat(totalA) - parseFloat(totalB);
-          })();
-        case 'client':
-          return (a.client_name || '').localeCompare(b.client_name || '');
-        default:
-          return 0;
-      }
+    setFilteredOrders({
+      received_orders: filterAndSort(received_orders || []),
+      attending_orders: filterAndSort(attending_orders || []),
+      completed_orders: filterAndSort(completed_orders || [])
     });
+};
 
-    setFilteredOrders(filtered);
-    setCurrentPage(1);
+  // Función para manejar cambios en filtros
+  const handleFilterChange = (key, value) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
   };
+
 
   // Función para limpiar filtros
   const clearFilters = () => {
     setFilters({
-      period: 'today',
       search: '',
       clientName: '',
       paymentMethod: '',
       minAmount: '',
       maxAmount: '',
       sortBy: 'newest',
-      showFilters: false
+      showFilters: filters.showFilters
     });
   };
 
-  // Función para manejar cambios en filtros
-  const handleFilterChange = (key, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
+    function getStartDateForPeriod(period) {
+        const today = startOfToday();
 
-  const queryFormatDate = (dateString) => {
-    if (!dateString) return 'Fecha no disponible';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-CA', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-    } catch (error) {
-      return 'Fecha inválida';
+        const periodMap = {
+            today: () => today,
+            week: () => subDays(today, 7),
+            month: () => subMonths(today, 1),
+            all: () => new Date("2025-05-01"), // fecha de inauguración
+        };
+
+        const getStartDate = periodMap[period] || periodMap.today;
+        return getStartDate();
     }
-  };
+
+      const queryFormatDate = (dateString) => {
+        if (!dateString) return 'Fecha no disponible';
+        try {
+          const date = new Date(dateString);
+          return date.toLocaleDateString('en-CA', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          });
+        } catch (error) {
+          return 'Fecha inválida';
+        }
+      };
+
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Fecha no disponible';
@@ -926,12 +925,12 @@ function Orders({ onBack }) {
 
       handleCloseEditModal();
 
-     showSuccess(
-        '✅ ¡Producto actualizado!',
-        'Los cambios se han guardado correctamente',
-        2000
-      );
-
+        showSuccess(
+            '✅ ¡Producto actualizado!',
+            'Los cambios se han guardado correctamente',
+            2000
+        );
+        await handleRefresh();
     } catch (error) {
       debugLog('ERROR', 'Failed to update order item:', error);
       handleApiError(error);
@@ -1008,15 +1007,14 @@ function Orders({ onBack }) {
       await updateOrder(editingOrder.id_order, orderUpdateData);
 
       // Recargar la orden actualizada
-      await loadOrdersByPeriod();
+      await loadGroupedOrders();
 
       showSuccess(
         '✅ Producto agregado',
         `El producto se agregó a la orden #${editingOrder.id_order}. Configura el siguiente producto.`,
         2000
       );
-
-      return true;
+      await handleRefresh();
 
     } catch (error) {
       debugLog('ERROR', 'Failed to add product to order:', error);
@@ -1069,30 +1067,302 @@ function Orders({ onBack }) {
     debugLog('ORDERS', 'Edit modal closed');
   };
 
-  // Cálculos para paginación
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+    const renderOrderCard = (order) => {
+      const urgency = getOrderUrgency(order.order_date);
+      const orderTotal = order.bill || order.total_amount || (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
+
+      let nextStatusButton = null;
+        if (order.status === 'RECEIVED') {
+            nextStatusButton = (
+              <button
+                onClick={() => handleNextStatus(order)}
+                className="flex items-center justify-center gap-3 w-full px-4 py-3 rounded-xl font-black text-lg text-white bg-orange-500 hover:bg-orange-600 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
+                title="Mover a 'En Preparación'"
+              >
+                <FireIcon className="w-6 h-6" />
+                <span>INICIAR PREPARACIÓN</span>
+              </button>
+            );
+        } else if (order.status === 'ATTENDING') {
+        nextStatusButton = (
+          <button
+            onClick={() => handleNextStatus(order)}
+            className="flex items-center justify-center gap-3 w-full px-4 py-3 rounded-xl font-black text-lg text-white bg-green-600 hover:bg-green-700 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
+            title="Mover a 'Completada'"
+          >
+            <CheckBadgeIcon className="w-6 h-6" />
+            <span>MARCAR COMO COMPLETADA</span>
+          </button>
+        );
+      }
+
+      return (
+        <div key={order.id_order}
+              className={`rounded-xl shadow-lg border-l-6 transition-all duration-200 hover:shadow-xl ${
+                urgency === 'urgent'
+                  ? 'border-l-red-600 bg-red-50 dark:bg-red-900/20'
+                  : urgency === 'warning'
+                  ? 'border-l-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
+                  : 'border-l-green-800 bg-white dark:bg-green-700'
+              } ${
+                theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+              }`}
+            >
+
+         {/* Header de la orden */}
+         <div className="p-4">
+           <div className="flex items-start justify-between mb-5">
+             {/* Info principal */}
+             <div className="flex items-center gap-4">
+               <div className={`text-3xl font-black px-4 py-2 rounded-xl ${
+                 urgency === 'urgent'
+                   ? 'bg-red-600 text-white shadow-lg'
+                   : urgency === 'warning'
+                   ? 'bg-yellow-600 text-white shadow-lg'
+                   : 'bg-blue-600 text-white shadow-lg'
+               }`}>
+                 #{order.id_order}
+               </div>
+               <div>
+                 <h3 className={`font-black text-2xl ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>
+                   {order.client_name || 'Sin nombre'}
+                 </h3>
+                 <div className="flex items-center gap-5 text-base mt-1">
+                   <span className={`flex items-center gap-2 font-bold ${
+                     urgency === 'urgent' ? 'text-red-700 dark:text-red-400' :
+                     urgency === 'warning' ? 'text-yellow-700 dark:text-yellow-400' :
+                     'text-blue-700 dark:text-blue-400'
+                   }`}>
+                     <ClockIcon className="w-5 h-5" />
+                     {getTimeElapsed(order.order_date)}
+                   </span>
+                   <span className={`flex items-center gap-2 font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                     {getPaymentMethodIcon(order.payment_name)} {order.payment_name}
+                   </span>
+                 </div>
+               </div>
+             </div>
+
+             {/* Acciones y total */}
+             <div className="flex items-center gap-4">
+               <div className="text-right">
+                 <div className="text-2xl p-1 mt-10 rounded-xl bg-blue-600 text-white shadow-lg">
+                   {formatPrice(parseFloat(orderTotal))}
+                 </div>
+                 <div className={`text-base font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                   {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
+                 </div>
+               </div>
+
+               {/* Botones de acción */}
+               <div className="flex flex-col gap-2">
+                 <button
+                   onClick={() => handleAddProductToOrder(order)}
+                   className="p-3 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg border-2 border-blue-300 dark:border-blue-600 transition-all hover:border-blue-400 dark:hover:border-blue-500"
+                   title="Agregar producto"
+                 >
+                   <PlusIcon className="w-6 h-6" />
+                 </button>
+                 <button
+                   onClick={() => handleEditOrderData(order)}
+                   className="p-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 transition-all hover:border-slate-400 dark:hover:border-slate-500"
+                   title="Editar datos"
+                 >
+                   <Cog6ToothIcon className="w-6 h-6" />
+                 </button>
+                 <button
+                   onClick={() => handleDeleteOrderFull(order)}
+                   className="p-3 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800 rounded-lg border-2 border-red-300 dark:border-red-600 transition-all hover:border-red-400 dark:hover:border-red-500"
+                   title="Eliminar orden completa"
+                 >
+                   <TrashIcon className="w-6 h-6" />
+                 </button>
+               </div>
+             </div>
+           </div>
+
+           {/* Productos */}
+           <div className="space-y-4">
+             {order.items?.map((item, index) => (
+               <div key={index} className={`p-5 rounded-xl border-2 ${
+                 theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
+               } shadow-md`}>
+                 <div className="flex items-start justify-between">
+                   {/* Info del producto */}
+                   <div className="flex-1">
+                     <div className="flex items-center gap-4 mb-3">
+                       {/* Imagen del producto */}
+                       {item.product_image && (
+                         <img
+                           src={item.product_image}
+                           alt={item.product_name}
+                           className="w-20 h-20 rounded-xl object-cover border-3 border-gray-300 dark:border-gray-600 shadow-md"
+                           loading="lazy"
+                         />
+                       )}
+
+                       <div className="flex-1">
+                         {/* Nombre y cantidad destacados */}
+                         <h4 className={`font-black text-2xl ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>
+                           {item.quantity > 1 && (
+                             <span className="bg-slate-600 text-white px-3 py-2 rounded-full text-lg mr-3 font-black">
+                               {item.quantity}x
+                             </span>
+                           )}
+                           {item.product_name}
+                           {item.variant_name && (
+                             <span className={`ml-3 text-lg font-bold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                               • {item.variant_name}
+                             </span>
+                           )}
+                         </h4>
+
+                         {/* Sabor destacado */}
+                         {item.flavor && (
+                           <div className="mt-2">
+                             <span className="inline-flex items-center px-3 py-2 rounded-full text-base font-bold bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border border-slate-400">
+                               🍋 {item.flavor.name}
+                             </span>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+
+                     {/* Extras y salsas */}
+                     {(item.extras?.length > 0 || item.sauces?.length > 0) && (
+                       <div className="space-y-3 ml-20">
+                         {/* Extras */}
+                         {item.extras && item.extras.length > 0 && (
+                           <div>
+                             <span className={`text-base font-bold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>
+                               ➕ EXTRAS:
+                             </span>
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {item.extras.map((extra, extraIdx) => (
+                                 <span
+                                   key={extraIdx}
+                                   className="inline-flex items-center px-4 py-2 rounded-full text-base font-bold bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 border-2 border-gray-400 dark:border-gray-500"
+                                 >
+                                   {extra.name}
+                                   {extra.quantity > 1 && (
+                                     <span className="ml-2 bg-slate-600 text-white px-2 py-1 rounded-full text-sm font-bold">
+                                       ×{extra.quantity}
+                                     </span>
+                                   )}
+                                 </span>
+                               ))}
+                             </div>
+                           </div>
+                         )}
+
+                         {/* Salsas */}
+                         {item.sauces && item.sauces.length > 0 && (
+                           <div>
+                             <span className={`text-base font-bold ${theme === 'dark' ? 'text-orange-200' : 'text-orange-800'}`}>
+                               🌶️ SALSAS:
+                             </span>
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {item.sauces.map((sauce, sauceIdx) => (
+                                 <span
+                                   key={sauceIdx}
+                                   className="inline-flex items-center px-4 py-2 rounded-full text-base font-bold bg-orange-200 text-orange-900 dark:bg-orange-800 dark:text-orange-100 border-2 border-orange-400 dark:border-orange-600"
+                                 >
+                                   {sauce.name}
+                                 </span>
+                               ))}
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                     )}
+
+                     {/* Comentarios */}
+                     {item.comment && (
+                       <div className={`mt-4 p-4 rounded-xl border-l-4 border-slate-500 ${
+                         theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'
+                       }`}>
+                         <span className={`text-lg font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                           ⚠️ INSTRUCCIONES ESPECIALES:
+                         </span>
+                         <p className={`text-lg font-bold mt-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-900'} leading-relaxed`}>
+                           "{item.comment}"
+                         </p>
+                       </div>
+                     )}
+                   </div>
+
+                   {/* Precio y botones de acción */}
+                   <div className="flex items-start gap-4 ml-6">
+                     <div className="text-right">
+                       <div className="font-black text-2xl text-green-600">
+                         {formatPrice(calculateOrderItemPrice(item))}
+                       </div>
+                     </div>
+
+                     {/* Botones de acción: Editar y Eliminar */}
+                     <div className="flex flex-col gap-2">
+                       <button
+                         onClick={() => handleEditOrderItem(order, index)}
+                         className={`p-4 rounded-xl transition-all border-2 ${
+                           theme === 'dark'
+                             ? 'text-blue-400 hover:bg-blue-900/20 border-blue-600 hover:border-blue-500'
+                             : 'text-blue-600 hover:bg-blue-50 border-blue-300 hover:border-blue-400'
+                         }`}
+                         title="Editar producto"
+                       >
+                         <PencilIcon className="w-6 h-6" />
+                       </button>
+
+                       {/* Botón eliminar */}
+                       <button
+                         onClick={() => handleDeleteOrderItem(order, index)}
+                         className={`p-4 rounded-xl transition-all border-2 ${
+                           theme === 'dark'
+                             ? 'text-red-400 hover:bg-red-900/20 border-red-600 hover:border-red-500'
+                             : 'text-red-600 hover:bg-red-50 border-red-300 hover:border-red-400'
+                         }`}
+                         title="Eliminar producto"
+                       >
+                         <TrashIcon className="w-6 h-6" />
+                       </button>
+                     </div>
+
+                   </div>
+
+                 </div>
+               </div>
+             ))}
+           </div>
+         </div>
+          {nextStatusButton && (
+             <div className="p-4 border-gray-200 dark:border-gray-700">
+               {nextStatusButton}
+             </div>
+          )}
+       </div>
+      );
+    };
 
   // Estadísticas mejoradas
   const getFilterStats = () => {
-    const total = filteredOrders.reduce((sum, order) => {
-      const orderTotal = order.total_amount || order.bill || order.calculated_total ||
-        (order.items ? order.items.reduce((itemSum, item) => itemSum + calculateOrderItemPrice(item), 0) : 0);
-      return sum + parseFloat(orderTotal);
+    const allFilteredOrders = [
+       ...(filteredOrders.received_orders || []),
+       ...(filteredOrders.attending_orders || []),
+       ...(filteredOrders.completed_orders || []),
+    ];
+
+    const total = allFilteredOrders.reduce((sum, order) => {
+        const orderTotal = order.total_amount || order.bill || (order.items ? order.items.reduce((itemSum, item) => itemSum + calculateOrderItemPrice(item), 0) : 0);
+        return sum + parseFloat(orderTotal);
     }, 0);
 
-    const uniqueClients = new Set(filteredOrders.map(order => order.client_name).filter(Boolean)).size;
-    const paymentMethodsUsed = new Set(filteredOrders.map(order => order.payment_name).filter(Boolean)).size;
+    const count = allFilteredOrders.length;
 
-    return {
-      count: filteredOrders.length,
-      total: total,
-      uniqueClients,
-      paymentMethodsUsed,
-      averageTicket: filteredOrders.length > 0 ? total / filteredOrders.length : 0
-    };
+     return {
+       count: count,
+       total: total,
+       averageTicket: count > 0 ? total / count : 0
+     };
   };
 
   const stats = getFilterStats();
@@ -1342,323 +1612,47 @@ function Orders({ onBack }) {
         </div>
       </div>
 
-      {/* Contenido principal */}
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10 py-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className={`ml-3 text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-              Cargando órdenes...
-            </span>
-          </div>
-        ) : paginatedOrders.length > 0 ? (
-          <>
-            {/* Lista de órdenes */}
-            <div className="grid gap-5 mb-8">
-              {paginatedOrders.map((order) => {
-                const urgency = getOrderUrgency(order.order_date);
-                const orderTotal = order.total_amount || order.bill || order.calculated_total ||
-                  (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
-
-                return (
-                  <div
-                    key={order.id_order}
-                    className={`rounded-xl shadow-lg border-l-6 transition-all duration-200 hover:shadow-xl ${
-                      urgency === 'urgent'
-                        ? 'border-l-red-600 bg-red-50 dark:bg-red-900/20'
-                        : urgency === 'warning'
-                        ? 'border-l-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
-                        : 'border-l-blue-600 bg-white dark:bg-gray-800'
-                    } ${
-                      theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
-                    }`}
-                  >
-                    {/* Header de la orden */}
-                    <div className="p-4">
-                      <div className="flex items-start justify-between mb-5">
-                        {/* Info principal */}
-                        <div className="flex items-center gap-4">
-                          <div className={`text-3xl font-black px-4 py-2 rounded-xl ${
-                            urgency === 'urgent'
-                              ? 'bg-red-600 text-white shadow-lg'
-                              : urgency === 'warning'
-                              ? 'bg-yellow-600 text-white shadow-lg'
-                              : 'bg-blue-600 text-white shadow-lg'
-                          }`}>
-                            #{order.id_order}
-                          </div>
-                          <div>
-                            <h3 className={`font-black text-2xl ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>
-                              {order.client_name || 'Sin nombre'}
-                            </h3>
-                            <div className="flex items-center gap-5 text-base mt-1">
-                              <span className={`flex items-center gap-2 font-bold ${
-                                urgency === 'urgent' ? 'text-red-700 dark:text-red-400' :
-                                urgency === 'warning' ? 'text-yellow-700 dark:text-yellow-400' :
-                                'text-blue-700 dark:text-blue-400'
-                              }`}>
-                                <ClockIcon className="w-5 h-5" />
-                                {getTimeElapsed(order.order_date)}
-                              </span>
-                              <span className={`flex items-center gap-2 font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                {getPaymentMethodIcon(order.payment_name)} {order.payment_name}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Acciones y total */}
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="text-2xl font-black text-green-600">
-                              {formatPrice(parseFloat(orderTotal))}
-                            </div>
-                            <div className={`text-base font-medium ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                              {order.items?.length || 0} producto{order.items?.length !== 1 ? 's' : ''}
-                            </div>
-                          </div>
-
-                          {/* Botones de acción */}
-                          <div className="flex flex-col gap-2">
-                            <button
-                              onClick={() => handleAddProductToOrder(order)}
-                              className="p-3 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg border-2 border-blue-300 dark:border-blue-600 transition-all hover:border-blue-400 dark:hover:border-blue-500"
-                              title="Agregar producto"
-                            >
-                              <PlusIcon className="w-6 h-6" />
-                            </button>
-                            <button
-                              onClick={() => handleEditOrderData(order)}
-                              className="p-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 transition-all hover:border-slate-400 dark:hover:border-slate-500"
-                              title="Editar datos"
-                            >
-                              <Cog6ToothIcon className="w-6 h-6" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteOrderFull(order)}
-                              className="p-3 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-800 rounded-lg border-2 border-red-300 dark:border-red-600 transition-all hover:border-red-400 dark:hover:border-red-500"
-                              title="Eliminar orden completa"
-                            >
-                              <TrashIcon className="w-6 h-6" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Productos */}
-                      <div className="space-y-4">
-                        {order.items?.map((item, index) => (
-                          <div key={index} className={`p-5 rounded-xl border-2 ${
-                            theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
-                          } shadow-md`}>
-                            <div className="flex items-start justify-between">
-                              {/* Info del producto */}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-4 mb-3">
-                                  {/* Imagen del producto */}
-                                  {item.product_image && (
-                                    <img
-                                      src={item.product_image}
-                                      alt={item.product_name}
-                                      className="w-20 h-20 rounded-xl object-cover border-3 border-gray-300 dark:border-gray-600 shadow-md"
-                                      loading="lazy"
-                                    />
-                                  )}
-
-                                  <div className="flex-1">
-                                    {/* Nombre y cantidad destacados */}
-                                    <h4 className={`font-black text-2xl ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>
-                                      {item.quantity > 1 && (
-                                        <span className="bg-slate-600 text-white px-3 py-2 rounded-full text-lg mr-3 font-black">
-                                          {item.quantity}x
-                                        </span>
-                                      )}
-                                      {item.product_name}
-                                      {item.variant_name && (
-                                        <span className={`ml-3 text-lg font-bold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                          • {item.variant_name}
-                                        </span>
-                                      )}
-                                    </h4>
-
-                                    {/* Sabor destacado */}
-                                    {item.flavor && (
-                                      <div className="mt-2">
-                                        <span className="inline-flex items-center px-3 py-2 rounded-full text-base font-bold bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border border-slate-400">
-                                          🍋 {item.flavor.name}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Extras y salsas */}
-                                {(item.extras?.length > 0 || item.sauces?.length > 0) && (
-                                  <div className="space-y-3 ml-20">
-                                    {/* Extras */}
-                                    {item.extras && item.extras.length > 0 && (
-                                      <div>
-                                        <span className={`text-base font-bold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>
-                                          ➕ EXTRAS:
-                                        </span>
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                          {item.extras.map((extra, extraIdx) => (
-                                            <span
-                                              key={extraIdx}
-                                              className="inline-flex items-center px-4 py-2 rounded-full text-base font-bold bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 border-2 border-gray-400 dark:border-gray-500"
-                                            >
-                                              {extra.name}
-                                              {extra.quantity > 1 && (
-                                                <span className="ml-2 bg-slate-600 text-white px-2 py-1 rounded-full text-sm font-bold">
-                                                  ×{extra.quantity}
-                                                </span>
-                                              )}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Salsas */}
-                                    {item.sauces && item.sauces.length > 0 && (
-                                      <div>
-                                        <span className={`text-base font-bold ${theme === 'dark' ? 'text-orange-200' : 'text-orange-800'}`}>
-                                          🌶️ SALSAS:
-                                        </span>
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                          {item.sauces.map((sauce, sauceIdx) => (
-                                            <span
-                                              key={sauceIdx}
-                                              className="inline-flex items-center px-4 py-2 rounded-full text-base font-bold bg-orange-200 text-orange-900 dark:bg-orange-800 dark:text-orange-100 border-2 border-orange-400 dark:border-orange-600"
-                                            >
-                                              {sauce.name}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Comentarios */}
-                                {item.comment && (
-                                  <div className={`mt-4 p-4 rounded-xl border-l-4 border-slate-500 ${
-                                    theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'
-                                  }`}>
-                                    <span className={`text-lg font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
-                                      ⚠️ INSTRUCCIONES ESPECIALES:
-                                    </span>
-                                    <p className={`text-lg font-bold mt-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-900'} leading-relaxed`}>
-                                      "{item.comment}"
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Precio y botones de acción */}
-                              <div className="flex items-start gap-4 ml-6">
-                                <div className="text-right">
-                                  <div className="font-black text-2xl text-green-600">
-                                    {formatPrice(calculateOrderItemPrice(item))}
-                                  </div>
-                                </div>
-
-                                {/* Botones de acción: Editar y Eliminar */}
-                                <div className="flex flex-col gap-2">
-                                  <button
-                                    onClick={() => handleEditOrderItem(order, index)}
-                                    className={`p-4 rounded-xl transition-all border-2 ${
-                                      theme === 'dark'
-                                        ? 'text-blue-400 hover:bg-blue-900/20 border-blue-600 hover:border-blue-500'
-                                        : 'text-blue-600 hover:bg-blue-50 border-blue-300 hover:border-blue-400'
-                                    }`}
-                                    title="Editar producto"
-                                  >
-                                    <PencilIcon className="w-6 h-6" />
-                                  </button>
-
-                                  {/* Botón eliminar */}
-                                  <button
-                                    onClick={() => handleDeleteOrderItem(order, index)}
-                                    className={`p-4 rounded-xl transition-all border-2 ${
-                                      theme === 'dark'
-                                        ? 'text-red-400 hover:bg-red-900/20 border-red-600 hover:border-red-500'
-                                        : 'text-red-600 hover:bg-red-50 border-red-300 hover:border-red-400'
-                                    }`}
-                                    title="Eliminar producto"
-                                  >
-                                    <TrashIcon className="w-6 h-6" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Paginación */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-4">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className={`px-6 py-3 rounded-xl text-lg font-bold transition-all disabled:opacity-50 ${
-                    theme === 'dark'
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-2 border-gray-600'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200'
-                  }`}
-                >
-                  Anterior
-                </button>
-                <span className={`px-6 py-3 text-lg font-bold ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {currentPage} de {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className={`px-6 py-3 rounded-xl text-lg font-bold transition-all disabled:opacity-50 ${
-                    theme === 'dark'
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-2 border-gray-600'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200'
-                  }`}
-                >
-                  Siguiente
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="text-center py-12">
-            <ShoppingBagIcon className={`w-16 h-16 mx-auto mb-4 ${
-              theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
-            }`} />
-            <h3 className={`text-lg font-medium mb-2 ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
-            }`}>
-              🍽️ No hay órdenes pendientes
-            </h3>
-            <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              {filters.period === 'today'
-                ? 'No hay órdenes para preparar en este momento.'
-                : 'Ajusta los filtros para ver más órdenes.'
-              }
-            </p>
-            <button
-              onClick={handleRefreshToday}
-              className="mt-6 px-6 py-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all text-lg font-bold shadow-lg"
-            >
-              🔄 Actualizar Órdenes
-            </button>
-          </div>
-        )}
-      </div>
+       {/* --- CUERPO CON EL TABLERO KANBAN --- */}
+            <main className="flex-grow p-4 lg:p-6 overflow-hidden">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                  <StatusColumn
+                    title="🔵 RECIBIDAS"
+                    count={filteredOrders.received_orders?.length || 0}
+                    orders={filteredOrders.received_orders || []}
+                    renderOrderCard={renderOrderCard}
+                    theme={theme}
+                    bgColor={theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#EBF8FF'}
+                    textColor={theme === 'dark' ? '#93c5fd' : '#2563eb'}
+                    borderColor="#3b82f6"
+                  />
+                  <StatusColumn
+                    title="🟡 EN PREPARACIÓN"
+                    count={filteredOrders.attending_orders?.length || 0}
+                    orders={filteredOrders.attending_orders || []}
+                    renderOrderCard={renderOrderCard}
+                    theme={theme}
+                    bgColor={theme === 'dark' ? 'rgba(234, 179, 8, 0.1)' : '#FFFBEB'}
+                    textColor={theme === 'dark' ? '#fde047' : '#ca8a04'}
+                    borderColor="#eab308"
+                  />
+                  <StatusColumn
+                    title="🟢 COMPLETADAS"
+                    count={filteredOrders.completed_orders?.length || 0}
+                    orders={filteredOrders.completed_orders || []}
+                    renderOrderCard={renderOrderCard}
+                    theme={theme}
+                    bgColor={theme === 'dark' ? 'rgba(34, 197, 94, 0.1)' : '#F0FFF4'}
+                    textColor={theme === 'dark' ? '#86efac' : '#16a34a'}
+                    borderColor="#22c55e"
+                  />
+                </div>
+              )}
+            </main>
 
       {/* Modales */}
       {editingProduct && editingOrder && (

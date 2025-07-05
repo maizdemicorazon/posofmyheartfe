@@ -939,7 +939,7 @@ function ProductModal({
                   `}
                 >
                   <PlusIcon className="w-4 h-4" />
-                  <span>{isEditingOrder ? 'Agregar Otro' : 'Agregar Otro'}</span>
+                  <span>{isEditingOrder ? 'Agregar Otro' : 'Otro igual'}</span>
                 </button>
               )}
 

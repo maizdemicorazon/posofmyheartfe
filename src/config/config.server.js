@@ -53,6 +53,7 @@ export const API_ENDPOINTS = {
   ORDERS_BY_DATE: (date) => `${API_CONFIG.BASE_URL}/orders/by-date/${date}`,
   ORDERS_BY_PERIOD: (start, end) => `${API_CONFIG.BASE_URL}/orders/since/${start}/until/${end}`,
   ORDERS_GROUP_BY_STATUS: `${API_CONFIG.BASE_URL}/orders/status/group`,
+  ORDERS_NEXT_STATUS: (id, status) => `${API_CONFIG.BASE_URL}/orders/status/${id}`,
 
   // Catálogos
   EXTRAS: `${API_CONFIG.BASE_URL}/extras`,
