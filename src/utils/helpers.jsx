@@ -4,7 +4,7 @@
  */
 
 // ✅ IMPORTAR CONFIGURACIÓN CENTRALIZADA
-import { API_CONFIG, DEBUG_CONFIG } from '../config/config.server.js';
+import { API_CONFIG, DEBUG_CONFIG } from '../config/config.server.jsx';
 
 // ======================================
 // 🔗 ERROR CLASSES
