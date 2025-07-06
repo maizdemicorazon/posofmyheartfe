@@ -1156,12 +1156,13 @@ function Orders({ onBack }) {
             <div className="flex items-center gap-4">
               <button
                 onClick={onBack}
-                className={`p-2 rounded-lg transition-colors ${theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
+                className={`flex items-center justify-center p-3 rounded-xl transition-all duration-200 shadow-lg border-2 ${theme === 'dark'
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500 hover:shadow-xl'
+                  : 'bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 border-gray-300 hover:border-gray-400 hover:shadow-xl'
+                } transform hover:-translate-y-0.5`}
+                title="Volver al menú principal"
               >
-                <ArrowLeftIcon className="w-5 h-5" />
+                <ArrowLeftIcon className="w-7 h-7 font-bold" />
               </button>
               <div className="flex items-center gap-3">
                 <ShoppingBagIcon className={`w-6 h-6 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
