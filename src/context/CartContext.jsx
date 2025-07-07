@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useLoading } from './LoadingContext';
 import { useMessage } from './MessageContext';
 import Swal from 'sweetalert2';
@@ -9,31 +9,20 @@ import {
   updateOrder
 } from '../utils/api';
 
-// Crear el contexto con un valor inicial definido
-const CartContext = createContext(null);
+// Crear el contexto
+const CartContext = createContext(undefined);
 
-// ✅ EXPORTAR EL CONTEXTO PARA USO EXTERNO SI ES NECESARIO
-export { CartContext };
-
-// Hook personalizado para usar el contexto con verificación mejorada
+// Hook personalizado para usar el contexto
 export function useCart() {
   const context = useContext(CartContext);
-
-  // ✅ VERIFICACIÓN MEJORADA: Incluir más información de debug
-  if (context === undefined || context === null) {
-    console.error('❌ useCart called outside CartProvider context');
-    console.error('❌ Stack trace:', new Error().stack);
+  if (context === undefined) {
     throw new Error('useCart must be used within a CartProvider');
   }
-
   return context;
 }
 
-// Proveedor del contexto con inicialización defensiva
+// Proveedor del contexto
 export function CartProvider({ children }) {
-  // ✅ ESTADO DE INICIALIZACIÓN para prevenir renders prematuros
-  const [isInitialized, setIsInitialized] = useState(false);
-
   // Estados principales
   const [cart, setCart] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -46,285 +35,457 @@ export function CartProvider({ children }) {
   const { setLoading } = useLoading();
   const { setMessage } = useMessage();
 
-  // ✅ EFECTO DE INICIALIZACIÓN
-  useEffect(() => {
-    console.log('🚀 CartProvider initializing...');
-    setIsInitialized(true);
-    return () => {
-      console.log('🔄 CartProvider cleanup');
-      setIsInitialized(false);
-    };
-  }, []);
-
   // ✅ FUNCIÓN PARA CALCULAR PRECIO DE PRODUCTO - INCLUYE CLIENTE
-  const calculateProductPrice = useCallback((product) => {
-    if (!product) {
-      console.warn('⚠️ calculateProductPrice: product is null or undefined');
-      return 0;
-    }
+const calculateProductPrice = useCallback((product) => {
+  console.log('💰 Calculating price for product:', {
+    productId: product.id,
+    productName: product.product_name || product.name,
+    clientName: product.clientName,
+    hasSelectedPaymentMethod: !!product.selectedPaymentMethod,
+    hasSelectedOption: !!product.selectedOption,
+    hasOptions: !!product.options,
+    hasSelectedExtras: !!product.selectedExtras,
+    hasExtras: !!product.extras,
+    hasSelectedSauces: !!product.selectedSauces,
+    hasSauces: !!product.sauces,
+    quantity: product.quantity,
+    extrasWithQuantities: product.selectedExtras
+  });
 
-    console.log('💰 Calculating price for product:', {
-      productId: product.id,
-      productName: product.product_name || product.name,
-      clientName: product.clientName,
-      hasSelectedPaymentMethod: !!product.selectedPaymentMethod,
-      hasSelectedOption: !!product.selectedOption,
-      hasOptions: !!product.options,
-      hasSelectedExtras: !!product.selectedExtras,
-      hasExtras: !!product.extras,
-      hasSelectedSauces: !!product.selectedSauces,
-      hasSauces: !!product.sauces
-    });
-
-    try {
+    // ✅ PRECIO BASE - Buscar en múltiples ubicaciones con prioridad correcta
       let basePrice = 0;
 
-      // ✅ PRECIO BASE DEL PRODUCTO
       if (product.selectedOption?.price) {
-        basePrice = parseFloat(product.selectedOption.price);
+        basePrice = Number(product.selectedOption.price);
+        console.log('💰 Using selectedOption price:', basePrice);
+      } else if (product.options?.length > 0) {
+        basePrice = Number(product.options[0]?.price || 0);
+        console.log('💰 Using first option price:', basePrice);
       } else if (product.price) {
-        basePrice = parseFloat(product.price);
-      } else if (product.options && product.options.length > 0) {
-        basePrice = parseFloat(product.options[0].price || 0);
+        basePrice = Number(product.price);
+        console.log('💰 Using product price:', basePrice);
+      } else if (product.product_price) {
+        basePrice = Number(product.product_price);
+        console.log('💰 Using product_price:', basePrice);
+      } else {
+        console.log('⚠️ No price found, using 0');
       }
 
-      console.log('💰 Base price calculated:', basePrice);
-
-      // ✅ PRECIO DE EXTRAS
+    // ✅ PRECIO DE EXTRAS - Buscar en selectedExtras primero, luego extras
       let extrasPrice = 0;
-      if (product.selectedExtras && Array.isArray(product.selectedExtras)) {
-        extrasPrice = product.selectedExtras.reduce((sum, extra) => {
-          const price = parseFloat(extra.price || 0);
-          return sum + price;
-        }, 0);
+      if (product.selectedExtras?.length > 0) {
+        product.selectedExtras.forEach(extra => {
+          const extraPrice = Number(extra.price || 0);
+          const extraQuantity = Number(extra.quantity || 1); // ✅ USAR CANTIDAD DEL EXTRA
+          const extraTotal = extraPrice * extraQuantity;
+          extrasPrice += extraTotal;
+          console.log(`💰 Extra: ${extra.name} - $${extraPrice} x ${extraQuantity} = $${extraTotal}`);
+        });
+        console.log('💰 Total extras price:', extrasPrice);
+      } else if (product.extras?.length > 0) {
+        // ✅ Compatibilidad con formato antiguo
+        product.extras.forEach(extra => {
+          const extraPrice = Number(extra.price || extra.actual_price || 0);
+          const extraQuantity = Number(extra.quantity || 1);
+          const extraTotal = extraPrice * extraQuantity;
+          extrasPrice += extraTotal;
+          console.log(`💰 Extra (legacy): ${extra.name} - $${extraPrice} x ${extraQuantity} = $${extraTotal}`);
+        });
+        console.log('💰 Total extras price (legacy):', extrasPrice);
       }
 
-      console.log('💰 Extras price calculated:', extrasPrice);
+    // ✅ CÁLCULO FINAL
+    const unitPrice = basePrice + extrasPrice;
+    console.log('💰 Unit price (base + extras):', unitPrice);
 
-      // ✅ PRECIO TOTAL POR UNIDAD
-      const unitPrice = basePrice + extrasPrice;
-      const quantity = parseInt(product.quantity || 1);
-      const totalPrice = unitPrice * quantity;
+    // ✅ PRECIO TOTAL FINAL
+    const quantity = Number(product.quantity || 1);
+    const totalPrice = unitPrice * quantity;
 
-      console.log('💰 Final calculation:', {
+    console.log('💰 Final calculation:', {
+        basePrice,
+        extrasPrice,
         unitPrice,
         quantity,
         totalPrice
       });
 
-      return totalPrice;
-
-    } catch (error) {
-      console.error('❌ Error calculating product price:', error, product);
-      return 0;
-    }
+    return totalPrice;
   }, []);
 
-  // ✅ CALCULAR TOTAL DEL CARRITO
+  // Calcular total del carrito
   const cartTotal = useMemo(() => {
-    if (!cart || cart.length === 0) return 0;
-
-    const total = cart.reduce((sum, item) => {
-      const itemTotal = calculateProductPrice(item);
-      return sum + itemTotal;
+    return cart.reduce((total, item) => {
+      if (item.totalPrice) {
+        return total + item.totalPrice;
+      }
+      return total + calculateProductPrice(item);
     }, 0);
-
-    console.log('🧮 Cart total calculated:', total);
-    return total;
   }, [cart, calculateProductPrice]);
 
-  // ✅ AGREGAR AL CARRITO
-  const addToCart = useCallback((product) => {
-    if (!product) {
-      console.error('❌ Cannot add null/undefined product to cart');
-      return;
-    }
+  // ✅ FUNCIÓN PARA AGREGAR AL CARRITO
+  const addToCart = useCallback((item) => {
+    console.log('🔄 Adding to cart - Input item:', item);
 
-    console.log('➕ Adding product to cart:', product);
+    // ✅ GENERAR ID ÚNICO MÁS ROBUSTO PARA EVITAR DUPLICADOS
+    const uniqueId = `cart-${Date.now()}-${Math.floor(Math.random() * 10000)}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const cartItem = {
-      id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      id_product: product.id,
-      product_name: product.product_name || product.name,
-      quantity: product.quantity || 1,
-      selectedOption: product.selectedOption,
-      selectedFlavor: product.selectedFlavor,
-      selectedExtras: product.selectedExtras || [],
-      selectedSauces: product.selectedSauces || [],
-      selectedPaymentMethod: product.selectedPaymentMethod,
-      comment: product.comment || '',
-      clientName: product.clientName || '',
-      image: product.image,
-      options: product.options || [],
-      flavors: product.flavors || [],
-      extras: product.extras || [],
-      sauces: product.sauces || [],
-      payment_methods: product.payment_methods || []
+    // ✅ MAPEAR ESTRUCTURA PARA COMPATIBILIDAD
+    const newItem = {
+      // ✅ ID único ROBUSTO para el carrito
+      id: uniqueId,
+
+      // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR (para compatibilidad con Cart.jsx)
+      id_product: item.product?.id_product || item.id_product,
+      product_name: item.product?.name || item.product_name || item.name,
+      product_image: item.product?.image || item.product_image || item.image,
+
+      // ✅ MANTENER EL PRODUCTO ANIDADO (para App.jsx y modal de edición)
+      product: item.product,
+
+      // ✅ DATOS DE LA SELECCIÓN
+      quantity: item.quantity || 1,
+      selectedOption: item.selectedOption,
+      selectedFlavor: item.selectedFlavor,
+      selectedExtras: item.selectedExtras || [],
+      selectedSauces: item.selectedSauces || [],
+      selectedPaymentMethod: item.selectedPaymentMethod || [],
+      comment: item.comment || '',
+      clientName: item.clientName || '',
+
+      // ✅ MAPEAR VARIANTE AL NIVEL SUPERIOR (para compatibilidad)
+      id_variant: item.selectedOption?.id_variant || item.id_variant,
+      variant_name: item.selectedOption?.size || item.variant_name,
+
+      // ✅ MAPEAR SABOR AL NIVEL SUPERIOR (para compatibilidad)
+      flavor: item.selectedFlavor || item.flavor,
+
+      // ✅ MAPEAR EXTRAS Y SALSAS AL NIVEL SUPERIOR (para compatibilidad)
+      extras: item.selectedExtras || item.extras || [],
+      sauces: item.selectedSauces || item.sauces || [],
+      paymentMethods: item.selectedPaymentMethod || item.paymentMethods || [],
+
+      // ✅ PRECIO TOTAL
+      totalPrice: item.totalPrice || calculateProductPrice(item),
+
+      // ✅ COPIAR CUALQUIER OTRO CAMPO QUE PUEDA VENIR
+      ...item
     };
 
-    setCart(prevCart => {
-      const newCart = [...prevCart, cartItem];
-      console.log('✅ Product added to cart. New cart:', newCart);
-      return newCart;
+    console.log('✅ Adding to cart - Mapped item:', newItem);
+    console.log('🔍 Key fields check:', {
+      uniqueId: newItem.id,
+      id_product: newItem.id_product,
+      product_name: newItem.product_name,
+      product_image: newItem.product_image,
+      variant_name: newItem.variant_name,
+      clientName: newItem.clientName,
+      hasProduct: !!newItem.product
     });
 
-    setMessage({ text: 'Producto agregado al carrito', type: 'success' });
-  }, [setMessage]);
+    setCart(prev => [...prev, newItem]);
+    console.log('✅ Item successfully added to cart with unique ID:', uniqueId);
+  }, [calculateProductPrice]);
 
-  // ✅ REMOVER DEL CARRITO
+  // Función para remover del carrito
   const removeFromCart = useCallback((itemId) => {
-    console.log('🗑️ Removing item from cart:', itemId);
-
-    setCart(prevCart => {
-      const newCart = prevCart.filter(item => item.id !== itemId);
-      console.log('✅ Item removed. New cart:', newCart);
-      return newCart;
-    });
-
-    setMessage({ text: 'Producto eliminado del carrito', type: 'info' });
-  }, [setMessage]);
-
-  // ✅ INICIAR EDICIÓN DE PRODUCTO
-  const startEditProduct = useCallback((product) => {
-    console.log('✏️ Starting edit for product:', product);
-    setEditingProduct(product);
+    setCart(prev => prev.filter(item => item.id !== itemId));
+    console.log('Item removed from cart:', itemId);
   }, []);
 
-  // ✅ GUARDAR EDICIÓN DE PRODUCTO
-  const saveEditProduct = useCallback((updatedProduct) => {
+  // Función para limpiar carrito
+  const clearCart = useCallback(() => {
+    setCart([]);
+    setEditingProduct(null);
+    console.log('Cart cleared');
+  }, []);
+
+  // Funciones para edición de productos
+  const startEditProduct = useCallback((cartItem) => {
+    setEditingProduct(cartItem);
+    console.log('Started editing product:', cartItem);
+  }, []);
+
+  // ✅ FUNCIÓN PARA GUARDAR EDICIÓN DE PRODUCTO - INCLUYE CLIENTE
+  const saveEditProduct = useCallback((updatedItem) => {
     if (!editingProduct) {
-      console.error('❌ No product being edited');
+      console.error('❌ No editingProduct found in saveEditProduct');
       return;
     }
 
-    console.log('💾 Saving edited product:', updatedProduct);
+    setCart(prev => prev.map(item => {
+      // ✅ COMPARAR POR ID ÚNICO DEL CARRITO
+      if (item.id === editingProduct.id) {
+        console.log('🎯 Found item to update by unique cart ID:', item.id);
 
-    setCart(prevCart => {
-      return prevCart.map(item => {
-        if (item.id === editingProduct.id) {
-          const updatedItem = {
-            ...item,
-            ...updatedProduct,
-            id: item.id // Mantener el ID original
+        // ✅ CREAR ITEM ACTUALIZADO CON MAPEO COMPLETO
+        const updatedCartItem = {
+          // ✅ Mantener EL MISMO ID único del carrito
+          id: editingProduct.id,
+
+          // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR
+          id_product: updatedItem.product?.id_product || editingProduct.id_product,
+          product_name: updatedItem.product?.name || editingProduct.product_name,
+          product_image: updatedItem.product?.image || editingProduct.product_image,
+
+          // ✅ MANTENER EL PRODUCTO ANIDADO
+          product: updatedItem.product || editingProduct.product,
+
+          // ✅ DATOS DE LA SELECCIÓN ACTUALIZADA DESDE EL MODAL
+          quantity: updatedItem.quantity || 1,
+          selectedOption: updatedItem.selectedOption,
+          selectedFlavor: updatedItem.selectedFlavor,
+          selectedExtras: updatedItem.selectedExtras || [],
+          selectedSauces: updatedItem.selectedSauces || [],
+          comment: updatedItem.comment || '',
+          clientName: updatedItem.clientName || '',
+
+          // ✅ PRESERVAR MÉTODO DE PAGO
+          selectedPaymentMethod: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod,
+          paymentMethods: updatedItem.selectedPaymentMethod || editingProduct.selectedPaymentMethod,
+
+          // ✅ MAPEAR VARIANTE AL NIVEL SUPERIOR
+          id_variant: updatedItem.selectedOption?.id_variant || editingProduct.id_variant,
+          variant_name: updatedItem.selectedOption?.size || editingProduct.variant_name,
+
+          // ✅ MAPEAR SABOR AL NIVEL SUPERIOR
+          flavor: updatedItem.selectedFlavor || editingProduct.flavor,
+
+          // ✅ MAPEAR EXTRAS Y SALSAS AL NIVEL SUPERIOR
+          extras: updatedItem.selectedExtras || updatedItem.extras || [],
+          sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
+
+          // ✅ Eliminar totalPrice para que se recalcule
+          totalPrice: null, // Esto fuerza el recálculo en cada render
+
+          // ✅ PRESERVAR CAMPOS ORIGINALES QUE NO SE ACTUALICEN
+          ...editingProduct,
+
+          // ✅ SOBRESCRIBIR CON NUEVOS DATOS
+          ...updatedItem,
+
+          // ✅ ASEGURAR QUE EL ID Y LOS MAPEOS CRÍTICOS NO SE SOBRESCRIBAN
+          id: editingProduct.id,
+          extras: updatedItem.selectedExtras || updatedItem.extras || [],
+          sauces: updatedItem.selectedSauces || updatedItem.sauces || [],
+          flavor: updatedItem.selectedFlavor || editingProduct.flavor,
+          selectedFlavor: updatedItem.selectedFlavor,
+          selectedPaymentMethod: updatedItem.selectedPaymentMethod,
+          clientName: updatedItem.clientName || editingProduct.clientName || '',
+          comment: updatedItem.comment || editingProduct.comment || ''
+        };
+
+        console.log('✅ Updated cart item FINAL:', {
+          id: updatedCartItem.id,
+          product_name: updatedCartItem.product_name,
+          clientName: updatedCartItem.clientName,
+          comment: updatedItem.comment,
+          selectedPaymentMethod: updatedCartItem.selectedPaymentMethod,
+          selectedFlavor: updatedItem.selectedFlavor,
+          sauces: updatedItem.selectedSauces,
+          extras: updatedItem.selectedExtras,
+          totalPrice: updatedCartItem.totalPrice,
+          quantity: updatedCartItem.quantity,
+          comment: updatedCartItem.comment
+        });
+
+        return updatedCartItem;
+      }
+      return item;
+    }));
+
+    setEditingProduct(null);
+    console.log('✅ Product successfully updated in cart with preserved ID:', editingProduct.id);
+  }, [editingProduct, calculateProductPrice]);
+
+  const cancelEditProduct = useCallback(() => {
+    setEditingProduct(null);
+    console.log('Product edit cancelled');
+  }, []);
+
+  // ✅ FUNCIÓN PARA TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND
+  const transformOrderData = useCallback((orderData = null) => {
+    // Si no se proporciona orderData, transformar desde el carrito
+    if (!orderData) {
+      return {
+        items: cart.map(item => {
+          const orderItem = {
+            id_product: item.product?.id_product || item.id_product,
+            quantity: item.quantity || 1,
+            unit_price: item.selectedOption?.price || item.product?.price || item.price || 0,
+            comment: item.comment || null,
+            client_name: item.clientName || null
           };
-          console.log('✅ Product updated in cart:', updatedItem);
-          return updatedItem;
-        }
-        return item;
-      });
+
+          // Agregar opción seleccionada
+          if (item.selectedOption) {
+            orderItem.id_variant = item.selectedOption.id_variant;
+          }
+
+          // Agregar método de pago seleccionado
+          if (item.selectedPaymentMethod) {
+            orderItem.id_payment_method = item.selectedFlavor.id_payment_method;
+          }
+
+          // Agregar sabor seleccionado
+          if (item.selectedFlavor) {
+            orderItem.id_flavor = item.selectedFlavor.id_flavor;
+          }
+
+          // Agregar extras seleccionados
+          if (item.selectedExtras && item.selectedExtras.length > 0) {
+            orderItem.extras = item.selectedExtras.map(extra => ({
+              id_extra: extra.id_extra,
+              quantity: 1
+            }));
+          }
+
+          // Agregar salsas seleccionadas
+          if (item.selectedSauces && item.selectedSauces.length > 0) {
+            orderItem.sauces = item.selectedSauces.map(sauce => ({
+              id_sauce: sauce.id_sauce
+            }));
+          }
+
+          return orderItem;
+        })
+      };
+    }
+
+    // ✅ TRANSFORMAR DATOS DE ORDEN DESDE EL BACKEND CON MAPEO CORRECTO - INCLUYE CLIENTE
+    return {
+      id_order: orderData.id_order,
+      client_name: orderData.client_name || '',
+
+      // ✅ MAPEO CORRECTO: bill → total_amount
+      total_amount: Number(orderData.bill || orderData.total_amount || 0),
+
+      // ✅ MAPEO CORRECTO: order_date → created_at
+      created_at: orderData.order_date,
+      updated_at: orderData.updated_at,
+
+      // ✅ MAPEO CORRECTO
+      payment_method: {
+        id_payment_method: orderData.id_payment_method,
+        name: orderData.id_payment_method || 'Desconocido'
+      },
+
+      items: (orderData.items || []).map((item, index) => ({
+        id_order_detail: item.id_order_detail || `temp-${index}`,
+        id_product: item.id_product,
+        id_variant: item.id_variant,
+        comment: item.comment || '',
+        quantity: Number(item.quantity || 1),
+        unit_price: Number(item.product_price || item.unit_price || 0),
+        total_price: Number(item.product_price || item.total_price || 0),
+
+        // ✅ Estructura del producto (anidada para compatibilidad)
+        product: {
+          id_product: item.id_product,
+          name: item.product_name,
+          image: item.product_image
+        },
+
+        // ✅ Estructura de la variante (anidada para compatibilidad)
+        variant: {
+          id_variant: item.id_variant,
+          size: item.variant_name,
+          name: item.variant_name
+        },
+
+        // ✅ Campos directos para compatibilidad
+        product_name: item.product_name,
+        product_image: item.product_image,
+        variant_name: item.variant_name,
+
+        // ✅ Arrays de modificaciones
+        extras: item.extras || [],
+        sauces: item.sauces || [],
+
+        // ✅ IMPORTANTE: Manejar sabor como objeto único (no array)
+        flavor: item.flavor || null,
+        flavors: item.flavor ? [item.flavor] : [] // Para compatibilidad
+      }))
+    };
+  }, [cart]);
+
+  // ✅ GUARDAR ORDEN - MODIFICADO PARA ACEPTAR PARÁMETROS
+  const saveOrder = useCallback(async (clientNameParam = null, paymentMethodParam = null) => {
+    if (cart.length === 0) {
+      setMessage({ text: 'El carrito está vacío', type: 'error' });
+      return;
+    }
+
+    console.log('💾 saveOrder called with params:', {
+      clientNameParam,
+      paymentMethodParam,
+      cartLength: cart.length
     });
 
-    setEditingProduct(null);
-    setMessage({ text: 'Producto actualizado', type: 'success' });
-  }, [editingProduct, setMessage]);
+    // ✅ PRIORIZAR PARÁMETROS, LUEGO OBTENER DEL PRIMER ARTÍCULO DEL CARRITO
+    let idPaymentMethod = paymentMethodParam;
+    let clientName = clientNameParam;
 
-  // ✅ CANCELAR EDICIÓN
-  const cancelEditProduct = useCallback(() => {
-    console.log('❌ Cancelling product edit');
-    setEditingProduct(null);
-  }, []);
-
-  // ✅ LIMPIAR CARRITO
-  const clearCart = useCallback(() => {
-    console.log('🧹 Clearing cart');
-    setCart([]);
-    setEditingProduct(null);
-  }, []);
-
-  // ✅ TRANSFORMAR DATOS DE ORDEN PARA UI
-  const transformOrderData = useCallback((orderData) => {
-    console.log('🔄 Transforming order data:', orderData);
-
-    try {
-      return {
-        id_order: orderData.id_order,
-        client_name: orderData.client_name || 'Cliente',
-        order_date: orderData.order_date,
-        total_amount: parseFloat(orderData.total_amount || 0),
-        status: orderData.status || 'pending',
-        id_payment_method: orderData.id_payment_method,
-        payment_method_name: orderData.payment_method_name,
-        items: (orderData.order_details || []).map(detail => ({
-          id_order_detail: detail.id_order_detail,
-          id_product: detail.id_product,
-          product_name: detail.product_name,
-          quantity: parseInt(detail.quantity || 1),
-          unit_price: parseFloat(detail.unit_price || 0),
-          total_price: parseFloat(detail.total_price || 0),
-          id_variant: detail.id_variant,
-          variant_name: detail.variant_name,
-          comment: detail.comment || '',
-          extras: detail.extras || [],
-          sauces: detail.sauces || []
-        }))
-      };
-    } catch (error) {
-      console.error('❌ Error transforming order data:', error);
-      return orderData;
+    // Si no se proporcionan parámetros, usar el comportamiento anterior
+    if (!idPaymentMethod || !clientName) {
+      const firstItem = cart[0];
+      idPaymentMethod = idPaymentMethod || firstItem?.selectedPaymentMethod;
+      clientName = clientName || firstItem?.clientName || '';
     }
-  }, []);
 
-  // ✅ GUARDAR ORDEN
-  const saveOrder = useCallback(async () => {
-    if (!cart || cart.length === 0) {
+    console.log('💾 Final values for order:', {
+      idPaymentMethod,
+      clientName,
+      source: paymentMethodParam ? 'modal' : 'cart'
+    });
+
+    // 🛡️ VALIDACIÓN: Verificar que el método de pago exista ANTES de enviar.
+    if (!idPaymentMethod) {
       await Swal.fire({
-        title: 'Carrito vacío',
-        text: 'Agrega productos antes de crear la orden',
+        title: 'Falta método de pago',
+        text: 'Parece que la orden no tiene un método de pago. Por favor, selecciona uno al agregar o editar un producto.',
         icon: 'warning',
-        confirmButtonText: 'Entendido'
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#f59e0b'
       });
       return;
     }
 
     setLoading(true);
-
     try {
-      console.log('💾 Saving order with cart:', cart);
-
-      // Usar el primer producto para obtener datos del cliente y pago
-      const firstProduct = cart[0];
-      const clientName = firstProduct?.clientName || '';
-      const paymentMethodId = firstProduct?.selectedPaymentMethod?.id;
-
-      if (!paymentMethodId) {
-        throw new Error('Método de pago requerido');
-      }
-
-      // Construir estructura de orden
+      // ✅ CONSTRUIR EL CUERPO DE LA PETICIÓN CON CLIENTE
       const orderData = {
-        client_name: clientName,
-        id_payment_method: paymentMethodId,
-        order_details: cart.map(item => {
-          const unitPrice = calculateProductPrice({ ...item, quantity: 1 });
-
-          return {
+        id_payment_method: Number(idPaymentMethod),
+        client_name: (clientName || '').trim() || "Cliente POS",
+        items: cart.map(item => {
+          const mappedItem = {
             id_product: item.id_product,
-            id_variant: item.selectedOption?.id || item.selectedFlavor?.id,
-            quantity: parseInt(item.quantity || 1),
-            unit_price: unitPrice,
-            total_price: unitPrice * parseInt(item.quantity || 1),
-            comment: item.comment || '',
-            extras: (item.selectedExtras || []).map(extra => ({
-              id_extra: extra.id,
-              extra_name: extra.extra_name
-            })),
-            sauces: (item.selectedSauces || []).map(sauce => ({
-              id_sauce: sauce.id,
-              sauce_name: sauce.sauce_name
-            }))
+            id_variant: item.id_variant,
+            comment: item.comment,
+            sauces: (item.selectedSauces || []).map(s => ({ id_sauce: s.id_sauce })),
+            extras: (item.selectedExtras || []).map(e => ({ id_extra: e.id_extra, quantity: e.quantity || 1 })),
           };
+
+          // Añadir sabor solo si está seleccionado y tiene un ID
+          if (item.selectedFlavor && item.selectedFlavor.id_flavor) {
+            mappedItem.flavor = item.selectedFlavor.id_flavor;
+          }
+
+          return mappedItem;
         })
       };
 
-      console.log('📤 Sending order data:', orderData);
+      console.log('📤 Order data to send:', JSON.stringify(orderData, null, 2));
 
       const response = await createOrder(orderData);
-      console.log('✅ Order created successfully:', response);
 
-      clearCart();
+      console.log('✅ Order saved successfully:', response);
+
+      setCart([]);
+      setEditingProduct(null);
 
       await Swal.fire({
-        title: '¡Orden creada!',
+        title: '¡Pedido guardado!',
         text: `Orden #${response.id_order || 'Nueva'} creada exitosamente${clientName ? ` para ${clientName}` : ''}`,
         icon: 'success',
         timer: 2000,
@@ -353,7 +514,7 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [cart, setLoading, setMessage, calculateProductPrice, clearCart]);
+  }, [cart, setLoading, setMessage]);
 
   // ✅ ACTUALIZAR ORDEN
   const updateOrderContext = useCallback(async (orderId, updateData) => {
@@ -362,6 +523,7 @@ export function CartProvider({ children }) {
       console.log('📤 Enviando datos de actualización a la API:', { orderId, payload: updateData });
 
       const updatedOrder = await updateOrder(orderId, updateData);
+
       const transformedOrder = transformOrderData(updatedOrder);
 
       // Actualizar la lista local de órdenes para reflejar los cambios en la UI
@@ -382,43 +544,34 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [setLoading, setMessage, transformOrderData]);
+  }, [setLoading, setMessage, transformOrderData, setOrders]);
 
   // ✅ Valor del contexto OPTIMIZADO - INCLUYE CLIENTE
-  const contextValue = useMemo(() => {
-    if (!isInitialized) {
-      console.log('⏳ CartContext not yet initialized');
-      return null;
-    }
-
-    return {
-      cart,
-      editingProduct,
-      orders,
-      products,
-      extras,
-      sauces,
-      paymentMethods,
-      cartTotal,
-      addToCart,
-      removeFromCart,
-      startEditProduct,
-      saveEditProduct,
-      cancelEditProduct,
-      clearCart,
-      saveOrder,
-      calculateProductPrice,
-      setProducts,
-      setExtras,
-      setSauces,
-      setPaymentMethods,
-      setOrders,
-      updateOrder: updateOrderContext,
-      transformOrderData,
-      isInitialized
-    };
-  }, [
-    isInitialized,
+  const contextValue = useMemo(() => ({
+    cart,
+    editingProduct,
+    orders,
+    products,
+    extras,
+    sauces,
+    paymentMethods,
+    cartTotal,
+    addToCart,
+    removeFromCart,
+    startEditProduct,
+    saveEditProduct,
+    cancelEditProduct,
+    clearCart,
+    saveOrder,
+    calculateProductPrice,
+    setProducts,
+    setExtras,
+    setSauces,
+    setPaymentMethods,
+    setOrders,
+    updateOrder: updateOrderContext,
+    transformOrderData
+  }), [
     cart,
     editingProduct,
     orders,
@@ -438,18 +591,6 @@ export function CartProvider({ children }) {
     updateOrderContext,
     transformOrderData
   ]);
-
-  // ✅ RENDERIZADO CONDICIONAL: Solo renderizar children cuando esté inicializado
-  if (!isInitialized || contextValue === null) {
-    console.log('⏳ CartProvider not ready, showing loading...');
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  console.log('✅ CartProvider rendering with context value');
 
   return (
     <CartContext.Provider value={contextValue}>

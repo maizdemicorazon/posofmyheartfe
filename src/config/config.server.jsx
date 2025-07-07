@@ -56,21 +56,21 @@ export const ENVIRONMENT_CONFIG = {
     DEBUG_MODE: true,
     TIMEOUT: 15000,
     RETRY_ATTEMPTS: 3,
-    CHECK_INTERVAL: 30000, // 30 segundos
+    CHECK_INTERVAL: 300000, // 5 minutos
   },
   staging: {
     API_BASE_URL: import.meta.env.VITE_STAGING_API_URL || 'https://posofmyheart-develop.up.railway.app/api/v1',
     DEBUG_MODE: true,
     TIMEOUT: 12000,
     RETRY_ATTEMPTS: 2,
-    CHECK_INTERVAL: 60000, // 1 minuto
+    CHECK_INTERVAL: 600000, // 10 minutos
   },
   production: {
     API_BASE_URL: import.meta.env.VITE_PRODUCTION_API_URL || 'https://posofmyheart.up.railway.app/api/v1',
     DEBUG_MODE: false,
     TIMEOUT: 10000,
     RETRY_ATTEMPTS: 1,
-    CHECK_INTERVAL: 120000, // 2 minutos
+    CHECK_INTERVAL: 900000, // 15 minutos
   }
 };
 
@@ -174,8 +174,8 @@ export const CONNECTIVITY_CONFIG = {
   CHECK_BACKEND_TIMEOUT: 500, // Delay antes de verificar backend
 
   // Opciones de verificación
-  CHECK_ON_FOCUS: true,
-  CHECK_ON_VISIBILITY_CHANGE: true,
+  CHECK_ON_FOCUS: false,
+  CHECK_ON_VISIBILITY_CHANGE: false,
 
   // Endpoints para verificación
   PING_ENDPOINT: '/ping',
