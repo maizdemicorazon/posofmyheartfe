@@ -5,7 +5,10 @@ import {
   DEBUG_CONFIG,
   getCurrentEnvironment,
   getCurrentConfig,
-  validateConfig
+  validateConfig,
+  getDiagnostics,
+  getConfigInfo,
+  checkBasicConnectivity
 } from '../../config/config.server';
 import {
   CheckCircleIcon,
@@ -25,73 +28,62 @@ function ConfigDebug({ isVisible = false, onToggle }) {
   const { theme } = useTheme();
   const [apiStatus, setApiStatus] = useState('checking');
   const [configStatus, setConfigStatus] = useState(null);
-  const [envVars, setEnvVars] = useState({});
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [configInfo, setConfigInfo] = useState(null);
 
   // ✅ VERIFICAR ESTADO DE LA API
   const checkApiStatus = async () => {
     setApiStatus('checking');
 
     try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/flavors`, {
-        method: 'GET',
-        timeout: 5000,
-        signal: AbortSignal.timeout(5000)
-      });
-
-      if (response.ok) {
-        setApiStatus('connected');
-      } else {
-        setApiStatus('error');
-      }
+      const isConnected = await checkBasicConnectivity(5000);
+      setApiStatus(isConnected ? 'connected' : 'error');
     } catch (error) {
       console.error('❌ API connection check failed:', error);
       setApiStatus('error');
     }
   };
 
-  // ✅ VERIFICAR CONFIGURACIÓN
+  // ✅ VERIFICAR CONFIGURACIÓN COMPLETA
   const checkConfiguration = () => {
-    const isValid = validateConfig();
-    const environment = getCurrentEnvironment();
-    const config = getCurrentConfig();
+    try {
+      const isValid = validateConfig();
+      const environment = getCurrentEnvironment();
+      const config = getCurrentConfig();
+      const diagnosticsData = getDiagnostics();
+      const configInfoData = getConfigInfo();
 
-    setConfigStatus({
-      isValid,
-      environment,
-      config
-    });
-  };
+      setConfigStatus({
+        isValid,
+        environment,
+        config
+      });
 
-  // ✅ OBTENER VARIABLES DE ENTORNO
-  const getEnvironmentVariables = () => {
-    const vars = {
-      // Variables de Vite disponibles
-      VITE_ENV_NODE: import.meta.env.VITE_ENV_NODE,
-      VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
-      VITE_API_BASE_URL_ROOT: import.meta.env.VITE_API_BASE_URL_ROOT,
-      VITE_DEBUG_MODE: import.meta.env.VITE_DEBUG_MODE,
-      VITE_MODE: import.meta.env.VITE_MODE,
-      VITE_API_TIMEOUT: import.meta.env.VITE_API_TIMEOUT,
+      setDiagnostics(diagnosticsData);
+      setConfigInfo(configInfoData);
 
-      // Variables internas de Vite
-      MODE: import.meta.env.MODE,
-      DEV: import.meta.env.DEV,
-      PROD: import.meta.env.PROD,
-
-      // URLs calculadas
-      CALCULATED_BASE_URL: API_CONFIG.BASE_URL,
-      CALCULATED_ROOT_URL: API_CONFIG.BASE_URL_ROOT,
-      CALCULATED_ENVIRONMENT: API_CONFIG.ENVIRONMENT
-    };
-
-    setEnvVars(vars);
+      if (DEBUG_CONFIG.ENABLED) {
+        console.log('🔍 Configuration check completed:', {
+          isValid,
+          environment,
+          diagnostics: diagnosticsData
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error checking configuration:', error);
+      setConfigStatus({
+        isValid: false,
+        environment: 'unknown',
+        config: {},
+        error: error.message
+      });
+    }
   };
 
   // ✅ EFECTOS DE INICIALIZACIÓN
   useEffect(() => {
     if (isVisible) {
       checkConfiguration();
-      getEnvironmentVariables();
       checkApiStatus();
     }
   }, [isVisible]);
@@ -128,7 +120,7 @@ function ConfigDebug({ isVisible = false, onToggle }) {
         `}>
           <div className="flex items-center justify-center min-h-screen p-4">
             <div className={`
-              w-full max-w-4xl rounded-lg shadow-xl
+              w-full max-w-5xl rounded-lg shadow-xl
               ${theme === 'dark'
                 ? 'bg-gray-800 border border-gray-700'
                 : 'bg-white border border-gray-200'
@@ -143,6 +135,9 @@ function ConfigDebug({ isVisible = false, onToggle }) {
                   <h2 className="text-xl font-semibold flex items-center gap-2">
                     <CogIcon className="w-6 h-6" />
                     Configuration Debug
+                    <span className="text-sm font-normal text-gray-500">
+                      {configStatus?.environment && `(${configStatus.environment})`}
+                    </span>
                   </h2>
                   <button
                     onClick={onToggle}
@@ -232,6 +227,9 @@ function ConfigDebug({ isVisible = false, onToggle }) {
                         <p className="text-sm">
                           <strong>Timeout:</strong> {configStatus.config.TIMEOUT}ms
                         </p>
+                        <p className="text-sm">
+                          <strong>Check Interval:</strong> {configStatus.config.CHECK_INTERVAL}ms
+                        </p>
                       </div>
 
                       <div className={`
@@ -245,39 +243,110 @@ function ConfigDebug({ isVisible = false, onToggle }) {
                         <p className="text-sm break-all">
                           <strong>Root URL:</strong> {API_CONFIG.BASE_URL_ROOT}
                         </p>
+                        <p className="text-sm">
+                          <strong>Max Retries:</strong> {API_CONFIG.RETRY_CONFIG.maxRetries}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ✅ DIAGNÓSTICOS */}
+                {diagnostics && (
+                  <div>
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                      <InformationCircleIcon className="w-5 h-5" />
+                      System Diagnostics
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Issues */}
+                      {diagnostics.issues.length > 0 && (
+                        <div className={`
+                          p-4 rounded border-l-4 border-red-500
+                          ${theme === 'dark' ? 'bg-red-900 bg-opacity-20' : 'bg-red-50'}
+                        `}>
+                          <h4 className="font-medium text-red-600 dark:text-red-400 mb-2">
+                            Critical Issues ({diagnostics.issues.length})
+                          </h4>
+                          <ul className="text-sm space-y-1">
+                            {diagnostics.issues.map((issue, index) => (
+                              <li key={index} className="text-red-600 dark:text-red-400">
+                                • {issue}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Warnings */}
+                      {diagnostics.warnings.length > 0 && (
+                        <div className={`
+                          p-4 rounded border-l-4 border-yellow-500
+                          ${theme === 'dark' ? 'bg-yellow-900 bg-opacity-20' : 'bg-yellow-50'}
+                        `}>
+                          <h4 className="font-medium text-yellow-600 dark:text-yellow-400 mb-2">
+                            Warnings ({diagnostics.warnings.length})
+                          </h4>
+                          <ul className="text-sm space-y-1">
+                            {diagnostics.warnings.map((warning, index) => (
+                              <li key={index} className="text-yellow-600 dark:text-yellow-400">
+                                • {warning}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Info */}
+                      <div className={`
+                        p-4 rounded border-l-4 border-blue-500
+                        ${theme === 'dark' ? 'bg-blue-900 bg-opacity-20' : 'bg-blue-50'}
+                      `}>
+                        <h4 className="font-medium text-blue-600 dark:text-blue-400 mb-2">
+                          System Info
+                        </h4>
+                        <ul className="text-sm space-y-1">
+                          {diagnostics.info.slice(0, 4).map((info, index) => (
+                            <li key={index} className="text-blue-600 dark:text-blue-400">
+                              • {info}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     </div>
                   </div>
                 )}
 
                 {/* ✅ VARIABLES DE ENTORNO */}
-                <div>
-                  <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
-                    <InformationCircleIcon className="w-5 h-5" />
-                    Environment Variables
-                  </h3>
+                {configInfo && (
+                  <div>
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                      <InformationCircleIcon className="w-5 h-5" />
+                      Environment Variables
+                    </h3>
 
-                  <div className={`
-                    max-h-60 overflow-y-auto p-4 rounded text-sm font-mono
-                    ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}
-                  `}>
-                    {Object.entries(envVars).map(([key, value]) => (
-                      <div key={key} className="mb-1">
-                        <span className="text-blue-600 dark:text-blue-400">{key}:</span>{' '}
-                        <span className={value ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                          {value || 'undefined'}
-                        </span>
-                      </div>
-                    ))}
+                    <div className={`
+                      max-h-60 overflow-y-auto p-4 rounded text-sm font-mono
+                      ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}
+                    `}>
+                      {Object.entries(configInfo.envVars).map(([key, value]) => (
+                        <div key={key} className="mb-1">
+                          <span className="text-blue-600 dark:text-blue-400">{key}:</span>{' '}
+                          <span className={value ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                            {value?.toString() || 'undefined'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* ✅ ACCIONES */}
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
                   <button
                     onClick={() => {
                       checkConfiguration();
-                      getEnvironmentVariables();
                       checkApiStatus();
                     }}
                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -287,11 +356,13 @@ function ConfigDebug({ isVisible = false, onToggle }) {
 
                   <button
                     onClick={() => {
-                      console.log('🔍 Current Configuration:', {
-                        API_CONFIG,
-                        envVars,
-                        configStatus
-                      });
+                      console.group('🔍 Complete Configuration Debug');
+                      console.log('API Config:', API_CONFIG);
+                      console.log('Debug Config:', DEBUG_CONFIG);
+                      console.log('Config Status:', configStatus);
+                      console.log('Diagnostics:', diagnostics);
+                      console.log('Full Config Info:', configInfo);
+                      console.groupEnd();
                     }}
                     className={`
                       px-4 py-2 rounded transition-colors
@@ -302,6 +373,22 @@ function ConfigDebug({ isVisible = false, onToggle }) {
                     `}
                   >
                     Log to Console
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      const testResult = await checkBasicConnectivity();
+                      alert(`Connectivity test: ${testResult ? 'SUCCESS' : 'FAILED'}`);
+                    }}
+                    className={`
+                      px-4 py-2 rounded transition-colors
+                      ${theme === 'dark'
+                        ? 'bg-green-700 hover:bg-green-600'
+                        : 'bg-green-600 hover:bg-green-700'
+                      } text-white
+                    `}
+                  >
+                    Quick Test
                   </button>
                 </div>
               </div>

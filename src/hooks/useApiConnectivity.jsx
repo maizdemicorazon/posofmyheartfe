@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   API_CONFIG,
+  API_ENDPOINTS,
   DEBUG_CONFIG,
   getCurrentEnvironment,
   getCurrentConfig,
-  validateConfig
+  validateConfig,
+  CONNECTIVITY_CONFIG
 } from '../config/config.server';
-import { CONNECTIVITY_CONFIG } from '../utils/constants';
 
 /**
  * Hook combinado para manejar configuración de API y conectividad
@@ -110,7 +111,7 @@ export function useApiConnectivity({
       }
 
       // Endpoint para verificar conectividad
-      const checkUrl = `${API_CONFIG.BASE_URL}/ping`;
+      const checkUrl = `${API_ENDPOINTS.HEALTH}`;
       
       // Hacer el request con timeout
       const response = await fetch(checkUrl, {
@@ -161,7 +162,7 @@ export function useApiConnectivity({
           console.log('❌ Backend connectivity check failed:', {
             error: error.message,
             responseTime: `${responseTime}ms`,
-            url: `${API_CONFIG.BASE_URL}/ping`
+            url: `${API_ENDPOINTS.PING}"+10`
           });
         }
       }
@@ -238,13 +239,13 @@ export function useApiConnectivity({
       debugConfig: DEBUG_CONFIG,
       connectivity,
       envVars: {
-        VITE_ENV_NODE: import.meta.env.VITE_ENV_NODE,
+        VITE_PROFILE: import.meta.env.VITE_PROFILE,
         VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
         VITE_API_BASE_URL_ROOT: import.meta.env.VITE_API_BASE_URL_ROOT,
         VITE_DEBUG_MODE: import.meta.env.VITE_DEBUG_MODE,
-        MODE: import.meta.env.MODE,
-        DEV: import.meta.env.DEV,
-        PROD: import.meta.env.PROD
+        MODE: import.meta.env.VITE_DEVELOPMENT_API_URL,
+        DEV: import.meta.env.VITE_STAGING_API_URL,
+        PROD: import.meta.env.VITE_PRODUCTION_API_URL
       }
     };
   }, [connectivity]);
@@ -258,8 +259,8 @@ export function useApiConnectivity({
     };
 
     // Verificar variables de entorno críticas
-    if (!import.meta.env.VITE_ENV_NODE) {
-      diagnostics.warnings.push('VITE_ENV_NODE no está definida. Usando detección automática.');
+    if (!import.meta.env.VITE_PROFILE) {
+      diagnostics.warnings.push('VITE_PROFILE no está definida. Usando detección automática.');
     }
 
     if (!import.meta.env.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL_ROOT) {

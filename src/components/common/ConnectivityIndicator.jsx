@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useApiConnectivity } from '../../hooks/useApiConnectivity';
-import { CONNECTIVITY_CONFIG, BREAKPOINTS } from '../../utils/constants';
+import { BREAKPOINTS } from '../../utils/constants';
 import {
   WifiIcon,
   ServerIcon,
