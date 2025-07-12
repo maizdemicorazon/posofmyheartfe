@@ -166,15 +166,20 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
               : 'bg-white border-gray-200 hover:bg-gray-50'
           }`}
         >
-          <div className="relative ">
-            <img
-              ref={el => imageRefs.current[product.id_product] = el}
-              src={getImageById(product.id_image)}
-              alt={product.name}
-              className="w-full h-40 object-cover rounded-t-lg"
-              loading="lazy"
-              onError={() => handleImageError(product.id_product, product.name)}
-            />
+          <div className="relative">
+            {/* ✅ IMAGEN CON ZOOM SUTIL - object-contain con scale para mejor uso del espacio */}
+            <div className={`w-full h-60 rounded-t-lg overflow-hidden ${
+              theme === 'dark' ? 'bg-gray-100' : 'bg-gray-50'
+            }`}>
+              <img
+                ref={el => imageRefs.current[product.id_product] = el}
+                src={getImageById(product.id_image)}
+                alt={product.name}
+                className="w-full h-full object-cover rounded-t-lg"
+                loading="lazy"
+                onError={() => handleImageError(product.id_product, product.name)}
+              />
+            </div>
 
             {/* Overlay con error de imagen */}
             {imageStates[product.id_product]?.hasError && (
@@ -182,7 +187,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
                 <svg className="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                 </svg>
-                <span className="text-xs text-gray-500 text-center px-2 ">{product.name}</span>
+                <span className="text-xs text-gray-500 text-center px-2">{product.name}</span>
               </div>
             )}
           </div>
