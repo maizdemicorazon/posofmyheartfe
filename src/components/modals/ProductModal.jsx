@@ -653,7 +653,7 @@ function ProductModal({
                           : `border-gray-300 ${theme === 'dark' ? 'border-gray-600 hover:border-gray-500' : 'hover:border-gray-400'}`
                       }`}
                     >
-                      {productOption.image && (
+                      {productOption.id_image && (
                         <img
                           src={getImageById(productOption.id_image)}
                           alt={productOption.name}
