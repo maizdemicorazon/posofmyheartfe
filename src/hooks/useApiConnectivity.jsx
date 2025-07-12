@@ -21,11 +21,11 @@ import {
  * @returns {Object} Estado completo de configuración y conectividad
  */
 export function useApiConnectivity({
-  checkInterval = CONNECTIVITY_CONFIG.INTERVAL,
-  timeout = CONNECTIVITY_CONFIG.TIMEOUT,
-  checkOnFocus = CONNECTIVITY_CONFIG.CHECK_ON_FOCUS,
-  checkOnVisibilityChange = CONNECTIVITY_CONFIG.CHECK_ON_VISIBILITY_CHANGE,
-  enableVisualIndicator = true
+  checkInterval = getCurrentConfig().INTERVAL,
+  timeout = getCurrentConfig().TIMEOUT,
+  checkOnFocus = getCurrentConfig().CHECK_ON_FOCUS,
+  checkOnVisibilityChange = getCurrentConfig().CHECK_ON_VISIBILITY_CHANGE,
+  enableVisualIndicator = false
 } = {}) {
 
   // ✅ ESTADOS DE CONFIGURACIÓN
@@ -419,33 +419,6 @@ export function useApiConnectivity({
     isChecking: isCheckingRef.current,
     lastErrorMessage: connectivity.lastError,
     lastCheckTime: connectivity.lastCheck
-  };
-}
-
-/**
- * Hook simplificado para solo verificar el estado actual
- */
-export function useSimpleApiConnectivity() {
-  const { 
-    isFullyConnected, 
-    connectionStatus, 
-    isBackendOnline, 
-    isOnline, 
-    responseTime,
-    connectionStatusText
-  } = useApiConnectivity({
-    checkInterval: CONNECTIVITY_CONFIG.INTERVAL,
-    timeout: CONNECTIVITY_CONFIG.TIMEOUT,
-    enableVisualIndicator: false
-  });
-
-  return {
-    isConnected: isFullyConnected,
-    status: connectionStatus,
-    statusText: connectionStatusText,
-    isBackendOnline,
-    isOnline,
-    responseTime
   };
 }
 
