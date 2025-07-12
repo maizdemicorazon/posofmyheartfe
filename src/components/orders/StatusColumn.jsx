@@ -15,6 +15,7 @@ import PropTypes from 'prop-types';
  * @param {string} props.bgColor - Color de fondo para la cabecera.
  * @param {string} props.textColor - Color de texto para la cabecera.
  * @param {string} props.borderColor - Color del borde izquierdo de la cabecera.
+ * @param {string} props.accentColor - Color de acento para elementos destacados.
  * @param {boolean} props.isCollapsed - Si la columna está colapsada o no.
  * @param {function} props.onToggleCollapse - Función para togglear el estado de colapso.
  */
@@ -27,66 +28,103 @@ function StatusColumn({
   bgColor,
   textColor,
   borderColor,
+  accentColor,
   isCollapsed,
   onToggleCollapse
 }) {
   return (
-    <div className={`flex flex-col rounded-xl shadow-md transition-all duration-300 h-full ${
-      theme === 'dark' ? 'bg-gray-800/50' : 'bg-gray-100/50'
+    <div className={`flex flex-col rounded-xl transition-all duration-300 h-full ${
+      theme === 'dark'
+        ? 'bg-gray-800/30 border border-gray-700/30'
+        : 'bg-white border border-gray-200/60 shadow-sm'
     }`}>
 
-      {/* --- Cabecera de la Columna (Sticky y Clickeable) --- */}
+      {/* --- Cabecera de la Columna (Mejorada con mejor contraste) --- */}
       <div
-        className="p-3 rounded-t-lg sticky top-0 z-10 cursor-pointer hover:shadow-lg transition-all duration-200"
+        className={`p-4 rounded-t-xl sticky top-0 z-10 cursor-pointer transition-all duration-200 ${
+          theme === 'dark'
+            ? 'hover:bg-gray-700/20 border-b border-gray-700/30'
+            : 'hover:bg-gray-50/80 border-b border-gray-200/60'
+        }`}
         style={{ backgroundColor: bgColor }}
         onClick={onToggleCollapse}
         title={isCollapsed ? 'Expandir columna' : 'Colapsar columna'}
       >
-        <div className="flex items-center justify-between" style={{
-          color: textColor,
-          borderLeft: `5px solid ${borderColor}`,
-          paddingLeft: '12px'
-        }}>
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* Icono de colapso/expansión */}
-            <div className="flex-shrink-0">
+            {/* Icono de colapso/expansión con mejor visibilidad */}
+            <div className={`flex-shrink-0 p-1 rounded-lg transition-all duration-200 ${
+              theme === 'dark' ? 'hover:bg-gray-600/20' : 'hover:bg-gray-100/60'
+            }`}>
               {isCollapsed ? (
-                <ChevronRightIcon className="w-6 h-6 transition-transform duration-200" />
+                <ChevronRightIcon
+                  className="w-5 h-5 transition-transform duration-200"
+                  style={{ color: textColor }}
+                />
               ) : (
-                <ChevronDownIcon className="w-6 h-6 transition-transform duration-200" />
+                <ChevronDownIcon
+                  className="w-5 h-5 transition-transform duration-200"
+                  style={{ color: textColor }}
+                />
               )}
             </div>
 
-            {/* Título */}
-            <h2 className={`font-black transition-all duration-300 ${
-              isCollapsed ? 'text-lg' : 'text-xl'
-            }`}>
-              {isCollapsed ? title.split(' ')[0] : title}
+            {/* Indicador de borde sutil pero visible */}
+            <div
+              className="w-1 h-8 rounded-full"
+              style={{ backgroundColor: borderColor }}
+            />
+
+            {/* Título con mejor tipografía */}
+            <h2
+              className={`font-bold transition-all duration-300 ${
+                isCollapsed ? 'text-base' : 'text-lg'
+              }`}
+              style={{ color: textColor }}
+            >
+              {isCollapsed ? title.split(' ')[1] || title : title}
             </h2>
           </div>
 
-          {/* Contador */}
-          <span className={`font-bold px-3 py-1 rounded-full transition-all duration-300 ${
-            isCollapsed ? 'text-sm' : 'text-lg'
-          }`} style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
-            {count}
-          </span>
+          {/* Contador con mejor diseño */}
+          <div className="flex items-center gap-2">
+            {count > 0 && (
+              <div
+                className={`inline-flex items-center justify-center min-w-[2rem] h-8 px-3 rounded-full font-bold transition-all duration-300 ${
+                  isCollapsed ? 'text-sm' : 'text-base'
+                }`}
+                style={{
+                  backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                  color: accentColor,
+                  border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`
+                }}
+              >
+                {count}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Indicador visual adicional cuando está colapsado */}
+        {/* Indicador visual mejorado cuando está colapsado */}
         {isCollapsed && count > 0 && (
-          <div className="mt-2 flex items-center justify-center">
+          <div className="mt-3 flex items-center justify-center">
             <div className="flex space-x-1">
-              {[...Array(Math.min(count, 5))].map((_, i) => (
+              {[...Array(Math.min(count, 4))].map((_, i) => (
                 <div
                   key={i}
-                  className="w-2 h-2 rounded-full opacity-60"
-                  style={{ backgroundColor: textColor }}
+                  className="w-2 h-2 rounded-full transition-all duration-200"
+                  style={{
+                    backgroundColor: accentColor,
+                    opacity: 0.7
+                  }}
                 />
               ))}
-              {count > 5 && (
-                <span className="text-xs ml-1" style={{ color: textColor }}>
-                  +{count - 5}
+              {count > 4 && (
+                <span
+                  className="text-xs ml-2 font-medium"
+                  style={{ color: textColor }}
+                >
+                  +{count - 4}
                 </span>
               )}
             </div>
@@ -94,22 +132,36 @@ function StatusColumn({
         )}
       </div>
 
-      {/* --- Contenedor de Órdenes (Scrollable con animación de colapso) --- */}
+      {/* --- Contenedor de Órdenes (Scrollable con animación mejorada) --- */}
       <div className={`transition-all duration-300 ease-in-out overflow-hidden ${
         isCollapsed ? 'max-h-0 opacity-0' : 'max-h-full opacity-100'
       }`}>
-        <div className="p-4 space-y-4 flex-grow overflow-y-auto">
+        <div className="p-3 space-y-3 flex-grow overflow-y-auto">
           {orders.length > 0 ? (
             orders.map(order => renderOrderCard(order))
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center py-10 px-4">
-              <ShoppingBagIcon className={`w-12 h-12 mx-auto mb-2 ${
-                theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
-              }`} />
-              <p className={`font-medium ${
-                theme === 'dark' ? 'text-gray-500' : 'text-gray-600'
+            <div className="flex flex-col items-center justify-center h-full text-center py-12 px-4">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                style={{
+                  backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  border: `2px dashed ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`
+                }}
+              >
+                <ShoppingBagIcon
+                  className="w-8 h-8"
+                  style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }}
+                />
+              </div>
+              <p className={`font-medium text-sm ${
+                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
               }`}>
                 No hay órdenes en esta sección
+              </p>
+              <p className={`text-xs mt-1 ${
+                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                Las nuevas órdenes aparecerán aquí
               </p>
             </div>
           )}
