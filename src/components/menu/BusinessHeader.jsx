@@ -35,7 +35,7 @@ function BusinessHeader() {
                __html: `
                   .cinzel-decorative-regular {
                       font-family: "Cinzel Decorative", serif;
-                      font-weight: 400;
+                      font-weight: 600;
                       font-style: normal;
                    }
                `

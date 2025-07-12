@@ -382,42 +382,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                         )}
 
                         {/* Método de Pago */}
-                        {(cartItem.selectedPaymentMethod || cartItem.payment_method_id) && (
-                          <div className={`flex items-center gap-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                            <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
-                            <span className={`font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                              Pago:
-                            </span>
-                            <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
-                              theme === 'dark'
-                                ? 'bg-green-900/30 text-green-300 border border-green-700/50'
-                                : 'bg-green-100 text-green-700 border border-green-200'
-                            }`}>
-                              {/* Ícono del método de pago */}
-                              {(() => {
-                                const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
-                                if (paymentId === 1) return '💵'; // Efectivo
-                                if (paymentId === 2) return '💳'; // Tarjeta
-                                if (paymentId === 3) return '🏦'; // Transferencia
-                                if (paymentId === 4) return '📱'; // QR
-                                if (paymentId === 5) return '🔗'; // Link
-                                return '💰'; // Genérico
-                              })()}
-                              {(() => {
-                                // Mapear ID a nombre
-                                const paymentId = cartItem.selectedPaymentMethod || cartItem.payment_method_id;
-                                const paymentNames = {
-                                  1: 'Efectivo',
-                                  2: 'Tarjeta',
-                                  3: 'Transferencia',
-                                  4: 'QR',
-                                  5: 'Link de Pago'
-                                };
-                                return paymentNames[paymentId] || `Método ${paymentId}`;
-                              })()}
-                            </span>
-                          </div>
-                        )}
+                         // No se muestra en el carrito ya que se enviá en ClientPaymentModal
 
                         {/* Variante/Tamaño */}
                         {(cartItem.variant_name || cartItem.selectedOption?.size) && (

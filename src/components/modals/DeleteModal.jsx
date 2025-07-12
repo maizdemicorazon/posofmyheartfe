@@ -264,7 +264,7 @@ function DeleteModal({
                         ? 'bg-yellow-900/50 text-yellow-200'
                         : 'bg-yellow-100 text-yellow-800'
                     }`}>
-                      {new Date(order.order_date).toLocaleDateString('es-ES', {
+                      {new Date(order.created_at).toLocaleDateString('es-ES', {
                         day: '2-digit',
                         month: '2-digit',
                         year: 'numeric',

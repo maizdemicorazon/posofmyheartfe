@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
-import { getProducts } from '../../utils/api';
+import { getProducts, getImageById } from '../../utils/api';
 import { API_CONFIG } from '../../config/config.server';
 
 function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
@@ -47,7 +47,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
           setExtras(response.extras || []);
           setSauces(response.sauces || []);
           setPaymentMethods(response.payment_methods || []);
-          hasFetched.current = true; // ✅ Marcar como cargado exitosamente
+          hasFetched.current = true;
         } else {
           throw new Error('No se recibieron productos');
         }
@@ -105,7 +105,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
   // ✅ FUNCIÓN PARA OPTIMIZAR IMAGEN DE PRODUCTO CON PROTECCIÓN ANTI-LOOP
   const getOptimizedProductImage = (product) => {
     const isDark = theme === 'dark';
-    if (!product?.image) {
+    if (!product?.name) {
       return generatePlaceholderUrl(product?.name || 'Producto', 400, isDark);
     }
     return optimizeGoogleDriveImageUrl(product.image, 400) || generatePlaceholderUrl(product.name, 400, isDark);
@@ -159,17 +159,17 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         <div
           key={product.id_product}
           onClick={() => onProductClick && onProductClick(product)}
-          className={`rounded-lg shadow-md cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg border ${
+          className={`rounded-lg cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg cinzel-decorative-regular
+              bg-gradient-to-br from-green-600 via-green-300 to-green-600 shadow-lg ${
             theme === 'dark'
               ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
               : 'bg-white border-gray-200 hover:bg-gray-50'
           }`}
         >
-          <div className="relative">
-            {/* ✅ Imagen del producto CORREGIDA con protección anti-loop */}
+          <div className="relative ">
             <img
               ref={el => imageRefs.current[product.id_product] = el}
-              src={getOptimizedProductImage(product)}
+              src={getImageById(product.id_image)}
               alt={product.name}
               className="w-full h-40 object-cover rounded-t-lg"
               loading="lazy"
@@ -182,13 +182,13 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
                 <svg className="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                 </svg>
-                <span className="text-xs text-gray-500 text-center px-2">{product.name}</span>
+                <span className="text-xs text-gray-500 text-center px-2 ">{product.name}</span>
               </div>
             )}
           </div>
 
-          <div className="p-3">
-            <h3 className={`font-semibold text-sm mb-1 line-clamp-2 ${
+          <div className="p-2">
+            <h3 className={`text-center ${
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}>
               {product.name}

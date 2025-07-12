@@ -543,7 +543,7 @@ function Orders({ onBack }) {
         const filtered = orders.filter(order => {
             // --- Filtro por Período ---
             // Convierte la fecha de la orden y la compara con la fecha de inicio del período
-            const orderDate = new Date(order.order_date);
+            const orderDate = new Date(order.created_at);
             const matchesPeriod = orderDate >= startDate;
 
             // --- Filtros Existentes (sin cambios) ---
@@ -567,7 +567,7 @@ function Orders({ onBack }) {
         // Ordenamiento (sin cambios)
         return filtered.sort((a, b) => {
             switch (filters.sortBy) {
-                case 'oldest': return new Date(a.order_date) - new Date(b.order_date);
+                case 'oldest': return new Date(a.created_at) - new Date(b.created_at);
                 case 'highest':
                     const totalA_h = a.total_amount || a.bill || (a.items ? a.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
                     const totalB_h = b.total_amount || b.bill || (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
@@ -577,7 +577,7 @@ function Orders({ onBack }) {
                     const totalB_l = b.total_amount || b.bill || (b.items ? b.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
                     return parseFloat(totalA_l) - parseFloat(totalB_l);
                 case 'client': return (a.client_name || '').localeCompare(b.client_name || '');
-                default: return new Date(b.order_date) - new Date(a.order_date); // newest
+                default: return new Date(b.created_at) - new Date(a.created_at); // newest
             }
         });
     };
@@ -1085,7 +1085,7 @@ function Orders({ onBack }) {
 
   // Función para renderizar las tarjetas de orden usando el componente OrderCard
   const renderOrderCard = (order) => {
-    const urgency = getOrderUrgency(order.order_date);
+    const urgency = getOrderUrgency(order.created_at);
     const orderTotal = order.bill || order.total_amount || (order.items ? order.items.reduce((sum, item) => sum + calculateOrderItemPrice(item), 0) : 0);
 
     return (

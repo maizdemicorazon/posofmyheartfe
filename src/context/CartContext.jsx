@@ -360,8 +360,7 @@ const calculateProductPrice = useCallback((product) => {
       // ✅ MAPEO CORRECTO: bill → total_amount
       total_amount: Number(orderData.bill || orderData.total_amount || 0),
 
-      // ✅ MAPEO CORRECTO: order_date → created_at
-      created_at: orderData.order_date,
+      created_at: orderData.created_at,
       updated_at: orderData.updated_at,
 
       // ✅ MAPEO CORRECTO

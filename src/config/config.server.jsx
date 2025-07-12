@@ -186,6 +186,8 @@ export const CONNECTIVITY_CONFIG = {
 // ===============================================
 
 export const API_ENDPOINTS = {
+  IMAGE_BY_ID: (id) => `${API_CONFIG.BASE_URL}/catalogs/images/${id}/view`,
+
   // Productos
   PRODUCTS: `${API_CONFIG.BASE_URL}/products`,
   PRODUCT_BY_ID: (id) => `${API_CONFIG.BASE_URL}/products/${id}`,

@@ -342,11 +342,11 @@ export const getProducts = async () => {
   }
 };
 
-export const getProductById = async (id) => {
+export const getImageById = (id) => {
   try {
-    return await apiService.getProductById(id);
+    return API_ENDPOINTS.IMAGE_BY_ID(id);
   } catch (error) {
-    console.error('❌ Error in getProductById:', error);
+    console.error('❌ Error in getImageById:', error);
     throw error;
   }
 };

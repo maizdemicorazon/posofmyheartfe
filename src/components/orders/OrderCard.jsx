@@ -31,8 +31,11 @@ function OrderCard({
   handleDeleteOrderItem
 }) {
   // ✅ Valores por defecto para cardTheme
-  const safeCardTheme = cardTheme || {
+  const safeCardTheme = {
     bgColor: theme === 'dark' ? 'rgba(148, 163, 184, 0.05)' : 'rgba(148, 163, 184, 0.02)',
+    received: theme === 'dark' ? 'rgba(148, 163, 184, 0.05)' : 'rgb(235, 248, 255)',
+    attending: theme === 'dark' ? 'rgba(148, 163, 184, 0.05)' : 'rgb(255, 251, 235)',
+    completed: theme === 'dark' ? 'rgba(148, 163, 184, 0.05)' : 'rgb(240, 255, 244)',
     borderColor: theme === 'dark' ? '#64748b' : '#94a3b8',
     accentColor: theme === 'dark' ? '#64748b' : '#94a3b8',
     headerBg: theme === 'dark' ? 'rgba(148, 163, 184, 0.08)' : 'rgba(148, 163, 184, 0.04)',
@@ -42,6 +45,7 @@ function OrderCard({
   // Determinar el botón de siguiente estado con colores temáticos
   let nextStatusButton = null;
   if (order.status === 'RECEIVED') {
+       {{safeCardTheme.bgColor = safeCardTheme.received}}
     nextStatusButton = (
       <button
         onClick={() => handleNextStatus(order)}
@@ -57,7 +61,7 @@ function OrderCard({
       </button>
     );
   } else if (order.status === 'ATTENDING') {
-    {{safeCardTheme.bgColor = 'rgb(255, 251, 235)'}}
+    {{safeCardTheme.bgColor = safeCardTheme.attending}}
     nextStatusButton = (
       <button
         onClick={() => handleNextStatus(order)}
@@ -73,9 +77,8 @@ function OrderCard({
       </button>
     );
   } else if (order.status === 'COMPLETED') {
-    {{safeCardTheme.bgColor = 'rgb(240, 255, 244)'}}
+    {{safeCardTheme.bgColor = safeCardTheme.completed}}
   }
-
   // Función para obtener el color de urgencia (sobrescribe colores temáticos)
   const getUrgencyStyle = () => {
     if (urgency === 'urgent') {

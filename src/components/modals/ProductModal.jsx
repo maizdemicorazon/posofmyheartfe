@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
+import { getImageById } from '../../utils/api';
 import { PAYMENT_METHODS } from '../../utils/constants';
 
 function ProductModal({
@@ -277,13 +278,25 @@ function ProductModal({
     });
   };
 
+  // ✅ NUEVA LÓGICA PARA SALSAS CON EXCLUSIÓN MUTUA
   const handleSauceToggle = (sauce) => {
     setSelectedSauces(prev => {
       const isSelected = prev.find(s => s.id_sauce === sauce.id_sauce);
+      const isSinPicante = sauce.name.toLowerCase().includes('sin picante');
+
       if (isSelected) {
+        // Si está seleccionada, la deseleccionamos
         return prev.filter(s => s.id_sauce !== sauce.id_sauce);
       } else {
-        return [...prev, sauce];
+        // Si no está seleccionada, la agregamos con lógica especial
+        if (isSinPicante) {
+          // Si selecciona "Sin picante", solo mantener esa opción
+          return [sauce];
+        } else {
+          // Si selecciona cualquier otra, quitar "Sin picante" y agregar la nueva
+          const withoutSinPicante = prev.filter(s => !s.name.toLowerCase().includes('sin picante'));
+          return [...withoutSinPicante, sauce];
+        }
       }
     });
   };
@@ -581,7 +594,7 @@ function ProductModal({
           {/* Imagen del producto mejorada */}
           <div className="h-32 xs:h-36 sm:h-40 md:h-48 lg:h-52 overflow-hidden relative">
             <img
-              src={getOptimizedProductImage()}
+              src={getImageById(currentProduct.id_image)}
               alt={currentProduct?.name || currentProduct?.product_name || 'Producto'}
               className="w-full h-full object-cover"
               onError={handleProductImageError}
@@ -642,7 +655,7 @@ function ProductModal({
                     >
                       {productOption.image && (
                         <img
-                          src={optimizeGoogleDriveImageUrl(productOption.image, 60)}
+                          src={getImageById(productOption.id_image)}
                           alt={productOption.name}
                           className="w-12 h-12 rounded-lg object-cover"
                           loading="lazy"
@@ -725,14 +738,26 @@ function ProductModal({
                         setErrors(prev => ({ ...prev, flavor: '' }));
                       }}
                     >
-                      <div className="text-center">
-                        <div className="font-semibold text-xs sm:text-sm leading-tight">{flavor.name}</div>
-                      </div>
-                      {selectedFlavor?.id_flavor === flavor.id_flavor && (
-                        <div className="absolute -top-1 -right-1">
-                          <CheckIcon className="w-4 h-4 bg-yellow-500 text-white rounded-full p-0.5" />
-                        </div>
-                      )}
+                    <div className="flex flex-col items-center gap-1.5 h-full justify-center">
+                         {flavor.id_image && (
+                           <img
+                             src={getImageById(flavor.id_image)}
+                             alt={flavor.name}
+                             className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded"
+                             onError={(e) => {
+                               e.target.src = generatePlaceholderUrl(flavor.name, 40, theme === 'dark');
+                             }}
+                           />
+                         )}
+                         <span className="text-xs font-medium text-center leading-tight line-clamp-2">
+                           {flavor.name}
+                         </span>
+                       </div>
+                        {selectedFlavor?.id_flavor === flavor.id_flavor && (
+                           <div className="absolute -top-1 -right-1">
+                             <CheckIcon className="w-4 h-4 bg-yellow-500 text-white rounded-full p-0.5" />
+                           </div>
+                         )}
                     </button>
                   ))}
                 </div>
@@ -742,14 +767,14 @@ function ProductModal({
               </div>
             )}
 
-            {/* EXTRAS CON CONTROLES DE CANTIDAD */}
+            {/* EXTRAS CON CONTROLES DE CANTIDAD - LAYOUT 3 COLUMNAS */}
             {availableExtras.length > 0 && (
               <div>
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
                   Extras <span className="text-xs font-normal">(Opcional)</span>
                 </h3>
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {availableExtras.map((extra) => {
                     const selectedExtra = selectedExtras.find(e => e.id_extra === extra.id_extra);
                     const currentQuantity = selectedExtra ? selectedExtra.quantity : 0;
@@ -758,32 +783,46 @@ function ProductModal({
                     return (
                       <div
                         key={extra.id_extra}
-                        className={`w-full flex items-center justify-between p-2.5 sm:p-3 rounded-lg border-2 transition-all min-h-[3rem] ${
+                        className={`w-full flex flex-col p-3 rounded-lg border-2 transition-all ${
                           currentQuantity > 0
                             ? `border-green-500 ${theme === 'dark' ? 'bg-green-900/30' : 'bg-green-50'}`
                             : `border-gray-300 ${theme === 'dark' ? 'border-gray-600' : ''}`
                         }`}
                       >
+                        {/* Imagen del extra centrada */}
+                        <div className="flex justify-center mb-3">
+                          {extra.id_image && (
+                            <img
+                              src={getImageById(extra.id_image)}
+                              alt={extra.name}
+                              className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-full"
+                              onError={(e) => {
+                                e.target.src = generatePlaceholderUrl(extra.name, 80, theme === 'dark');
+                              }}
+                            />
+                          )}
+                        </div>
+
                         {/* Información del extra */}
-                        <div className="flex-1 min-w-0 mr-3">
+                        <div className="text-center mb-3">
                           <div className="font-medium text-sm sm:text-base">{extra.name}</div>
                           <div className={`text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                             ${extraPrice.toFixed(2)} c/u
                             {currentQuantity > 0 && (
-                              <span className="ml-2 font-medium text-green-600">
-                                = ${(extraPrice * currentQuantity).toFixed(2)}
-                              </span>
+                              <div className="font-medium text-green-600 mt-1">
+                                Total: ${(extraPrice * currentQuantity).toFixed(2)}
+                              </div>
                             )}
                           </div>
                         </div>
 
-                        {/* Controles de cantidad */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Controles de cantidad centrados */}
+                        <div className="flex items-center justify-center gap-3">
                           <button
                             type="button"
                             onClick={() => handleExtraQuantityChange(extra, Math.max(0, currentQuantity - 1))}
                             disabled={currentQuantity === 0}
-                            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg border-2 flex items-center justify-center transition-all touch-manipulation ${
+                            className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all touch-manipulation ${
                               currentQuantity === 0
                                 ? 'opacity-50 cursor-not-allowed'
                                 : theme === 'dark'
@@ -801,7 +840,7 @@ function ProductModal({
                           <button
                             type="button"
                             onClick={() => handleExtraQuantityChange(extra, currentQuantity + 1)}
-                            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg border-2 flex items-center justify-center transition-all touch-manipulation ${
+                            className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all touch-manipulation ${
                               theme === 'dark'
                                 ? 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 active:bg-gray-700'
                                 : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700 active:bg-gray-50'
@@ -817,7 +856,7 @@ function ProductModal({
               </div>
             )}
 
-            {/* SALSAS MEJORADAS */}
+            {/* SALSAS CON EXCLUSIÓN MUTUA AUTOMÁTICA */}
             {availableSauces.length > 0 && (
               <div>
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
@@ -825,11 +864,12 @@ function ProductModal({
                   Salsas <span className="text-xs font-normal">(Opcional)</span>
                 </h3>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-                  {availableSauces.map((sauce) => {
+                  {availableSauces.map((sauce, idx) => {
                     const isSelected = selectedSauces.find(s => s.id_sauce === sauce.id_sauce);
+
                     return (
                       <button
-                        key={sauce.id_sauce}
+                       key={`sauce-${sauce.id_sauce}-${idx}`}
                         className={`relative p-2 rounded-lg border-2 transition-all min-h-[4rem] sm:min-h-[4.5rem] ${
                           isSelected
                             ? `border-red-500 ${theme === 'dark' ? 'bg-red-900/30' : 'bg-red-50'}`
@@ -838,9 +878,9 @@ function ProductModal({
                         onClick={() => handleSauceToggle(sauce)}
                       >
                         <div className="flex flex-col items-center gap-1.5 h-full justify-center">
-                          {sauce.image && (
+                          {sauce.id_image && (
                             <img
-                              src={optimizeGoogleDriveImageUrl(sauce.image, 60)}
+                              src={getImageById(sauce.id_image)}
                               alt={sauce.name}
                               className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded"
                               onError={(e) => {

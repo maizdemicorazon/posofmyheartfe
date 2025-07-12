@@ -97,9 +97,11 @@ function SlideMenu({ isOpen, onClose, view, setView }) {
                 setView('orders');
                 onClose();
               }}
-              className="w-full px-4 py-3 border rounded-lg flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"
-            >
-              <ShoppingBagIcon className="w-5 h-5 text-green-500" />
+              className={`w-full px-4 py-3 border rounded-lg flex items-center gap-3
+                  ${theme === 'dark' ? 'hover:bg-gray-100 dark:hover:bg-gray-700' : 'hover:bg-gradient-to-br from-green-600 via-green-300 to-green-600'}
+                  transition-colors font-medium
+              `}>
+              <ShoppingBagIcon className="w-5 h-5 text-green-800" />
               <span>Mis Pedidos</span>
             </button>
           </div>
@@ -115,10 +117,9 @@ function SlideMenu({ isOpen, onClose, view, setView }) {
               className={`w-full px-4 py-3 border rounded-lg flex items-center gap-3 transition-all duration-200 font-medium
                 ${isAdminOpen
                   ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-            >
-              <CogIcon className="w-5 h-5 text-red-500" />
+                  : theme === 'dark' ? 'hover:bg-gray-100 dark:hover:bg-gray-700' : 'hover:bg-gradient-to-br from-green-600 via-green-300 to-green-600'
+                }`}>
+              <CogIcon className="w-5 h-5 text-red-500"/>
               <span>Administración</span>
               <div className="ml-auto">
                 {isAdminOpen ? (
