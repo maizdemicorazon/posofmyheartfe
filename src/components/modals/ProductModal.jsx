@@ -16,7 +16,7 @@ import {
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 import { getImageById } from '../../utils/api';
-import { PAYMENT_METHODS } from '../../utils/constants';
+import { PAYMENT_METHODS,id_image CATEGORIES } from '../../utils/constants';
 
 function ProductModal({
   isOpen,
@@ -55,6 +55,24 @@ function ProductModal({
     errorCount: 0,
     finalImageSrc: null
   });
+
+  // ✅ NUEVA FUNCIÓN: Determinar si el producto es una bebida
+  const isBeverageProduct = (productToCheck) => {
+    if (!productToCheck) return false;
+
+    // Buscar id_category en diferentes ubicaciones posibles
+    const categoryId = productToCheck.id_category;
+
+    const isBeverage = categoryId === CATEGORIES.BEBIDAS;
+
+    console.log('🥤 Checking if product is beverage:', {
+      productName: productToCheck.name,
+      categoryId,
+      isBeverage
+    });
+
+    return isBeverage;
+  };
 
   // ✅ FUNCIÓN MEJORADA: Resetear modal a valores iniciales
   const resetModalToInitial = () => {
@@ -189,24 +207,34 @@ function ProductModal({
         finalImageSrc: null
       });
 
-      // 2. ✅ MAPEAR EXTRAS CON CANTIDADES
-      const extrasWithQuantities = Array.isArray(initialExtras)
-        ? initialExtras.map(extra => ({
-            ...extra,
-            quantity: extra.quantity || 1
-          }))
-        : [];
-      setSelectedExtras(extrasWithQuantities);
+      // ✅ 2. VALIDAR CATEGORÍA Y MAPEAR EXTRAS/SALSAS SOLO SI NO ES BEBIDA
+      const currentProductForValidation = selectedProduct || product;
+      const isCurrentBeverage = isBeverageProduct(currentProductForValidation);
 
-      // 3. ✅ MAPEAR SALSAS
-      setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
+      if (!isCurrentBeverage) {
+        // Solo configurar extras y salsas si NO es bebida
+        const extrasWithQuantities = Array.isArray(initialExtras)
+          ? initialExtras.map(extra => ({
+              ...extra,
+              quantity: extra.quantity || 1
+            }))
+          : [];
+        setSelectedExtras(extrasWithQuantities);
+        setSelectedSauces(Array.isArray(initialSauces) ? [...initialSauces] : []);
+      } else {
+        // Si es bebida, limpiar extras y salsas
+        setSelectedExtras([]);
+        setSelectedSauces([]);
+        console.log('🥤 Product is beverage - clearing extras and sauces');
+      }
 
       console.log('🔄 Mapped initial data:', {
         isEditing,
         isEditingOrder,
+        isBeverage: isCurrentBeverage,
         paymentMethodsLength: paymentMethods?.length || 0,
-        extrasWithQuantities,
-        initialSauces
+        extrasLength: isCurrentBeverage ? 0 : (Array.isArray(initialExtras) ? initialExtras.length : 0),
+        saucesLength: isCurrentBeverage ? 0 : (Array.isArray(initialSauces) ? initialSauces.length : 0)
       });
 
       // 4. ✅ CONFIGURAR SEGÚN EL MODO
@@ -263,6 +291,13 @@ function ProductModal({
 
   // ✅ MANEJADORES DE CAMBIO PARA EXTRAS CON CANTIDAD
   const handleExtraQuantityChange = (extra, newQuantity) => {
+    // ✅ Verificar si el producto actual es bebida antes de permitir cambios
+    const currentProductForValidation = selectedProduct || product;
+    if (isBeverageProduct(currentProductForValidation)) {
+      console.log('🥤 Cannot add extras to beverage product');
+      return;
+    }
+
     setSelectedExtras(prev => {
       const existingExtraIndex = prev.findIndex(e => e.id_extra === extra.id_extra);
 
@@ -278,8 +313,15 @@ function ProductModal({
     });
   };
 
-  // ✅ NUEVA LÓGICA PARA SALSAS CON EXCLUSIÓN MUTUA
+  // ✅ NUEVA LÓGICA PARA SALSAS CON EXCLUSIÓN MUTUA Y VALIDACIÓN DE BEBIDAS
   const handleSauceToggle = (sauce) => {
+    // ✅ Verificar si el producto actual es bebida antes de permitir cambios
+    const currentProductForValidation = selectedProduct || product;
+    if (isBeverageProduct(currentProductForValidation)) {
+      console.log('🥤 Cannot add sauces to beverage product');
+      return;
+    }
+
     setSelectedSauces(prev => {
       const isSelected = prev.find(s => s.id_sauce === sauce.id_sauce);
       const isSinPicante = sauce.name.toLowerCase().includes('sin picante');
@@ -318,13 +360,21 @@ function ProductModal({
       setSelectedFlavor(null);
     }
 
-    // Limpiar extras y salsas
+    // ✅ LIMPIAR EXTRAS Y SALSAS, ESPECIALMENTE SI ES BEBIDA
+    const isBeverage = isBeverageProduct(productFromList);
+    if (isBeverage) {
+      console.log('🥤 Selected beverage product - clearing extras and sauces');
+    }
+
     setSelectedExtras([]);
     setSelectedSauces([]);
     setComment('');
     setErrors({});
 
-    console.log('✅ Product selected for order:', productFromList);
+    console.log('✅ Product selected for order:', {
+      product: productFromList,
+      isBeverage
+    });
   };
 
   // ✅ CALCULAR PRECIO TOTAL CON CANTIDADES DE EXTRAS
@@ -339,8 +389,8 @@ function ProductModal({
       total += Number(currentProduct.price);
     }
 
-    // Sumar extras con sus cantidades
-    if (selectedExtras && selectedExtras.length > 0) {
+    // ✅ Sumar extras solo si NO es bebida
+    if (!isBeverageProduct(currentProduct) && selectedExtras && selectedExtras.length > 0) {
       selectedExtras.forEach(extra => {
         const extraPrice = Number(extra.price || 0);
         const extraQuantity = Number(extra.quantity || 1);
@@ -382,6 +432,7 @@ function ProductModal({
   // ✅ FUNCIÓN COMÚN PARA PREPARAR DATOS DEL PRODUCTO
   const prepareProductData = () => {
     const currentProduct = selectedProduct || product;
+    const isBeverage = isBeverageProduct(currentProduct);
 
     return {
       id_product: currentProduct?.id_product || currentProduct?.product?.id_product,
@@ -390,8 +441,9 @@ function ProductModal({
       quantity,
       selectedOption,
       selectedFlavor,
-      selectedExtras,
-      selectedSauces,
+      // ✅ Solo incluir extras y salsas si NO es bebida
+      selectedExtras: isBeverage ? [] : selectedExtras,
+      selectedSauces: isBeverage ? [] : selectedSauces,
       selectedProduct: selectedProduct, // ✅ Para modo orden
       comment: comment.trim(),
       totalPrice: calculateTotalPrice(),
@@ -568,14 +620,18 @@ function ProductModal({
   const availableExtras = extras || [];
   const availableSauces = sauces || [];
 
+  // ✅ DETERMINAR SI ES BEBIDA PARA RENDERIZADO CONDICIONAL
+  const isCurrentProductBeverage = isBeverageProduct(currentProduct);
+
   console.log('🔍 ProductModal render data:', {
     isEditingOrder,
     selectedProductName: selectedProduct?.name,
     productName: product?.name || product?.product_name,
+    isBeverage: isCurrentProductBeverage,
     availableOptionsCount: availableOptions.length,
     availableFlavorsCount: availableFlavors.length,
-    availableExtrasCount: availableExtras.length,
-    availableSaucesCount: availableSauces.length,
+    availableExtrasCount: isCurrentProductBeverage ? 0 : availableExtras.length,
+    availableSaucesCount: isCurrentProductBeverage ? 0 : availableSauces.length,
     hasImage: !!(currentProduct?.image || currentProduct?.product_image || currentProduct?.product?.image)
   });
 
@@ -601,6 +657,13 @@ function ProductModal({
               loading="lazy"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
+
+            {/* ✅ NUEVO: Indicador de bebida */}
+            {isCurrentProductBeverage && (
+              <div className="absolute top-4 left-4 bg-blue-500/90 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                🥤 Bebida
+              </div>
+            )}
           </div>
 
           {/* Contenido superpuesto */}
@@ -613,6 +676,7 @@ function ProductModal({
                 <p className="text-white/80 text-xs sm:text-sm">
                   {isEditingOrder ? 'Agregar a orden existente' :
                    isEditing ? 'Editar producto' : 'Personalizar producto'}
+                  {isCurrentProductBeverage && ' • Sin extras ni salsas'}
                 </p>
               </div>
             </div>
@@ -662,7 +726,12 @@ function ProductModal({
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{productOption.name}</div>
+                        <div className="font-medium text-sm truncate">
+                          {productOption.name}
+                          {isBeverageProduct(productOption) && (
+                            <span className="text-blue-500 ml-1">🥤</span>
+                          )}
+                        </div>
                       </div>
                       {selectedProduct?.id_product === productOption.id_product && (
                         <CheckIcon className="w-5 h-5 text-purple-500 flex-shrink-0" />
@@ -767,8 +836,8 @@ function ProductModal({
               </div>
             )}
 
-            {/* EXTRAS CON CONTROLES DE CANTIDAD - LAYOUT 3 COLUMNAS */}
-            {availableExtras.length > 0 && (
+            {/* ✅ EXTRAS CON CONTROLES DE CANTIDAD - SOLO SI NO ES BEBIDA */}
+            {!isCurrentProductBeverage && availableExtras.length > 0 && (
               <div>
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-green-400' : 'bg-green-500'}`}></div>
@@ -856,8 +925,8 @@ function ProductModal({
               </div>
             )}
 
-            {/* SALSAS CON EXCLUSIÓN MUTUA AUTOMÁTICA */}
-            {availableSauces.length > 0 && (
+            {/* ✅ SALSAS CON EXCLUSIÓN MUTUA AUTOMÁTICA - SOLO SI NO ES BEBIDA */}
+            {!isCurrentProductBeverage && availableSauces.length > 0 && (
               <div>
                 <h3 className="text-sm sm:text-base font-semibold mb-2 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-red-400' : 'bg-red-500'}`}></div>
@@ -934,6 +1003,9 @@ function ProductModal({
             <div className="flex-1 text-center sm:text-left">
               <div className={`text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} font-medium`}>
                 {isEditingOrder ? 'Total del producto' : 'Total a pagar'}
+                {isCurrentProductBeverage && (
+                  <span className="text-blue-500 ml-1">(Bebida)</span>
+                )}
               </div>
               <div className="text-2xl sm:text-3xl font-bold text-green-500">
                 ${calculateTotalPrice().toFixed(2)}

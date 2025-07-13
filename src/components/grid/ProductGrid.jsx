@@ -167,7 +167,6 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
           }`}
         >
           <div className="relative">
-            {/* ✅ IMAGEN CON ZOOM SUTIL - object-contain con scale para mejor uso del espacio */}
             <div className={`w-full h-60 rounded-t-lg overflow-hidden ${
               theme === 'dark' ? 'bg-gray-100' : 'bg-gray-50'
             }`}>

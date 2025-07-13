@@ -138,7 +138,7 @@ const calculateProductPrice = useCallback((product) => {
       // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR (para compatibilidad con Cart.jsx)
       id_product: item.product?.id_product || item.id_product,
       product_name: item.product?.name || item.product_name || item.name,
-      product_image: item.product?.image || item.product_image || item.image,
+      id_image: item.product?.id_image || item.id_image || item.id_image,
 
       // ✅ MANTENER EL PRODUCTO ANIDADO (para App.jsx y modal de edición)
       product: item.product,
@@ -177,7 +177,7 @@ const calculateProductPrice = useCallback((product) => {
       uniqueId: newItem.id,
       id_product: newItem.id_product,
       product_name: newItem.product_name,
-      product_image: newItem.product_image,
+      id_image: newItem.id_image,
       variant_name: newItem.variant_name,
       clientName: newItem.clientName,
       hasProduct: !!newItem.product
@@ -226,7 +226,7 @@ const calculateProductPrice = useCallback((product) => {
           // ✅ MAPEAR DATOS DEL PRODUCTO AL NIVEL SUPERIOR
           id_product: updatedItem.product?.id_product || editingProduct.id_product,
           product_name: updatedItem.product?.name || editingProduct.product_name,
-          product_image: updatedItem.product?.image || editingProduct.product_image,
+          id_image: updatedItem.product?.id_image || editingProduct.id_image,
 
           // ✅ MANTENER EL PRODUCTO ANIDADO
           product: updatedItem.product || editingProduct.product,
@@ -382,7 +382,7 @@ const calculateProductPrice = useCallback((product) => {
         product: {
           id_product: item.id_product,
           name: item.product_name,
-          image: item.product_image
+          id_image: item.id_image
         },
 
         // ✅ Estructura de la variante (anidada para compatibilidad)
@@ -394,7 +394,7 @@ const calculateProductPrice = useCallback((product) => {
 
         // ✅ Campos directos para compatibilidad
         product_name: item.product_name,
-        product_image: item.product_image,
+        id_image: item.id_image,
         variant_name: item.variant_name,
 
         // ✅ Arrays de modificaciones

@@ -225,7 +225,6 @@ function Home({ selectedCategory }) {
           onClose={handleClosePanel}
           product={selectedProduct}
           onAddedToCart={handleAddedToCart}
-          // Props requeridas
           initialQuantity={1}
           initialOptions={[]}
           initialFlavors={[]}

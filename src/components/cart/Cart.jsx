@@ -5,6 +5,7 @@ import { PencilIcon, TrashIcon, ArrowLeftIcon, ShoppingCartIcon } from '@heroico
 import ClientPaymentModal from '../modals/ClientPaymentModal';
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
+import { getImageById } from '../../utils/api';
 
 function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
   const { cart, removeFromCart, startEditProduct, saveOrder, clearCart, calculateProductPrice, cartTotal, paymentMethods } = useCart();
@@ -37,7 +38,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
       product_name: item.product_name,
       name: item.name,
       product_image: item.product_image,
-      image: item.image,
+      image: item.id_image,
       clientName: item.clientName,
       totalPrice: item.totalPrice,
       selectedSauces: item.selectedSauces,
@@ -51,9 +52,9 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
     const isDark = theme === 'dark';
 
     // ✅ Buscar imagen en múltiples ubicaciones posibles
-    const imageUrl = cartItem.product_image ||
-                     cartItem.image ||
-                     cartItem.product?.image;
+    const imageUrl = cartItem.id_image ||
+                     cartItem.id_image ||
+                     cartItem.product?.id_image;
 
     // ✅ Buscar nombre en múltiples ubicaciones posibles
     const productName = cartItem.product_name ||
@@ -63,8 +64,8 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
 
     console.log(`🖼️ Image lookup for item ${index}:`, {
       product_image: cartItem.product_image,
-      image: cartItem.image,
-      nested_image: cartItem.product?.image,
+      id_image: cartItem.id_image,
+      nested_image: cartItem.product?.id_image,
       final_url: imageUrl,
       product_name: productName
     });
@@ -75,7 +76,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
     }
 
     console.log(`✅ Using image URL for product ${index}:`, imageUrl);
-    return optimizeGoogleDriveImageUrl(imageUrl, 400) ||
+    return getImageById(cartItem.id_image) ||
            generatePlaceholderUrl(productName, 400, isDark);
   };
 
@@ -318,20 +319,19 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                   idProduct: cartItem.id_product,
                   productName,
                   clientName: cartItem.clientName,
-                  hasProductImage: !!cartItem.product_image,
-                  hasImage: !!cartItem.image,
-                  hasNestedImage: !!cartItem.product?.image
+                  hasProductImage: !!cartItem.id_image,
+                  hasImage: !!cartItem.id_image,
+                  hasNestedImage: !!cartItem.product?.id_image
                 });
 
                 return (
                   <div key={uniqueCartKey} className={`flex items-start gap-3 lg:gap-4 border-b pb-4 ${
                     theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
                   }`}>
-                    {/* ✅ IMAGEN DEL PRODUCTO CORREGIDA */}
                     <div className="relative flex-shrink-0">
                       <img
                         ref={el => imageRefs.current[uniqueCartKey] = el}
-                        src={getOptimizedProductImage(cartItem, idx)}
+                        src={getImageById(cartItem.id_image)}
                         alt={productName}
                         className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16'} rounded-full object-cover border ${
                           theme === 'dark' ? 'border-gray-600' : 'border-gray-300'
@@ -382,7 +382,7 @@ function Cart({ onCloseCart, isMobile = false, showBackButton = false }) {
                         )}
 
                         {/* Método de Pago */}
-                         // No se muestra en el carrito ya que se enviá en ClientPaymentModal
+                        {/* No se muestra en el carrito ya que se enviá en ClientPaymentModal */}
 
                         {/* Variante/Tamaño */}
                         {(cartItem.variant_name || cartItem.selectedOption?.size) && (
