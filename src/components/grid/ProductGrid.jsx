@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useCart } from '../../context/CartContext';
 import { useLoading } from '../../context/LoadingContext';
-import { useMessage } from '../../context/MessageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
-import { getProducts } from '../../utils/api';
-import { API_CONFIG } from '../../config/constants';
+import { getProducts, getImageById } from '../../utils/api';
+import { API_CONFIG } from '../../config/config.server';
 
 function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
-  const { products, setProducts, setExtras, setSauces } = useCart();
+  const { products, setProducts, setExtras, setSauces, setPaymentMethods } = useCart();
   const { setLoading } = useLoading();
-  const { setMessage } = useMessage();
   const { theme } = useTheme();
 
   // ✅ Usar useRef para evitar dobles peticiones
@@ -45,15 +43,11 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
 
         if (response.products && response.products.length > 0) {
           console.log('✅ Products loaded:', response.products.length);
-
-          // ✅ Log para debug de estructura de productos
-          console.log('🔍 Product structure sample:', response.products[0]);
-
           setProducts(response.products);
           setExtras(response.extras || []);
           setSauces(response.sauces || []);
-          setMessage(null);
-          hasFetched.current = true; // ✅ Marcar como cargado exitosamente
+          setPaymentMethods(response.payment_methods || []);
+          hasFetched.current = true;
         } else {
           throw new Error('No se recibieron productos');
         }
@@ -70,14 +64,12 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         } else if (error.message.includes('HTTP error')) {
           errorMessage = `Error del servidor: ${error.message}`;
         }
-
-        setMessage({
-          text: errorMessage,
-          type: 'error'
-        });
+        showError(
+            errorMessage
+        );
       } finally {
         setLoading(false);
-        isCurrentlyFetching.current = false; // ✅ Liberar el flag
+        isCurrentlyFetching.current = false;
       }
     };
 
@@ -85,39 +77,24 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
     if (!hasFetched.current || products.length === 0) {
       fetchData();
     }
-  }, [products.length, setProducts, setExtras, setSauces, setLoading, setMessage]);
+  }, [products.length, setProducts, setExtras, setSauces, setLoading]);
 
-  // ✅ Filtrado optimizado con useMemo - CORREGIDO
+  // ✅ Filtrado optimizado con useMemo
   const filteredProducts = useMemo(() => {
     console.log('🔍 Filtering products. Selected category:', selectedCategory, 'Total products:', products.length);
 
-    // Si no hay categoría seleccionada o es null/todos, mostrar todos los productos
-    if (!selectedCategory || selectedCategory === null || selectedCategory === 'all' || selectedCategory === 'Todos') {
+    if (!selectedCategory || selectedCategory === 'all' || selectedCategory === 'Todos') {
       console.log('📦 Showing all products:', products.length);
       return products;
     }
 
-    // ✅ FILTRADO CORREGIDO: Comparar IDs numéricos
     const filtered = products.filter(product => {
-      // Log para debug
-      console.log(`🔍 Product ${product.name}: id_category=${product.id_category}, category_name=${product.category_name}`);
-
-      // Obtener el ID de categoría del producto
-      const productCategoryId = product.id_category || product.category?.id || null;
-
-      // Comparar IDs numéricos
-      const match = Number(productCategoryId) === Number(selectedCategory);
-
-      if (match) {
-        console.log(`✅ Match found: Product "${product.name}" in category ${productCategoryId}`);
-      }
-
+      const productCategory = product.id_category || product.id_category || '';
+      const match = productCategory === selectedCategory;
       return match;
     });
 
-    console.log(`📦 Filtered products for category ID "${selectedCategory}":`, filtered.length);
-    console.log('📦 Filtered products:', filtered.map(p => ({ id: p.id_product, name: p.name, category: p.id_category })));
-
+    console.log(`📦 Filtered products for "${selectedCategory}":`, filtered.length);
     return filtered;
   }, [products, selectedCategory]);
 
@@ -128,7 +105,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
   // ✅ FUNCIÓN PARA OPTIMIZAR IMAGEN DE PRODUCTO CON PROTECCIÓN ANTI-LOOP
   const getOptimizedProductImage = (product) => {
     const isDark = theme === 'dark';
-    if (!product?.image) {
+    if (!product?.name) {
       return generatePlaceholderUrl(product?.name || 'Producto', 400, isDark);
     }
     return optimizeGoogleDriveImageUrl(product.image, 400) || generatePlaceholderUrl(product.name, 400, isDark);
@@ -136,7 +113,6 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
 
   const handleImageError = (productId, productName) => {
     setImageStates(prev => {
-      // Prevenir loop infinito
       if (prev[productId]?.errorCount >= 1) {
         console.log(`❌ Product image failed multiple times for ${productName}, stopping retries`);
         return prev;
@@ -160,19 +136,7 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
     });
   };
 
-  // ✅ Mensaje cuando no hay productos en la categoría
   if (filteredProducts.length === 0 && products.length > 0) {
-    // Buscar el nombre de la categoría seleccionada
-    const categoryNames = {
-      1: 'Esquites',
-      2: 'Elotes',
-      3: 'Bebidas',
-      4: 'Especiales',
-      5: 'Antojitos'
-    };
-
-    const categoryName = categoryNames[selectedCategory] || `categoría ${selectedCategory}`;
-
     return (
       <div className={`flex flex-col items-center justify-center min-h-[50vh] p-8 ${
         theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
@@ -180,23 +144,8 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         <div className="text-6xl mb-4">🔍</div>
         <h3 className="text-xl font-semibold mb-2">No hay productos en esta categoría</h3>
         <p className="text-center max-w-md">
-          No se encontraron productos para "{categoryName}".
+          No se encontraron productos para "{selectedCategory}".
           Intenta seleccionar otra categoría.
-        </p>
-      </div>
-    );
-  }
-
-  // ✅ Mensaje cuando no hay productos cargados
-  if (products.length === 0) {
-    return (
-      <div className={`flex flex-col items-center justify-center min-h-[50vh] p-8 ${
-        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-      }`}>
-        <div className="text-6xl mb-4 animate-pulse">⏳</div>
-        <h3 className="text-xl font-semibold mb-2">Cargando productos...</h3>
-        <p className="text-center max-w-md">
-          Por favor espera mientras cargamos el catálogo de productos.
         </p>
       </div>
     );
@@ -210,22 +159,26 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
         <div
           key={product.id_product}
           onClick={() => onProductClick && onProductClick(product)}
-          className={`rounded-lg shadow-md cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg border ${
+          className={`rounded-lg cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg cinzel-decorative-regular
+              bg-gradient-to-br from-green-600 via-green-300 to-green-600 shadow-lg ${
             theme === 'dark'
               ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
               : 'bg-white border-gray-200 hover:bg-gray-50'
           }`}
         >
           <div className="relative">
-            {/* ✅ Imagen del producto CORREGIDA con protección anti-loop */}
-            <img
-              ref={el => imageRefs.current[product.id_product] = el}
-              src={getOptimizedProductImage(product)}
-              alt={product.name}
-              className="w-full h-40 object-cover rounded-t-lg"
-              loading="lazy"
-              onError={() => handleImageError(product.id_product, product.name)}
-            />
+            <div className={`w-full h-60 rounded-t-lg overflow-hidden ${
+              theme === 'dark' ? 'bg-gray-100' : 'bg-gray-50'
+            }`}>
+              <img
+                ref={el => imageRefs.current[product.id_product] = el}
+                src={getImageById(product.id_image)}
+                alt={product.name}
+                className="w-full h-full object-cover rounded-t-lg"
+                loading="lazy"
+                onError={() => handleImageError(product.id_product, product.name)}
+              />
+            </div>
 
             {/* Overlay con error de imagen */}
             {imageStates[product.id_product]?.hasError && (
@@ -238,43 +191,12 @@ function ProductGrid({ selectedCategory, onProductClick, isMobile }) {
             )}
           </div>
 
-          <div className="p-3">
-            <h3 className={`font-semibold text-sm mb-1 line-clamp-2 ${
+          <div className="p-2">
+            <h3 className={`text-center ${
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}>
               {product.name}
             </h3>
-
-            {product.description && (
-              <p className={`text-xs mb-2 line-clamp-2 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-              }`}>
-                {product.description}
-              </p>
-            )}
-
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-green-600">
-                {product.price ? `$${product.price}` : 'Ver opciones'}
-              </span>
-
-              {product.category_name && (
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  theme === 'dark'
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {product.category_name}
-                </span>
-              )}
-            </div>
-
-            {/* ✅ Badge de ID de categoría para debug (puedes quitar esto en producción) */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mt-1 text-xs text-gray-500">
-                Cat ID: {product.id_category || 'N/A'}
-              </div>
-            )}
           </div>
         </div>
       ))}
