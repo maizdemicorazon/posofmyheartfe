@@ -2,7 +2,7 @@
 // 🚀 UTILIDADES DE API - CENTRALIZADAS
 // ===============================================
 
-import { API_CONFIG, API_ENDPOINTS, DEBUG_CONFIG } from '../config/constants.js';
+import { API_CONFIG, API_ENDPOINTS, DEBUG_CONFIG } from '../config/config.server.jsx';
 
 /**
  * Clase para manejar todas las operaciones de API de manera centralizada
@@ -15,7 +15,7 @@ class ApiService {
   }
 
   /**
-   * ✅ Método base para hacer requests HTTP
+   * ✅ Función base para hacer requests HTTP
    */
   async request(url, options = {}) {
     const config = {
@@ -104,6 +104,41 @@ class ApiService {
     return response.json();
   }
 
+    /**
+     * Obtener ordenes por fecha
+     */
+    async getOrdersByDate(date) {
+      const response = await this.request(API_ENDPOINTS.ORDERS_BY_DATE(date));
+      return response.json();
+    }
+
+    /**
+     * Obtener ordenes por periodo de días
+     */
+    async getOrdersByPeriod(start, end) {
+      const response = await this.request(API_ENDPOINTS.ORDERS_BY_PERIOD(start, end));
+      return response.json();
+    }
+
+    /**
+     * Obtener ordenes agrupadas por estatus
+     */
+    async getOrdersGroupedByStatus() {
+      const response = await this.request(API_ENDPOINTS.ORDERS_GROUP_BY_STATUS);
+      return response.json();
+    }
+
+    /**
+     * Obtener ordenes agrupadas por estatus
+     */
+    async nextStatus(id, status) {
+      const response = await this.request(API_ENDPOINTS.ORDERS_NEXT_STATUS(id), {
+        method: 'PUT',
+        body: JSON.stringify({status:status})
+      });
+      return;
+    }
+
   /**
    * Crear nueva orden
    */
@@ -133,7 +168,7 @@ class ApiService {
     const response = await this.request(API_ENDPOINTS.ORDER_BY_ID(id), {
       method: 'DELETE'
     });
-    return response.ok;
+    return;
   }
 
   // ===============================================
@@ -160,8 +195,15 @@ class ApiService {
    * Obtener sabores por id de producto
    */
   async getFlavorsByIdProduct(id) {
-    // ✅ CORREGIDO: Quitar paréntesis extra
     const response = await this.request(API_ENDPOINTS.FLAVORS_BY_ID(id));
+    return response.json();
+  }
+
+   /**
+   * Obtener variantes por id de producto
+   */
+  async getVariantsByIdProduct(id) {
+    const response = await this.request(API_ENDPOINTS.VARIANTS_BY_ID(id));
     return response.json();
   }
 
@@ -214,13 +256,6 @@ class ApiService {
 
       if (paymentsRes.status === 'fulfilled') {
         catalogs.paymentMethods = await paymentsRes.value.json();
-      } else {
-        // Fallback para métodos de pago
-        catalogs.paymentMethods = [
-          { id_payment_method: 1, name: 'Efectivo' },
-          { id_payment_method: 2, name: 'Tarjeta' },
-          { id_payment_method: 3, name: 'Transferencia' }
-        ];
       }
 
       return catalogs;
@@ -267,10 +302,8 @@ class ApiService {
    */
   async checkHealth() {
     try {
-      const response = await this.request(`${this.baseURL}/ping`, {
-        timeout: 5000
-      });
-      return response.ok;
+       const response = await this.request(API_ENDPOINTS.PING);
+       return response.json();
     } catch (error) {
       return false;
     }
@@ -309,11 +342,11 @@ export const getProducts = async () => {
   }
 };
 
-export const getProductById = async (id) => {
+export const getImageById = (id) => {
   try {
-    return await apiService.getProductById(id);
+    return API_ENDPOINTS.IMAGE_BY_ID(id);
   } catch (error) {
-    console.error('❌ Error in getProductById:', error);
+    console.error('❌ Error in getImageById:', error);
     throw error;
   }
 };
@@ -333,6 +366,42 @@ export const getOrderById = async (id) => {
     return await apiService.getOrderById(id);
   } catch (error) {
     console.error('❌ Error in getOrderById:', error);
+    throw error;
+  }
+};
+
+export const getOrdersByDate = async (date) => {
+  try {
+    return await apiService.getOrdersByDate(date);
+  } catch (error) {
+    console.error('❌ Error in getOrdersByDate:', error);
+    throw error;
+  }
+};
+
+export const getOrdersByPeriod = async (start, end) => {
+  try {
+    return await apiService.getOrdersByPeriod(start, end);
+  } catch (error) {
+    console.error('❌ Error in getOrdersByPeriod:', error);
+    throw error;
+  }
+};
+
+export const getOrdersGroupedByStatus = async () => {
+  try {
+    return await apiService.getOrdersGroupedByStatus();
+  } catch (error) {
+    console.error('❌ Error in getOrdersByPeriod:', error);
+    throw error;
+  }
+};
+
+export const nextStatus = async (id, status) => {
+  try {
+    return await apiService.nextStatus(id, status);
+  } catch (error) {
+    console.error('❌ Error in getOrdersByPeriod:', error);
     throw error;
   }
 };
@@ -388,6 +457,15 @@ export const getFlavorsByIdProduct = async (id) => {
     return await apiService.getFlavorsByIdProduct(id);
   } catch (error) {
     console.error('❌ Error in getFlavorsByIdProduct:', error);
+    throw error;
+  }
+};
+
+export const getVariantsByIdProduct = async (id) => {
+  try {
+    return await apiService.getVariantsByIdProduct(id);
+  } catch (error) {
+    console.error('❌ Error in getVariantsByIdProduct:', error);
     throw error;
   }
 };

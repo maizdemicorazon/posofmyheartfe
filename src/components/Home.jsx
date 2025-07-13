@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import ProductGrid from './grid/ProductGrid';
-import ProductOptionsModal from './grid/ProductOptionsModal';
+import ProductModal from './modals/ProductModal';
 import Cart from './cart/Cart';
 import CartBadge from './cart/CartBadge';
+import { BREAKPOINTS } from '../utils/constants';
+import SimpleCartProtection from './protection/SimpleCartProtection';
 
 function Home({ selectedCategory }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -12,9 +14,9 @@ function Home({ selectedCategory }) {
   const [showAddedNotification, setShowAddedNotification] = useState(false);
 
   // Responsivo: detecta móvil
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.SM);
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    const handleResize = () => setIsMobile(window.innerWidth < BREAKPOINTS.SM);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -50,7 +52,7 @@ function Home({ selectedCategory }) {
     return (
       <>
         <div className="w-full min-h-screen bg-gray-50 relative">
-          {/* Área de productos - full width */}
+          {/* Área de productos */}
           <div className="pb-20">
             <ProductGrid
               selectedCategory={selectedCategory}
@@ -124,9 +126,9 @@ function Home({ selectedCategory }) {
           </>
         )}
 
-        {/* Modal de opciones - CORREGIDO */}
+        {/* Modal de opciones */}
         {selectedProduct && (
-          <ProductOptionsModal
+          <ProductModal
             isOpen={!!selectedProduct}
             onClose={handleClosePanel}
             product={selectedProduct}
@@ -137,6 +139,7 @@ function Home({ selectedCategory }) {
             initialFlavors={[]}
             initialExtras={[]}
             initialSauces={[]}
+            initialPaymentMethod={null}
             initialComment=""
             isEditing={false}
           />
@@ -147,7 +150,11 @@ function Home({ selectedCategory }) {
 
   // Layout desktop - columnas lado a lado con carrito responsivo
   return (
+
     <div className="min-h-screen bg-gray-50 flex">
+          <div>
+            <SimpleCartProtection />
+          </div>
       {/* Área de productos - lado izquierdo */}
       <div className="flex-1 min-w-0">
         <div className="h-full overflow-y-auto">
@@ -160,38 +167,70 @@ function Home({ selectedCategory }) {
       </div>
 
       {/* Área del carrito - lado derecho, ancho responsivo */}
-      <div className="w-[min(420px,40vw)] min-w-[320px] max-w-[480px] bg-white border-l border-gray-300 flex flex-col shadow-lg">
+      <div className="w-[min(370px,40vw)] min-w-[270px] max-w-[370px] bg-white border-l border-gray-300 flex flex-col shadow-lg">
         {/* Header del carrito desktop responsivo */}
         <div className="bg-red-600 text-white p-3 lg:p-4 text-center shadow-md">
           <div className="flex items-center justify-center gap-2 lg:gap-3 relative">
             <ShoppingCartIcon className="w-5 h-5 lg:w-6 lg:h-6" />
             <h2 className="text-lg lg:text-xl font-bold uppercase tracking-wide">Carrito</h2>
             <div className="relative">
-              <CartBadge count={cart.length} variant="yellow" size="sm" className="relative top-0 right-0" />
+              <CartBadge
+                count={cart.length}
+                variant="yellow"
+                size="sm"
+                className="relative top-0 right-0"
+              />
             </div>
           </div>
-          <div className="text-xs lg:text-sm opacity-90 mt-1">Tu selección actual</div>
+          <div className="
+            text-xs
+            sm:text-sm
+            opacity-90
+            mt-0.5
+            sm:mt-1
+            /* Ocultar en móviles muy pequeños si es necesario */
+            hidden
+            xs:block
+          ">
+            Tu selección actual
+          </div>
         </div>
 
-        {/* Contenido del carrito desktop */}
-        <div className="flex-1 overflow-y-auto relative">
-          <Cart isMobile={false} onCloseCart={() => {}} />
+        {/* Contenido del carrito responsivo */}
+        <div className="
+          flex-1
+          overflow-y-auto
+          relative
+          /* Padding interno adaptativo */
+          bg-white
+          /* Mobile: sin scroll visible, Desktop: scroll personalizado */
+          scrollbar-thin
+          scrollbar-thumb-gray-300
+          scrollbar-track-gray-100
+          /* Altura dinámica */
+          max-h-[calc(100vh-80px)]
+          sm:max-h-[calc(100vh-120px)]
+        ">
+          <Cart
+            isMobile={false}
+            onCloseCart={() => {}}
+          />
         </div>
       </div>
 
       {/* Modal de opciones - CORREGIDO */}
       {selectedProduct && (
-        <ProductOptionsModal
+        <ProductModal
           isOpen={!!selectedProduct}
           onClose={handleClosePanel}
           product={selectedProduct}
           onAddedToCart={handleAddedToCart}
-          // Props requeridas
           initialQuantity={1}
           initialOptions={[]}
           initialFlavors={[]}
           initialExtras={[]}
           initialSauces={[]}
+          initialPaymentMethod={null}
           initialComment=""
           isEditing={false}
         />

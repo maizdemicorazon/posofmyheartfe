@@ -14,7 +14,6 @@ import {
   ArrowPathIcon,
   ChartBarIcon
 } from '@heroicons/react/24/outline';
-import BusinessHeader from '../menu/BusinessHeader';
 import Swal from 'sweetalert2';
 
 // ✅ IMPORTAR NUEVAS UTILIDADES DE API
@@ -280,7 +279,6 @@ function DailyEarnings({ onBack }) {
       <div className={`min-h-screen transition-colors duration-300 ${
         theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'
       }`}>
-        <BusinessHeader />
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <ChartBarIcon className="w-12 h-12 mx-auto mb-4 animate-pulse text-green-600" />
@@ -297,8 +295,6 @@ function DailyEarnings({ onBack }) {
     <div className={`min-h-screen transition-colors duration-300 ${
       theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      <BusinessHeader />
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className={`rounded-xl shadow-sm border mb-6 p-6 ${

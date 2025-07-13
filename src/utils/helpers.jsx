@@ -4,7 +4,7 @@
  */
 
 // ✅ IMPORTAR CONFIGURACIÓN CENTRALIZADA
-import { API_CONFIG, DEBUG_CONFIG } from '../config/constants.js';
+import { API_CONFIG, DEBUG_CONFIG } from '../config/config.server.jsx';
 
 // ======================================
 // 🔗 ERROR CLASSES
@@ -197,7 +197,7 @@ export const validateExtraQuantity = (quantity) => {
 export const validateOrderData = (orderData) => {
   const errors = {};
 
-  // Validar método de pago
+  // Validar forma de pago
   if (!orderData.id_payment_method) {
     errors.payment_method = 'Método de pago es requerido';
   }
@@ -512,6 +512,18 @@ export const calculateCartTotal = (cartItems) => {
   }, 0);
 };
 
+  // ✅ Función helper para iconos
+export const getPaymentMethodIcon = (methodName) => {
+    const name = methodName.toLowerCase();
+    if (name.includes('efectivo')) return '💵';
+    if (name.includes('tarjeta')) return '💳';
+    if (name.includes('transfer')) return '🏦';
+    if (name.includes('qr')) return '📱';
+    if (name.includes('link')) return '🔗';
+    return '💵';
+};
+
+
 // ======================================
 // 📊 EXPORT DEFAULT OBJECT
 // ======================================
@@ -548,5 +560,8 @@ export default {
 
   // Performance
   debounce,
-  throttle
+  throttle,
+
+  //payment icons
+  getPaymentMethodIcon
 };

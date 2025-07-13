@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
-/** ********************************************
+/* ✅ PASO 2: Usa las directivas estándar de Tailwind. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ...El resto de tus estilos personalizados, como :root, pueden ir aquí... */
+
+:root {
+  --bg-color: white;
+  --text-color: black;
+  /* ... */
+}**********************************
 **             THEMES DARK AND LIGHT
 ** ****************************************** **/
 

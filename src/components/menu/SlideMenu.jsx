@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
-import CartBadge from '../cart/CartBadge';
 import {
   MoonIcon,
   SunIcon,
@@ -92,43 +91,18 @@ function SlideMenu({ isOpen, onClose, view, setView }) {
 
           {/* Navegación principal */}
           <div className="space-y-2">
-            {/* Productos */}
-            <button
-              onClick={() => {
-                setView('home');
-                onClose();
-              }}
-              className="w-full px-4 py-3 border rounded-lg flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"
-            >
-              <RocketLaunchIcon className="w-5 h-5 text-blue-500" />
-              <span>Productos</span>
-            </button>
-
             {/* Mis Pedidos */}
             <button
               onClick={() => {
                 setView('orders');
                 onClose();
               }}
-              className="w-full px-4 py-3 border rounded-lg flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"
-            >
-              <ShoppingBagIcon className="w-5 h-5 text-green-500" />
+              className={`w-full px-4 py-3 border rounded-lg flex items-center gap-3
+                  ${theme === 'dark' ? 'hover:bg-gray-100 dark:hover:bg-gray-700' : 'hover:bg-gradient-to-br from-green-600 via-green-300 to-green-600'}
+                  transition-colors font-medium
+              `}>
+              <ShoppingBagIcon className="w-5 h-5 text-green-800" />
               <span>Mis Pedidos</span>
-            </button>
-
-            {/* Carrito */}
-            <button
-              onClick={() => {
-                setView('cart');
-                onClose();
-              }}
-              className="w-full px-4 py-3 border rounded-lg flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium relative"
-            >
-              <ShoppingCartIcon className="w-5 h-5 text-orange-500" />
-              <span>Carrito</span>
-              <div className="ml-auto relative">
-                <CartBadge count={cart.length} variant="green" size="sm" className="relative top-0 right-0" />
-              </div>
             </button>
           </div>
 
@@ -143,10 +117,9 @@ function SlideMenu({ isOpen, onClose, view, setView }) {
               className={`w-full px-4 py-3 border rounded-lg flex items-center gap-3 transition-all duration-200 font-medium
                 ${isAdminOpen
                   ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-            >
-              <CogIcon className="w-5 h-5 text-red-500" />
+                  : theme === 'dark' ? 'hover:bg-gray-100 dark:hover:bg-gray-700' : 'hover:bg-gradient-to-br from-green-600 via-green-300 to-green-600'
+                }`}>
+              <CogIcon className="w-5 h-5 text-red-500"/>
               <span>Administración</span>
               <div className="ml-auto">
                 {isAdminOpen ? (
