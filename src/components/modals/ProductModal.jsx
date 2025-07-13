@@ -16,7 +16,7 @@ import {
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 import { getImageById } from '../../utils/api';
-import { PAYMENT_METHODS, id_image, CATEGORIES } from '../../utils/constants';
+import { PAYMENT_METHODS, CATEGORIES } from '../../utils/constants';
 
 function ProductModal({
   isOpen,
@@ -658,14 +658,7 @@ function ProductModal({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
 
-            {/* ✅ NUEVO: Indicador de bebida */}
-            {isCurrentProductBeverage && (
-              <div className="absolute top-4 left-4 bg-blue-500/90 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
-                🥤 Bebida
-              </div>
-            )}
           </div>
-
           {/* Contenido superpuesto */}
           <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
             <div className="flex items-end justify-between">
@@ -676,7 +669,6 @@ function ProductModal({
                 <p className="text-white/80 text-xs sm:text-sm">
                   {isEditingOrder ? 'Agregar a orden existente' :
                    isEditing ? 'Editar producto' : 'Personalizar producto'}
-                  {isCurrentProductBeverage && ' • Sin extras ni salsas'}
                 </p>
               </div>
             </div>
@@ -812,7 +804,7 @@ function ProductModal({
                            <img
                              src={getImageById(flavor.id_image)}
                              alt={flavor.name}
-                             className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded"
+                             className={`${isCurrentProductBeverage ? `w-40 h-40 object-cover rounded` : `w-8 h-8 sm:w-10 sm:h-10 object-cover rounded`}`}
                              onError={(e) => {
                                e.target.src = generatePlaceholderUrl(flavor.name, 40, theme === 'dark');
                              }}
