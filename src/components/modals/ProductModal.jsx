@@ -16,7 +16,7 @@ import {
 import Swal from 'sweetalert2';
 import { optimizeGoogleDriveImageUrl, generatePlaceholderUrl } from '../../utils/helpers';
 import { getImageById } from '../../utils/api';
-import { PAYMENT_METHODS,id_image CATEGORIES } from '../../utils/constants';
+import { PAYMENT_METHODS, id_image, CATEGORIES } from '../../utils/constants';
 
 function ProductModal({
   isOpen,
